@@ -65,6 +65,28 @@ function flatHeader(lines: NormItem[][]): boolean {
     head.every(h => cols.filter(c => Math.min(c[1], h[1]) - Math.max(c[0], h[0]) > 0).length === 1)
 }
 
+/**
+ * 위·아래 괘선 둘뿐인 띠의 머리 줄 수 — 첫 행은 몸통 행 간격보다 촘촘히 붙은 줄 묶음(칸 안에서 꺾인 머리 글,
+ * 두 줄 칸 사이 가운데 맞춘 한 줄 칸)이다. 그 묶음 글이 몸통 열마다 하나 이하로 놓이면(빈 머리 칸 허용) 그 줄 수,
+ * 아니면 0. ODL 170 Table 16.4 는 "Contour / Farming" 처럼 두 줄로 꺾인 머리 칸과 가운데 한 줄 칸이 섞인 첫 행,
+ * Table 16.5 는 첫 열이 빈 채 셋만 놓인 머리 줄이라 flatHeader 로는 못 받았다
+ */
+function headerLineCount(lines: NormItem[][]): number {
+  // OCR 글(seq 없음)은 종전대로 한 줄 머리만 — 래스터 괘선 경로에서 무괘선 머리행을 흡수하다 OCR 문서가 무너진 전력(grid-header-line)
+  if (lines.some(l => l.some(it => it.seq === undefined))) return flatHeader(lines) ? 1 : 0
+  const pitch = median(lines.slice(1).map((l, i) => lines[i][0].y - l[0].y))
+  let n = 1
+  while (n < lines.length && lines[n - 1][0].y - lines[n][0].y < pitch * WRAP_K) n++
+  if (lines.length - n < 3) return 0
+  const head = lines.slice(0, n).flat(), body = lines.slice(n).flat()
+  const fs = median(body.map(it => it.fontSize).filter(s => s > 0)) || 10
+  const cols = projectColumns(body, fs * COL_GAP_K)
+  const heads = projectColumns(head, fs * COL_GAP_K)
+  const hit = heads.map(h => cols.flatMap((c, k) => Math.min(c[1], h[1]) - Math.max(c[0], h[0]) > 0 ? [k] : []))
+  return cols.length >= 2 && heads.length >= 2 && hit.every(k => k.length === 1) &&
+    new Set(hit.map(k => k[0])).size === heads.length ? n : 0
+}
+
 /** 띠 글줄들을 한 행(칸마다 글)으로 — 여러 열에 걸친 글은 병합 칸 */
 function buildRow(rowItems: NormItem[], bounds: number[], colSpans?: Interval[]): IRCell[] {
   const cols = bounds.length + 1
@@ -155,11 +177,13 @@ export function detectRuledBandTables(
     let run: Band[] = []
     const flush = () => {
       if (run.length >= 2) emit(run, x1, x2)
-      // 위·아래 괘선 둘뿐인 표(머리 아래 선 생략) — 첫 줄을 머리 띠로
-      else if (g.length === 2 && run.length === 1 && run[0].lines.length >= 4 && flatHeader(run[0].lines)) {
-        const [band] = run, head = band.lines[0]
-        const cut = (head[0].y + band.lines[1][0].y + Math.max(...band.lines[1].map(it => it.h || it.fontSize))) / 2
-        emit([{ top: band.top, bottom: cut, lines: [head] }, { top: cut, bottom: band.bottom, lines: band.lines.slice(1) }], x1, x2)
+      // 위·아래 괘선 둘뿐인 표(머리 아래 선 생략) — 첫 줄 묶음을 머리 띠로 (headerLineCount)
+      else if (g.length === 2 && run.length === 1 && run[0].lines.length >= 4) {
+        const [band] = run, n = headerLineCount(band.lines)
+        if (n > 0) {
+          const cut = (band.lines[n - 1][0].y + band.lines[n][0].y + Math.max(...band.lines[n].map(it => it.h || it.fontSize))) / 2
+          emit([{ top: band.top, bottom: cut, lines: band.lines.slice(0, n) }, { top: cut, bottom: band.bottom, lines: band.lines.slice(n) }], x1, x2)
+        }
       }
       run = []
     }

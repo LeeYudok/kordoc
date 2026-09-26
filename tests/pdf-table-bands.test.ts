@@ -27,6 +27,17 @@ describe("open table ends", () => {
     assert.ok(out.slice(hs.length).every(l => l.x1 === 50 && l.x2 === 400))
   })
 
+  it("closes a last row whose column rules end at different depths (ODL 182)", () => {
+    // Rules at 300/280/260; the three column rules run below the last rule to 212, 196 and 194.
+    const hs = [h(300, 50, 400), h(280, 50, 400), h(260, 50, 400)]
+    const vs = [v(120, 212, 300), v(220, 196, 300), v(320, 194, 300)]
+    const out = closeOpenTableEnds(hs, vs, true)
+    assert.deepEqual(out.slice(hs.length).map(l => Math.round(l.y1)), [212])
+    assert.equal(closeOpenTableEnds(hs, vs).length, hs.length, "OCR raster rules keep the common-end rule")
+    // 한 구분선이라도 마지막 괘선에서 멈추면 열린 행이 아니다
+    assert.equal(closeOpenTableEnds(hs, [...vs.slice(0, 2), v(320, 260, 300)], true).length, hs.length)
+  })
+
   it("adds nothing when a single stray vertical passes the body", () => {
     const hs = [h(300, 50, 400), h(280, 50, 400), h(260, 50, 400)]
     assert.equal(closeOpenTableEnds(hs, [v(150, 240, 330)]).length, hs.length)
@@ -70,6 +81,25 @@ describe("ruled band tables", () => {
     assert.deepEqual(found.block.table!.cells.map(r => r.map(c => c.text)),
       [["Model", "Score", "Rank"], ["Cand. 1", "73.7", "1"], ["Cand. 2", "73.2", "2"]])
     assert.equal(found.items.length, items.length)
+  })
+
+  it("reads the wrapped header lines of a two-rule table as header rows (ODL 170)", () => {
+    const at = (text: string, x: number, y: number, seq: number) => ({ ...item(text, x, y, text.length * 4), fontSize: 8, h: 8, seq })
+    const lines: [string, number, number][] = [
+      ["Contour", 214, 686], ["Contour Strip", 282, 686], ["Contour Farming", 132, 681], ["Farming", 214, 677], ["Cropping", 282, 677],
+      ["Slope Gradient", 60, 660], ["Max Slope", 132, 660], ["P Value", 214, 656], ["Strip Width", 282, 656], ["(%)", 60, 652], ["(ft)", 132, 652],
+    ]
+    for (const [k, y] of [635, 619, 603].entries()) lines.push([`${k}-${k + 2}`, 60, y], ["400", 132, y], ["0.6", 214, y], ["130", 282, y])
+    const items = lines.map(([t, x, y], i) => at(t, x, y, i))
+    const [found] = detectRuledBandTables([h(697, 56, 360), h(549, 56, 360)], [], items, 1)
+    assert.ok(found)
+    assert.deepEqual(found.block.table!.cells.slice(0, 3).map(r => r.map(c => c.text)), [
+      ["", "Contour Farming", "Contour\nFarming", "Contour Strip\nCropping"],
+      ["Slope Gradient\n(%)", "Max Slope\n(ft)", "P Value", "Strip Width"],
+      ["0-2", "400", "0.6", "130"],
+    ])
+    // OCR 글(seq 없음)은 종전대로 한 줄 머리만 받는다
+    assert.equal(detectRuledBandTables([h(697, 56, 360), h(549, 56, 360)], [], items.map(({ seq: _, ...it }) => it), 1).length, 0)
   })
 
   it("leaves prose between rules and contents pages alone", () => {

@@ -377,6 +377,24 @@ export function dropShadingClipGrids(clipGrids: TableGrid[], lineGrids: TableGri
   })
 }
 
+/** 여백 클립 판정: 클립 격자 위·아래 변이 선 격자 행 괘선에서 떨어진 최소 거리 (pt) — Word 칸 위·아래 여백 5~6pt 실측 */
+const INSET_CLIP_MIN = 2
+
+/**
+ * 칸 여백 클립 격자 버리기 — Word 는 칸 글 영역(칸 테두리에서 위·아래 여백만큼 안쪽)에 클립을 건다. 행마다 여백으로 떨어져
+ * 클립 격자가 행 하나씩 따로 서고, 클립이 없는 전폭 행("Learning Outcomes")은 표 밖 문단이 되어 한 표가 여러 조각으로
+ * 갈렸다(ODL 146·150). 한컴 클립은 칸 테두리와 같은 좌표라 선 격자 행 괘선 위에 놓인다. 1행 클립 격자가 선 격자의 한 행 띠
+ * 안에 위·아래 모두 떠 있고 좌우 끝은 선 격자 끝과 같으면 칸 여백 클립이다 — 온전한 선 격자가 표를 맡는다.
+ */
+export function dropInsetClipGrids(clipGrids: TableGrid[], lineGrids: TableGrid[]): TableGrid[] {
+  if (clipGrids.length === 0 || lineGrids.length === 0) return clipGrids
+  const near = (a: number, b: number) => Math.abs(a - b) <= SHADE_CLIP_TOL
+  return clipGrids.filter(c => c.clipParent || c.rowYs.length !== 2 || !lineGrids.some(l =>
+    l.rowYs.length >= 3 && near(c.bbox.x1, l.bbox.x1) && near(c.bbox.x2, l.bbox.x2)
+    && l.rowYs.some((top, r) => r + 1 < l.rowYs.length
+      && top - c.bbox.y2 >= INSET_CLIP_MIN && c.bbox.y1 - l.rowYs[r + 1] >= INSET_CLIP_MIN)))
+}
+
 /** 최소 열 폭 보장 — 너무 좁은 열은 인접 열과 병합 */
 function enforceMinWidth(colXs: number[], minWidth: number): number[] {
   if (colXs.length <= 2) return colXs

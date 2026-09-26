@@ -25,6 +25,10 @@ const ORIENTATION_TOL = 2
 const MIN_LINE_LENGTH = 15
 /** 굵은 선 필터 — ODL: MAX_LINE_WIDTH = 5.0 (배경 채움/장식 사각형 제외) */
 const MAX_LINE_WIDTH = 5.0
+/** 채움 괘선 두께 상한 (pt) — Word 는 칸 테두리를 변 조각마다 0.5~1pt 채움 사각형으로 그린다(ODL 146·150 실측) */
+const THIN_FILL_MAX = 1.5
+/** 같은 색 채움 안에 든 채움 판정 여유 (pt) — Word 문단 음영·칸 여백 띠는 칸 배경 채움보다 0.3pt 넘치기도 한다(ODL 146) */
+const HIDDEN_FILL_TOL = 0.5
 
 // ─── 선 추출 ──────────────────────────────────────────
 
@@ -47,6 +51,17 @@ export function extractLines(
   const fillRects: ClipRect[] = []
   /** 이번 경로의 re 사각형 (얇은 사각형은 세그먼트가 가운데 선 하나로 접히므로 원본 bbox 를 따로 둔다) */
   let pathRects: ClipRect[] = []
+  /** pathRects 마다 currentPath 안 세그먼트 범위·얇은 괘선 여부 */
+  let pathRectSegs: Array<{ start: number; end: number; thin: boolean }> = []
+  // 채움 색 추적 — 같은 색 채움 안에 칠한 채움은 보이는 경계가 없다 (아래 flushPath)
+  let fillColor = 0
+  const colorStack: number[] = []
+  /** 지금까지 칠한 사각형 채움 (색별) */
+  const paintedFills = new Map<number, ClipRect[]>()
+  /** 얇은 채움 사각형 괘선 — 짧은 조각은 thinShort 로, 긴 조각은 thinFill 로 모아 끝에서 사슬 잇기 */
+  const thinFill = new Set<LineSegment>()
+  const thinShortH: LineSegment[] = []
+  const thinShortV: LineSegment[] = []
   // 클립 경로 추적 — 한컴 PDF 는 표 셀마다 `W n`(clip + endPath) 사각형을 깐다. 획이 없는
   // 셀(테두리 "없음"인 별지서식 외곽 표)도 클립은 있으므로 그리드 복원의 근거가 된다 (v4.12.1)
   let pendingClip = false
@@ -81,6 +96,7 @@ export function extractLines(
     // 얇은 사각형(선으로 그린 괘선) 판별은 CTM 적용 후 실제 두께 기준
     const effH = Math.abs(rh) * Math.hypot(ctm[2], ctm[3])
     const effW = Math.abs(rw) * Math.hypot(ctm[0], ctm[1])
+    const start = currentPath.length
     if (effH < ORIENTATION_TOL * 2) {
       pushSeg(rx, ry + rh / 2, rx + rw, ry + rh / 2)
     } else if (effW < ORIENTATION_TOL * 2) {
@@ -91,6 +107,7 @@ export function extractLines(
       pushSeg(rx + rw, ry + rh, rx, ry + rh)
       pushSeg(rx, ry + rh, rx, ry)
     }
+    pathRectSegs.push({ start, end: currentPath.length, thin: Math.min(effH, effW) <= THIN_FILL_MAX })
   }
 
   function flushPath(isStroke: boolean, fromFill = false, filled = fromFill) {
@@ -98,7 +115,27 @@ export function extractLines(
       if (pathRects.length) for (const r of pathRects) fillRects.push(r)
       else captureClipRect(currentPath, fillRects, 0.3, 0.3)
     }
+    // 순수 채움 사각형의 세그먼트 역할 — 같은 색으로 먼저 칠한 채움 안에 든 사각형은 경계가 보이지 않는다: Word 는 칸 배경
+    // 채움 안에 문단 음영(칸 변에서 5.5pt 안쪽)·칸 여백 띠를 같은 색으로 한 번 더 칠해, 그 변이 가짜 행·열 괘선이 되어 표가
+    // 조각났다(ODL 146 "Area | Competence", 150). 얇은(≤1.5pt) 채움 사각형은 Word 가 칸 변 조각마다 따로 칠한 괘선이다 —
+    // 가로 괘선이 지나는 자리의 세로 괘선을 5.5pt 짜리 토막으로 끊어 그려 MIN_LINE_LENGTH 에 버려지면 세로 괘선이 행마다
+    // 끊겨 표가 행 묶음마다 갈렸다. 토막은 끝에서 맞닿은 조각과 사슬로 잇는다 (chainShortSegments)
+    const segRole: Array<"hidden" | "thin" | undefined> = []
+    if (fromFill && pathRects.length) {
+      const painted = paintedFills.get(fillColor) ?? []
+      pathRects.forEach((r, i) => {
+        const segs = pathRectSegs[i]
+        if (!segs) return
+        const hidden = painted.some(c => r.x1 >= c.x1 - HIDDEN_FILL_TOL && r.x2 <= c.x2 + HIDDEN_FILL_TOL
+          && r.y1 >= c.y1 - HIDDEN_FILL_TOL && r.y2 <= c.y2 + HIDDEN_FILL_TOL)
+        const role = hidden ? "hidden" : segs.thin ? "thin" : undefined
+        for (let k = segs.start; k < segs.end; k++) segRole[k] = role
+      })
+      for (const r of pathRects) painted.push(r)
+      paintedFills.set(fillColor, painted)
+    }
     pathRects = []
+    pathRectSegs = []
     if (!isStroke) {
       if (pendingClip) captureClipRect(currentPath, clipRects)
       pendingClip = false
@@ -107,9 +144,17 @@ export function extractLines(
     }
     pendingClip = false
     const effWidth = lineWidth * ctmScale()
-    for (const seg of currentPath) {
+    currentPath.forEach((seg, k) => {
+      const role = segRole[k]
+      if (role === "hidden") return
+      if (role === "thin") {
+        const nh = horizontals.length, nv = verticals.length
+        classifyAndAdd(seg, effWidth, horizontals, verticals, fromFill, { h: thinShortH, v: thinShortV })
+        for (const l of [...horizontals.slice(nh), ...verticals.slice(nv)]) thinFill.add(l)
+        return
+      }
       classifyAndAdd(seg, effWidth, horizontals, verticals, fromFill, fromFill ? undefined : { h: shortH, v: shortV })
-    }
+    })
     currentPath = []
   }
 
@@ -124,11 +169,19 @@ export function extractLines(
 
       case OPS.save:
         ctmStack.push(ctm.slice())
+        colorStack.push(fillColor)
         break
 
       case OPS.restore:
         ctm = ctmStack.pop() ?? [1, 0, 0, 1, 0, 0]
+        fillColor = colorStack.pop() ?? 0
         break
+
+      case OPS.setFillRGBColor: {
+        const c = args as unknown as ArrayLike<number>
+        fillColor = (c[0] << 16) | (c[1] << 8) | c[2]
+        break
+      }
 
       case OPS.transform:
       case OPS.paintFormXObjectBegin: {
@@ -137,6 +190,7 @@ export function extractLines(
         let t = args as number[]
         if (op === OPS.paintFormXObjectBegin) {
           ctmStack.push(ctm.slice())
+          colorStack.push(fillColor)
           const m = (args as unknown[])[0]
           if (!Array.isArray(m) || m.length < 6) break
           t = m as number[]
@@ -153,6 +207,7 @@ export function extractLines(
       }
       case OPS.paintFormXObjectEnd:
         ctm = ctmStack.pop() ?? [1, 0, 0, 1, 0, 0]
+        fillColor = colorStack.pop() ?? 0
         break
 
       case OPS.constructPath: {
@@ -260,7 +315,11 @@ export function extractLines(
     }
   }
 
-  return { horizontals, verticals, clipRects, fillRects, shortH, shortV }
+  return {
+    horizontals: chainShortSegments(horizontals, thinShortH, "h", l => thinFill.has(l)),
+    verticals: chainShortSegments(verticals, thinShortV, "v", l => thinFill.has(l)),
+    clipRects, fillRects, shortH, shortV,
+  }
 }
 
 // ─── 짧은 괘선 조각 잇기 ──────────────────────────────
@@ -280,14 +339,15 @@ const SHORT_CHAIN_GAP = 0.2
  * 하므로 긴 조각까지 함께 이어야 병합 행의 세로 테두리가 선다. 짧은 조각이 없는 사슬은 종전대로 둔다(긴 선분끼리의 물리
  * 병합은 셀 배치를 바꾼 실측이 있다 — chainCollinearRules 주석). 채움 경로(배경 사각형 변·글자 윤곽)는 대상이 아니다.
  * 이은 사슬이 여전히 짧으면(체크박스 테두리 같은 장식) 버린다. 호출측(page-blocks)은 칸 클립 격자가 없는 쪽에서만 부른다.
+ * 얇은(≤1.5pt) 채움 사각형 괘선은 `chainable` 로 따로 extractLines 끝에서 잇는다 — 채움으로 그은 괘선이라 획 조각과 섞지 않는다.
  */
-export function chainShortSegments(longs: LineSegment[], shorts: LineSegment[], dir: "h" | "v"): LineSegment[] {
+export function chainShortSegments(longs: LineSegment[], shorts: LineSegment[], dir: "h" | "v", chainable = (l: LineSegment) => !l.fromFill): LineSegment[] {
   if (shorts.length === 0) return longs
   const pos = (l: LineSegment) => (dir === "h" ? l.y1 : l.x1)
   const lo = (l: LineSegment) => (dir === "h" ? l.x1 : l.y1)
   const hi = (l: LineSegment) => (dir === "h" ? l.x2 : l.y2)
   const shortSet = new Set(shorts)
-  const all = [...longs.filter(l => !l.fromFill), ...shorts].sort((a, b) => pos(a) - pos(b) || lo(a) - lo(b))
+  const all = [...longs.filter(chainable), ...shorts].sort((a, b) => pos(a) - pos(b) || lo(a) - lo(b))
   const absorbed = new Set<LineSegment>()
   const chained: LineSegment[] = []
   const flush = (chain: LineSegment[]) => {
@@ -297,7 +357,8 @@ export function chainShortSegments(longs: LineSegment[], shorts: LineSegment[], 
     if (e - s < MIN_LINE_LENGTH) return
     p /= chain.length
     for (const l of chain) absorbed.add(l)
-    chained.push(dir === "h" ? { x1: s, y1: p, x2: e, y2: p, lineWidth: w } : { x1: p, y1: s, x2: p, y2: e, lineWidth: w })
+    const fill = chain.every(l => l.fromFill) ? { fromFill: true } : {}
+    chained.push(dir === "h" ? { x1: s, y1: p, x2: e, y2: p, lineWidth: w, ...fill } : { x1: p, y1: s, x2: p, y2: e, lineWidth: w, ...fill })
   }
   let band: LineSegment[] = []
   const flushBand = () => {
@@ -363,10 +424,10 @@ function classifyAndAdd(
     if (!short || length <= 0) return
     if (dy <= ORIENTATION_TOL && dx > dy) {
       const y = (seg.y1 + seg.y2) / 2
-      short.h.push({ x1: Math.min(seg.x1, seg.x2), y1: y, x2: Math.max(seg.x1, seg.x2), y2: y, lineWidth })
+      short.h.push({ x1: Math.min(seg.x1, seg.x2), y1: y, x2: Math.max(seg.x1, seg.x2), y2: y, lineWidth, fromFill })
     } else if (dx <= ORIENTATION_TOL && dy > dx) {
       const x = (seg.x1 + seg.x2) / 2
-      short.v.push({ x1: x, y1: Math.min(seg.y1, seg.y2), x2: x, y2: Math.max(seg.y1, seg.y2), lineWidth })
+      short.v.push({ x1: x, y1: Math.min(seg.y1, seg.y2), x2: x, y2: Math.max(seg.y1, seg.y2), lineWidth, fromFill })
     }
     return
   }

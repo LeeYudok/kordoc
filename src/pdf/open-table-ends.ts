@@ -57,8 +57,9 @@ function commonEnd(ends: number[]): number | null {
 /**
  * 몸통 괘선 묶음의 위·아래로 같은 끝점까지 뻗은 내부 수직선이 둘 이상이면 그 끝점에 가상 수평 괘선을 더한다.
  * 조건 미달이면 입력을 그대로 반환한다.
+ * @param textLayer 쪽 글이 모두 텍스트층(seq)일 때만 끝점이 제각각인 아래 변을 닫는다 — OCR 래스터 괘선은 끝점이 흔들린다
  */
-export function closeOpenTableEnds(horizontals: LineSegment[], verticals: LineSegment[]): LineSegment[] {
+export function closeOpenTableEnds(horizontals: LineSegment[], verticals: LineSegment[], textLayer = false): LineSegment[] {
   if (horizontals.length < MIN_RULES || verticals.length < MIN_REACHING) return horizontals
   const groups: LineSegment[][] = []
   for (const rule of chainCollinearRules(horizontals)) {
@@ -75,7 +76,13 @@ export function closeOpenTableEnds(horizontals: LineSegment[], verticals: LineSe
     const interior = chained.filter(v => v.x1 > x1 + INSET && v.x1 < x2 - INSET && v.y1 <= yHi + TOUCH_TOL && v.y2 >= yLo - TOUCH_TOL)
     // 위: 맨 위 괘선에 닿아 위로 뻗은 수직선의 윗끝 / 아래: 맨 아래 괘선에 닿아 아래로 뻗은 수직선의 아랫끝
     const top = commonEnd(interior.filter(v => v.y1 <= yHi + TOUCH_TOL && v.y2 >= yHi + MIN_REACH).map(v => v.y2))
-    const bottom = commonEnd(interior.filter(v => v.y2 >= yLo - TOUCH_TOL && v.y1 <= yLo - MIN_REACH).map(v => v.y1))
+    const below = interior.filter(v => v.y2 >= yLo - TOUCH_TOL && v.y1 <= yLo - MIN_REACH)
+    let bottom = commonEnd(below.map(v => v.y1))
+    // 끝점이 제각각이어도 맨 아래 괘선에 닿은 내부 수직선이 모두(둘 이상) 아래로 뻗었으면 마지막 행은 아래 변만 열린 것 —
+    // 모든 열 구분선이 아직 감싸는 가장 얕은 끝점에서 닫는다. ODL 182 슬라이드 표는 마지막 "Highlight" 행 아래 괘선 없이
+    // 굵은 세로선(47pt 끝)과 옅은 구분선 둘(31·28pt 끝)만 내려 그어 그 행이 표 밖으로 떨어졌다
+    if (bottom === null && textLayer && below.length >= MIN_REACHING &&
+      below.length === interior.filter(v => v.y2 >= yLo - TOUCH_TOL && v.y1 <= yLo + TOUCH_TOL).length) bottom = Math.max(...below.map(v => v.y1))
     for (const y of [top, bottom]) {
       if (y === null) continue
       // 그 높이에 이미 몸통 폭을 덮는 괘선이 있으면 닫힌 변이다

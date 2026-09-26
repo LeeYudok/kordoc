@@ -9,7 +9,7 @@
 import type { IRBlock, IRTable, IRCell, BoundingBox, InlineStyle } from "../types.js"
 import { safeMin, safeMax } from "../utils.js"
 import { buildClipCellGrids, dropGridsInside, type ClipPage } from "./clip-cells.js"
-import { dropShadingClipGrids } from "./table-grid.js"
+import { dropShadingClipGrids, dropInsetClipGrids } from "./table-grid.js"
 import { chainShortSegments } from "./line-extract.js"
 import { extractLines, preprocessLines, filterPageBorderLines, closeOpenTableEdges, bridgeSplitColumnVerticals, buildTableGrids, extractCells, mapTextToCells, cellTextToString, normalizeUndersegmentedTable, type TextItem, type TableGrid, type LineSegment } from "./line-detector.js"
 import { detectClusterTables, findTwoColumnProseCutX, type ClusterItem, type ClusterTableResult } from "./cluster-detector.js"
@@ -93,7 +93,7 @@ export function extractPageBlocksWithLines(
 
   // 1.6단계: 개방 변 표 테두리 합성 — 좌/우 바깥 테두리 생략 스타일(행정문서 관행)의
   // 가장자리 열 소실 방지. 내부 수직선이 실존하는 정렬 괘선 묶음에만 발동.
-  horizontals = closeOpenTableEnds(horizontals, verticals)
+  horizontals = closeOpenTableEnds(horizontals, verticals, items.every(it => it.seq !== undefined))
   verticals = closeOpenTableEdges(horizontals, verticals)
 
   // 1.65단계: 무괘선 요약행 밴드(예산서 재원구분 시/구 행 등)로 끊긴 동일 열
@@ -116,7 +116,8 @@ export function extractPageBlocksWithLines(
   // 2단계: 선으로 테이블 그리드 구성 (표 감지 opt-out 시 건너뜀 — #64)
   const lineGrids = detectTables ? buildTableGrids(horizontals, verticals) : []
   // 배경 칠한 칸에만 클립을 거는 제작기(cairo·한컴 구버전)의 음영 조각 격자는 버리고 온전한 선 표에 맡긴다 (dropShadingClipGrids)
-  const tableClipGrids = dropShadingClipGrids(clipGrids, lineGrids, extracted.fillRects, verticals)
+  // Word 칸 여백 클립(칸 테두리 안쪽 글 영역)의 행 조각 격자도 선 표에 맡긴다 (dropInsetClipGrids)
+  const tableClipGrids = dropInsetClipGrids(dropShadingClipGrids(clipGrids, lineGrids, extracted.fillRects, verticals), lineGrids)
   const grids = [...tableClipGrids, ...dropGridsInside(lineGrids, tableClipGrids, clipResult.containers)]
 
   // A rotated illustration can project a one-cell square far beyond the page.
