@@ -40,7 +40,7 @@ function unbalancedClose(text: string): boolean {
   return (text.match(/\)/g)?.length ?? 0) > (text.match(/\(/g)?.length ?? 0)
 }
 
-export function demoteNonHeadingRoles(blocks: IRBlock[], pageHeights: Map<number, number>): void {
+export function demoteNonHeadingRoles(blocks: IRBlock[], pageHeights: Map<number, number>, faceNames?: Map<string, string>): void {
   const byPage = new Map<number, IRBlock[]>()
   for (const block of blocks) {
     const page = byPage.get(block.pageNumber ?? 0) ?? []
@@ -64,6 +64,7 @@ export function demoteNonHeadingRoles(blocks: IRBlock[], pageHeights: Map<number
     const block = blocks[i]
     if (block.type !== "heading" || !block.text) continue
     const text = block.text.replace(/<[^>]+>/g, "").trim()
+    const fsz = block.style?.fontSize ?? 0
     // A part title between two runs of contents entries is itself an entry.
     const tocEntry = i > 0 && TOC_BLOCKS.has(blocks[i - 1]) && TOC_BLOCKS.has(blocks[i + 1])
     const page = byPage.get(block.pageNumber ?? 0) ?? []
@@ -76,13 +77,57 @@ export function demoteNonHeadingRoles(blocks: IRBlock[], pageHeights: Map<number
       blocks.splice(i--, 1)
       continue
     }
+    // 제목이 두 줄로 꺾여 둘째 줄이 소문자 낱말로 시작하면(같은 서체·크기, 바로 아래) 소문자 시작 강등에 걸려 본문으로 떨어진다 — 제목에 잇는다
+    if (next?.type === "paragraph" && next.pageNumber === block.pageNumber && next.text && next.bbox && block.bbox &&
+        next.style?.fontName === block.style?.fontName && next.style?.fontSize === block.style?.fontSize && fsz > 0 &&
+        /^[a-z]/.test(next.text.trim()) && next.text.trim().length <= 40 && !/[.:;!?]$/.test(next.text.trim()) &&
+        block.bbox.y - (next.bbox.y + next.bbox.height) < fsz * 1.2 &&
+        Math.abs(next.bbox.x - block.bbox.x) < fsz) {
+      block.text = `${block.text.trim()} ${next.text.trim()}`
+      block.bbox = { ...block.bbox, y: next.bbox.y, height: block.bbox.y + block.bbox.height - next.bbox.y }
+      blocks.splice(i + 1, 1)
+    }
+    // 두 제목 줄 사이에 다른 서체로 끼운 이음 기호("WHY IT IS IMPORTANT ⏎ & ⏎ WHAT YOU CAN DO")는 한 제목이다
+    const after = blocks[i + 2]
+    if ((next?.type === "paragraph" || next?.type === "heading") && /^(?:&|\+|and|or)$/i.test(next.text?.trim() ?? "") &&
+        after?.type === "heading" && after.text && after.pageNumber === block.pageNumber && next.pageNumber === block.pageNumber &&
+        after.style?.fontSize === block.style?.fontSize) {
+      block.text = `${block.text.trim()} ${next.text!.trim()} ${after.text.trim()}`
+      blocks.splice(i + 1, 2)
+    }
+    // 본문 크기보다 작아 읽을 수 없는 크기(7.5pt 미만)의 글은 제목이 아니다 — 슬라이드 차트 축 라벨("Parsing-F1" 6pt)
+    const tiny = fsz > 0 && fsz < 7.5
+    // 같은 줄 왼쪽에 떨어져 놓인 소문자 항목 부호("n.")는 본문 항목의 굵은 도입문이다 — 부호와 합쳐 문단으로
+    const prev = blocks[i - 1]
+    if (prev?.type === "paragraph" && prev.pageNumber === block.pageNumber && /^[a-z]{1,3}[.)]$/.test(prev.text?.trim() ?? "") &&
+        prev.bbox && block.bbox && Math.abs(prev.bbox.y - block.bbox.y) < 2 && prev.bbox.x + prev.bbox.width <= block.bbox.x) {
+      prev.text = `${prev.text!.trim()} ${block.text.trim()}`
+      prev.bbox = { ...prev.bbox, width: block.bbox.x + block.bbox.width - prev.bbox.x }
+      blocks.splice(i--, 1)
+      continue
+    }
+    // 제목 앞 절 번호가 다른 서체라 따로 떨어진 것 — 같은 줄 왼쪽("4 | Al-Sadu Symbols")이나 바로 위 왼끝 맞춘 큰 번호("4⏎Basis Fields")는 제목의 일부다
+    if (prev?.type === "paragraph" && prev.pageNumber === block.pageNumber && /^\d{1,2}(?:\.\d{1,2})*\.?$/.test(prev.text?.trim() ?? "") &&
+        prev.bbox && block.bbox && fsz > 0 && (
+          Math.abs(prev.bbox.y - block.bbox.y) < 2 && prev.bbox.x + prev.bbox.width <= block.bbox.x && block.bbox.x - (prev.bbox.x + prev.bbox.width) < fsz * 3 ||
+          Math.abs(prev.bbox.x - block.bbox.x) < 2 && (prev.style?.fontSize ?? 0) >= fsz && prev.bbox.y - (block.bbox.y + block.bbox.height) < fsz * 1.5)) {
+      block.text = `${prev.text!.trim()} ${block.text.trim()}`
+      blocks.splice(i - 1, 1)
+      i--
+      continue
+    }
     // 쪽 맨 위, 바로 아래 더 큰 제목 위에 붙은 작은 머리표(슬라이드 키커 "Recommendation Pack: Track Record")는 제목이 아니다
     const box = block.bbox, size = block.style?.fontSize ?? 0
     const kicker = !!box && size > 0 && next?.type === "heading" && next.pageNumber === block.pageNumber && !!next.bbox &&
       (next.style?.fontSize ?? 0) >= size * 1.3 && box.y - (next.bbox.y + next.bbox.height) <= size * 3 &&
       Math.min(box.x + box.width, next.bbox.x + next.bbox.width) - Math.max(box.x, next.bbox.x) >= Math.min(box.width, next.bbox.width) * 0.5 &&
       !page.some(o => o !== block && o.bbox && o.bbox.y > box.y + box.height && o.type !== "image")
-    if (tocEntry || proseStyle || kicker || !/\p{L}/u.test(text) || /^[a-z]/.test(text) || CAPTION.test(text) || EQUATION_NUMBER.test(block.text) || DISPLAY_MATH.test(text) ||
+    // 제목 바로 아래 본문 크기 기울임 줄(저자·소속 "Staff of the … Directorate")은 부제가 아니라 필자 줄이다
+    const face = faceNames?.get(block.style?.fontName ?? "") ?? ""
+    const [bodyFace, bodySize] = (bodyStyle.get(block.pageNumber ?? 0) ?? "").split(":")
+    const byline = /Italic|Oblique/i.test(face) && !/Bold|Black|Heavy|Semibold/i.test(face) && !!bodyFace &&
+      size <= Number(bodySize) + 0.5 && blocks[i - 1]?.type === "heading" && blocks[i - 1].pageNumber === block.pageNumber
+    if (tocEntry || proseStyle || kicker || byline || tiny || !/\p{L}/u.test(text) || /^[a-z]/.test(text) || CAPTION.test(text) || EQUATION_NUMBER.test(block.text) || DISPLAY_MATH.test(text) ||
         // 닫는 괄호가 여는 괄호보다 많으면 앞 줄에서 이어진 문장 조각이다 ("Fact-checking) and is used …") — "1)"·"가)" 앞머리 번호는 빼고 센다
         unbalancedClose(text.replace(/^\s*[\dA-Za-z가-힣ⅰ-ⅹ]{1,3}\)\s*/, "")) ||
         isRunningHead(block, page, pageHeights.get(block.pageNumber ?? 0))) {

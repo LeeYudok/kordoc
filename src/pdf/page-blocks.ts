@@ -22,15 +22,17 @@ import { shouldDemoteTable, demoteTableToText, detectListBlocks, detectSpecialKo
 import { markUnderlineItems, wrapUnderlineRuns } from "./underline.js"
 import { extractImageRegions, type ImageRegion } from "./image-regions.js"
 import { markImageCell } from "./table-trim.js"
+import { mergeSliverColumns } from "./table-trim.js"
+import { headerLineAbove } from "./grid-header-line.js"
 import { CLIP_TABLES, CONT_PARTS, EMPTY_PARTS, FILLER_CELLS, TABLE_COLXS, recordCellLines } from "./table-meta.js"
 import { WrapLexicon } from "./line-wrap.js"
 import { closeOpenTableEnds } from "./open-table-ends.js"
 import { extendHeaderBoxRows } from "./header-box-rows.js"
 import { detectRuledBandTables, type RuledTable } from "./ruled-band-tables.js"
 import { bridgeSkippedRowVerticals } from "./vertical-bridge.js"
-import { splitSidebarTitleRegion, splitTrailingColumnRegion } from "./local-regions.js"
+import { splitSidebarTitleRegion, splitTrailingColumnRegion, panelBlocks } from "./local-regions.js"
 import { pushLineParagraphs } from "./paragraph-lines.js"
-import { isChartTable, isTableOfContents, tocBlock } from "./table-roles.js"
+import { isChartTable, isFormulaTable, isTableOfContents, tocBlock } from "./table-roles.js"
 import { splitTwoColumnProse, figureColumnBands, topTableBand, tieredHeaderTable, stackedTableBands, threeColumnCards, threeColumnInfographic } from "./page-regions.js"
 
 /** 쪽 사이로 넘기는 칸 이어짐 상태 — 앞 쪽 번호와 그 쪽 클립 사실 (다음 쪽 첫 클립이 앞 쪽 마지막 칸의 이어짐인지 가른다, clip-cells) */
@@ -528,9 +530,28 @@ function extractBlocksWithGrids(
       finalRows = finalGrid.length
     }
 
+    // 격자 바로 위 무괘선 머리행 (텍스트층 글만) — 몸통만 괘선으로 가른 표
+    if (!grid.cells && !rebuiltUsed && numCols >= 2) {
+      const head = headerLineAbove(items.filter(it => !usedItems.has(it)), grid.colXs, grid.bbox.y2)
+      if (head) {
+        finalGrid.unshift(head.map(col => ({ text: cleanCellText(cellTextToString(col.map(i => ({
+          text: i.text, x: i.x, y: i.y, w: i.w, h: i.h, fontSize: i.fontSize, fontName: i.fontName, hasSpaceBefore: i.hasSpaceBefore, seq: i.seq,
+        })))), colSpan: 1, rowSpan: 1 })))
+        finalRows++
+        for (const col of head) for (const it of col) usedItems.add(it)
+      }
+    }
+    // 음영·획 사각형이 어긋나 생긴 빈 실오라기 열 (클립 표 제외 — 한컴 표는 좁은 틈 열이 정답에도 있다)
+    let outCols = numCols
+    if (!grid.cells && !rebuiltUsed && numCols >= 3) {
+      const colXs = [...grid.colXs]
+      const fs = tableItems.map(item => item.fontSize).filter(size => size > 0).sort((a, b) => a - b)
+      outCols -= mergeSliverColumns(finalGrid, colXs, (fs[fs.length >> 1] ?? 10) * 0.5)
+      if (outCols !== numCols) grid.colXs = colXs
+    }
     const irTable: IRTable = {
       rows: finalRows,
-      cols: numCols,
+      cols: outCols,
       cells: finalGrid,
       hasHeader: finalRows > 1,
       ...(semanticOneColumn ? { renderAsTable: true } : {}),
@@ -591,6 +612,7 @@ function extractBlocksWithGrids(
           bbox: tableBbox, style: dominantStyle(tableItems) }
         blocks.push(sidebar)
         proseSidebars.add(sidebar)
+        SIDEBAR_ITEMS.set(sidebar, tableItems)
         continue
       }
     }
@@ -809,9 +831,16 @@ function extractBlocksWithGrids(
     }
   }
   const ordered: IRBlock[] = []
-  for (const u of units) for (const b of u) ordered.push(b)
+  for (const u of units) for (const b of u) {
+    const panel = SIDEBAR_ITEMS.get(b)
+    if (panel) ordered.push(...panelBlocks(panel, b, pageNum))
+    else ordered.push(b)
+  }
   return mergeAdjacentTableBlocks(ordered)
 }
+
+/** 사이드바 패널 글 — 순서 정렬이 패널을 한 덩이로 옮긴 뒤 서체 런으로 편다 (panelBlocks) */
+const SIDEBAR_ITEMS = new WeakMap<IRBlock, NormItem[]>()
 
 /** 무괘선 표 후보를 역할대로 낸다 — 목차는 "항목 쪽번호" 줄, 차트는 영역 안 위→아래 줄 글, 나머지는 표 */
 function clusterTableBlock(cr: ClusterTableResult, source: NormItem[], pageNum: number, horizontals: LineSegment[] = []): IRBlock {
@@ -822,6 +851,7 @@ function clusterTableBlock(cr: ClusterTableResult, source: NormItem[], pageNum: 
     Math.min(h.x2, b.x + b.width) - Math.max(h.x1, b.x) >= b.width * 0.6).length >= 3
   if (!ruled && isTableOfContents(cr.table)) return tocBlock(cr.table, pageNum, cr.bbox, dominantStyle(source))
   if (isChartTable(cr.table)) return chartBlock(source, pageNum, cr.bbox)
+  if (isFormulaTable(cr.table)) return chartBlock(source, pageNum, cr.bbox)
   return { type: "table", table: cr.table, pageNumber: pageNum, bbox: cr.bbox }
 }
 

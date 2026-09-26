@@ -66,3 +66,21 @@ export function applyLinkAnnotations(items: NormItem[], annots: PdfAnnotation[])
     }
   }
 }
+
+/** 마크다운 링크 한 개 — 그림 참조(`![…](…)`)는 뺀다 */
+const MD_LINK = String.raw`(?<!!)\[([^\]\n]*)\]\(([^)\s]+)\)`
+
+/**
+ * 줄마다 감싼 링크를 문서 마크다운에서 다시 한 링크로 — 여러 줄에 걸친 링크 하나가 "[You can read](u) [more about](u)"처럼
+ * 같은 url 을 줄 수만큼 되풀이하던 것을 사이 공백째 잇는다. 링크 글에 그어진 밑줄은 링크 표시일 뿐이라 링크 하나를 통째로
+ * 감싼 `<u>` 는 뗀다
+ */
+export function mergeLinkRuns(markdown: string): string {
+  let out = markdown.replace(new RegExp(String.raw`<u>(${MD_LINK})</u>`, "g"), "$1")
+  const run = new RegExp(MD_LINK + String.raw`(\s+)` + String.raw`(?<!!)\[([^\]\n]*)\]\(\2\)`, "g")
+  for (let prev = ""; prev !== out;) {
+    prev = out
+    out = out.replace(run, (_m, a: string, url: string, _gap: string, b: string) => `[${a} ${b}](${url})`)
+  }
+  return out
+}

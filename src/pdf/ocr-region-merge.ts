@@ -16,6 +16,8 @@ export function mergeOcrImageRegions(
       return overlapW * overlapH >= b.width * b.height * 0.8
     })
     const selected = candidates.filter(b => {
+      // 그림 속 글(차트 축·범례·로고 글) — 텍스트층이 없는 그림 영역의 OCR 문단
+      if (b.type === "paragraph") return (b.text?.match(/[\p{L}\p{N}]/gu)?.length ?? 0) >= 2
       const t = b.table
       if (b.type !== "table" || !t) return false
       if (t.rows === 1 && t.cols === 1) {
@@ -37,7 +39,9 @@ export function mergeOcrImageRegions(
       })
       if (hasOriginal) continue
       const index = blocks.findIndex(existing => existing.pageNumber === page && existing.bbox && existing.bbox.y < b.y)
-      blocks.splice(index < 0 ? blocks.length : index, 0, block)
+      // 그림 속 글은 제목 후보가 아니다 — OCR 글자 크기(상자 높이 추정)를 떼어 뒤의 제목 승격이 보지 않게 한다
+      const placed: IRBlock = block.type === "paragraph" ? { ...block, style: undefined } : block
+      blocks.splice(index < 0 ? blocks.length : index, 0, placed)
       added++
     }
   }

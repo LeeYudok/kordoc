@@ -20,7 +20,7 @@ import { mergeOcrImageRegions, type ImageRegion } from "./ocr-region-merge.js"
 import { createPdfImageState, extractPageImages, injectPageImageBlocks } from "./image-extract.js"
 import { computePageQuality, summarizeDocumentQuality, type PageQuality } from "./quality.js"
 import { scanVectorGlyphs, ocrVectorOps } from "./vector-glyphs.js"
-import { type PdfTextItem, normalizeItems, filterHiddenText } from "./text-line.js"
+import { type PdfTextItem, type NormItem, normalizeItems, filterHiddenText } from "./text-line.js"
 import { extractPageBlocksWithLines, type PageCarry } from "./page-blocks.js"
 import { WrapLexicon, joinPageBreakWraps } from "./line-wrap.js"
 import { mergeCrossPageTables } from "./table-parts.js"
@@ -30,8 +30,8 @@ import { remapSymbolFontItems } from "./symbol-fonts.js"
 import { remapControlGlyphs } from "./glyph-names.js"
 import { demoteNonHeadingRoles } from "./heading-demote.js"
 import { computeMedianFontSizeFromFreq, detectHeadings, mergeStackedHeadingLines, detectTypographyHeadings, detectDocumentStyleHeadings, detectSiblingStyleHeadings, detectRepeatedPageLabels, detectPageLeadHeadings, refineDocumentStyleHeadings, detectMarkerHeadings, detectTableCaptions, detectKoreanListBlocks, removeHeaderFooterBlocks } from "./block-detect.js"
-import { sanitizeBlockControlChars, cleanPdfText, splitSingleCellTables } from "./text-clean.js"
-import { applyLinkAnnotations } from "./links.js"
+import { sanitizeBlockControlChars, cleanPdfText, splitSingleCellTables, joinLatinCellWraps } from "./text-clean.js"
+import { applyLinkAnnotations, mergeLinkRuns } from "./links.js"
 import { applyFormulaOcr } from "./formula-ocr.js"
 // polyfill 먼저 (ES 모듈 호이스팅되므로 별도 파일 필수)
 import "./polyfill.js"
@@ -125,6 +125,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     // 전체 문서의 폰트 크기 빈도 수집 (헤딩 감지용) — 빈도 Map으로 메모리 절약
     const fontSizeFreq = new Map<number, number>()
     const pageHeights = new Map<number, number>()
+    // 글꼴 id → 실제 서체 이름(서브셋 접두 뗌) — 제목 강등의 기울임·굵기 증거
+    const faceNames = new Map<string, string>()
     // 큰 이미지가 있는 페이지 (needsOcr 경고 노이즈 필터 + SKIPPED_IMAGE)
     const pagesWithLargeImage = new Set<number>()
     // 텍스트 없는 큰 이미지 영역: page → count
@@ -208,6 +210,7 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
             faces.set(it.fontName, face)
           }
           it.fontName = face
+          if (!faceNames.has(face)) faceNames.set(face, (fontObj(face)?.name ?? "").replace(/^[A-Z]{6}\+/, ""))
         }
         // 리터럴 $ 는 \$ — $…$ 는 수식 스팬 전용(IR 규약, HWPX·HWP5 와 같음). 종전엔 "단가(US $) … 금액(US $)" 사이가
         // 마크다운에서 수식으로 읽혀 사라졌다(야생생물 신고서·어셈블리 "lda $30,-16($30)"). 심볼 글꼴 복원 뒤라야 글자 표가 안 어긋난다
@@ -229,7 +232,7 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
             })
             if (!hasText) {
               uncovered++
-              if (area >= pageArea * 0.1 && (r.x2 - r.x1) / (r.y2 - r.y1) >= 1.5 &&
+              if (area >= pageArea * 0.03 &&
                   page.rotate % 360 === 0 && viewX1 === 0 && viewY1 === 0) {
                 const regions = uncoveredImageRegions.get(i) ?? []
                 regions.push(r)
@@ -240,7 +243,11 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
           if (uncovered > 0) skippedImagePages.set(i, uncovered)
         }
 
-        const pageBlocks = extractPageBlocksWithLines(visible, i, opList, pageW, pageH, undefined, options?.tables !== false, carry, wrapLexicon)
+        // 본문 글 밖 여백에 세로로 돌려 찍은 글(arXiv 도장)은 가로 줄 흐름에 섞이면 옆 본문 줄에 붙는다 — 따로 떼어 쪽 첫 문단으로
+        const stamp = marginStamp(visible)
+        const flow = stamp.length ? visible.filter(it => !stamp.includes(it)) : visible
+        const pageBlocks = extractPageBlocksWithLines(flow, i, opList, pageW, pageH, undefined, options?.tables !== false, carry, wrapLexicon)
+        if (stamp.length) pageBlocks.unshift({ type: "paragraph", text: [...stamp].sort((a, b) => a.y - b.y).map(it => it.text).join(" "), pageNumber: i })
         for (const b of pageBlocks) blocks.push(b)
 
         // 이미지 XObject 바이트 추출 — 블록 주입은 표 병합 후(injectPageImageBlocks)
@@ -315,7 +322,10 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
         try {
           const { runPdfOcr } = await import("../ocr/pdf-ocr.js")
           const mode = typeof options.ocr === "function" ? options.ocr : ("builtin" as const)
-          const ocrPageBlocks = await runPdfOcr(ocrBuffer, targets, mode, warnings, options.onProgress, options.tables !== false, vectorPageOps)
+          // 텍스트층이 멀쩡한 쪽은 그림 영역만 읽는다 (쪽 전체를 갈아 끼우는 쪽 — 스캔·깨진 텍스트층 — 은 쪽 전체)
+          const regionPages = new Map([...uncoveredImageRegions].filter(([p]) =>
+            options.ocr !== "force" && !isImageBased && !pageQuality.find(q => q.page === p)?.needsOcr))
+          const ocrPageBlocks = await runPdfOcr(ocrBuffer, targets, mode, warnings, options.onProgress, options.tables !== false, vectorPageOps, regionPages)
           if (ocrPageBlocks.size > 0) {
             const replacePages = new Set<number>()
             for (const [p, obs] of ocrPageBlocks) {
@@ -441,7 +451,7 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     // □/■ 마커 기반 서브헤딩 감지 (ODL 패턴)
     detectMarkerHeadings(blocks)
     // 승격이 끝난 뒤 머리말·캡션·수식 번호 줄처럼 제목이 될 수 없는 역할을 되돌림
-    demoteNonHeadingRoles(blocks, pageHeights)
+    demoteNonHeadingRoles(blocks, pageHeights, faceNames)
 
     // 표 캡션 감지 — 표 직전/직후 '표 N./그림 N' 패턴 텍스트를 IRTable.caption으로
     detectTableCaptions(blocks)
@@ -457,10 +467,18 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     // 메트릭 수집 끝났으니 블록 텍스트의 C0/C1 제어문자(NUL 등) 정리
     sanitizeBlockControlChars(blocks)
     // 1×1 표(중첩 없음)는 줄마다 문단으로 — 셀 줄바꿈이 mergeKoreanLines 에 붙지 않게 (v4.12.3)
-    const outBlocks = splitSingleCellTables(blocks)
+    let outBlocks = splitSingleCellTables(blocks)
+    // 쪽번호는 쪽 위·아래 가장자리 띠의 숫자 문단뿐이다 — 본문 한가운데 홀로 선 숫자(차트 축 눈금 "0"·"500", 장 번호 "2")는 글이다
+    outBlocks = outBlocks.filter(b => {
+      if (b.type !== "paragraph" || !/^\s*\d{1,4}\s*$/.test(b.text ?? "")) return true
+      const h = pageHeights.get(b.pageNumber ?? 0)
+      if (!b.bbox || !h) return false
+      return b.bbox.y > h * 0.1 && b.bbox.y + b.bbox.height < h * 0.9
+    })
+    joinLatinCellWraps(outBlocks)
 
     // blocksToMarkdown로 통일 — 헤딩 마크다운 반영 (HWP5/HWPX와 일관성)
-    const finishMarkdown = (bs: IRBlock[]): string => cleanPdfText(blocksToMarkdown(bs))
+    const finishMarkdown = (bs: IRBlock[]): string => mergeLinkRuns(cleanPdfText(blocksToMarkdown(bs), { keepLoneNumbers: true }))
     let markdown = finishMarkdown(outBlocks)
 
     return {
@@ -521,4 +539,18 @@ export async function extractPdfMetadataOnly(buffer: ArrayBuffer): Promise<Docum
   } finally {
     await doc.destroy().catch(() => {})
   }
+}
+
+/** 쪽 여백의 세로 글 — 돌린 글 띠(시계 반대 90°는 기준점 왼쪽으로 글자 높이만큼)의 높이 범위에 놓인 가로 글이 모두 한쪽에만 있을 때 */
+function marginStamp(items: NormItem[]): NormItem[] {
+  const rotated = items.filter(it => it.rotated)
+  if (rotated.length === 0) return []
+  const flat = items.filter(it => !it.rotated)
+  if (flat.length < 20) return []
+  const outside = (it: NormItem) => {
+    const x1 = it.x - it.fontSize, x2 = it.x + it.w + it.fontSize
+    const beside = flat.filter(f => f.y >= it.y && f.y <= it.y + it.rotated!)
+    return beside.length >= 5 && (beside.every(f => f.x >= x2) || beside.every(f => f.x + f.w <= x1))
+  }
+  return rotated.every(outside) ? rotated : []
 }

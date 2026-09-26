@@ -355,3 +355,12 @@ function mergeCellTextLines(textLines: string[], wrap?: { wraps: boolean[]; lex?
   }
   return merged.join("\n")
 }
+
+/** 칸 안 라틴 글 줄 꺾임 — 두 줄 모두 한글 없이 라틴 낱말을 품고, 다음 줄이 새 항목(글머리 부호·번호)이 아닐 때 */
+export function latinSoftWrap(prev: string, curr: string): boolean {
+  const a = prev.trim(), b = curr.trim()
+  // 다음 줄은 라틴 낱말이나 괄호 덧붙임("Reservation⏎(1994)")으로 시작한다
+  if (!a || !b || /[가-힣]/.test(a + b) || !/[A-Za-z]{2}/.test(a) || !/[A-Za-z]/.test(b) && !/^\(.*\)$/.test(b)) return false
+  if (/^(?:[•●○◦▪▫■□◆◇➢➤►▶✓✔\-–—*·]|\(?\d{1,2}[.)]\s|\(?[a-z][.)]\s|\([ivx]{1,4}\)\s)/.test(b)) return false
+  return !startsNewItem(a, b)
+}

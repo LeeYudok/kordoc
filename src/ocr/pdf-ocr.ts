@@ -52,6 +52,7 @@ export async function runPdfOcr(
   onProgress?: (current: number, total: number) => void,
   detectTables = true,
   vectorOps?: Map<number, PageOps>,
+  imageRegions?: Map<number, Array<{ x1: number; y1: number; x2: number; y2: number }>>,
 ): Promise<Map<number, IRBlock[]>> {
   const result = new Map<number, IRBlock[]>()
   if (targets.size === 0) return result
@@ -82,7 +83,7 @@ export async function runPdfOcr(
       onProgress?.(++done, targets.size)
       try {
         const blocks = await withTimeout(
-          ocrOnePage(page, pageNo, mode, engine, warnings, detectTables, vectorOps?.get(pageNo)),
+          ocrOnePage(page, pageNo, mode, engine, warnings, detectTables, vectorOps?.get(pageNo), imageRegions?.get(pageNo)),
           PAGE_TIMEOUT_MS,
           `OCR 페이지 ${pageNo} 타임아웃 (${PAGE_TIMEOUT_MS / 1000}초)`,
         )
@@ -110,6 +111,7 @@ async function ocrOnePage(
   warnings: ParseWarning[],
   detectTables: boolean,
   vectorOps?: PageOps,
+  regions?: Array<{ x1: number; y1: number; x2: number; y2: number }>,
 ): Promise<IRBlock[]> {
   const { originalWidth: pdfW, originalHeight: pdfH } = page.getOriginalSize()
   const renderScale = Math.min(OCR_RENDER_SCALE, Math.sqrt(MAX_OCR_PIXELS / Math.max(1, pdfW * pdfH)))
@@ -141,6 +143,18 @@ async function ocrOnePage(
       warnings.push({ page: pageNo, message: `페이지 ${pageNo}: OCR 검출 상자가 너무 많아 ${stats.truncatedBoxes}개는 인식하지 않음 (일부 글 결손)`, code: "PARTIAL_PARSE" })
     }
     const scale = rh / pdfH
+    // 텍스트층이 있는 쪽의 그림 영역만 읽을 때는 영역마다 그 안 글줄로 따로 블록을 만든다 — 쪽 전체로 묶으면 본문 줄과 그림 글이
+    // 한 문단으로 합쳐져 영역 판정(mergeOcrImageRegions)에서 빠진다
+    if (regions) {
+      const inside = (it: OcrItem, r: { x1: number; y1: number; x2: number; y2: number }) => {
+        const cx = (it.x + it.w / 2) / scale, cy = pdfH - (it.y + it.h / 2) / scale
+        return cx >= r.x1 && cx <= r.x2 && cy >= r.y1 && cy <= r.y2
+      }
+      return regions.flatMap(r => {
+        const own = items.filter(it => inside(it, r))
+        return own.length ? ocrItemsToBlocks(own, pageNo, pdfW, pdfH, scale, ruling && rulingToPdfLines(ruling, scale, pdfH), detectTables) : []
+      })
+    }
     // 벡터 글자 쪽: 표 구조는 그 쪽의 실제 괘선으로 (rhwp cairo 13쌍 46표 exact: 래스터 괘선 14 → 실제 괘선 20)
     if (vectorOps) return ocrItemsToBlocks(items, pageNo, pdfW, pdfH, scale, undefined, detectTables, vectorOps)
     // 래스터에서 표 괘선 감지 — 스캔본 병합셀 서식도 선 기반 표 파이프라인을 탄다

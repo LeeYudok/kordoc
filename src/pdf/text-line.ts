@@ -37,6 +37,8 @@ export interface NormItem {
   underline?: boolean
   /** 콘텐츠 스트림 순번 — 좌표가 겹친 글자의 순서를 되살리는 데만 쓴다 (sortLineByX) */
   seq?: number
+  /** 세로로 돌린 글 (글자 진행 방향이 y)의 세로 길이 — 쪽 여백 도장("arXiv:… [cs.CL]") 가르기용 */
+  rotated?: number
 }
 
 /** 같은 줄 아이템 x 정렬 — x 가 1pt 이내로 붙은 이웃은 콘텐츠 스트림 순서를 따른다. 좌표를 정수로 반올림하므로
@@ -126,12 +128,13 @@ export function computeBBox(items: NormItem[], pageNum: number): BoundingBox {
 /** 아이템 그룹의 대표 스타일 (최빈 폰트 크기) */
 export function dominantStyle(items: NormItem[]): { fontSize: number; fontName?: string } | undefined {
   if (items.length === 0) return undefined
-  // 최빈 폰트 크기 찾기
+  // 최빈 폰트 크기 찾기 — 아이템 수가 아니라 글자·숫자 수로 센다: 큰 "1.8X" 뒤 작은 위첨자 "↑","1" 두 조각이 줄 크기를 뺏던 것,
+  // 목차 리더 점 조각은 세지 않는다
   const freq = new Map<number, number>()
   let maxCount = 0, dominantSize = 0
   for (const i of items) {
     if (i.fontSize <= 0) continue
-    const count = (freq.get(i.fontSize) || 0) + 1
+    const count = (freq.get(i.fontSize) || 0) + Math.max(1, i.text.match(/[\p{L}\p{N}]/gu)?.length ?? 0)
     freq.set(i.fontSize, count)
     if (count > maxCount) { maxCount = count; dominantSize = i.fontSize }
   }
@@ -184,7 +187,11 @@ export function normalizeItems(rawItems: PdfTextItem[]): NormItem[] {
         items.push({ text: s.text, x: s.x, y, w: s.w, h, fontSize, fontName: i.fontName || "", isHidden, seq: seq + k / 1000 })
       })
     } else {
-      items.push({ text, x, y, w, h, fontSize, fontName: i.fontName || "", isHidden, seq })
+      const rotated = Math.abs(i.transform[1]) > Math.abs(i.transform[0]) * 4
+      // 세로 글의 가로 폭은 글자 높이다 — 진행 길이(width)를 가로 폭으로 두면 나란한 세로 라벨이 서로 겹쳐 붙는다("01/201903/2019")
+      const rw = rotated ? Math.max(1, fontSize) : w
+      const rx = rotated && i.transform[1] > 0 ? x - rw : x
+      items.push({ text, x: rx, y, w: rw, h, fontSize, fontName: i.fontName || "", isHidden, seq, ...(rotated ? { rotated: Math.max(1, w) } : {}) })
     }
   }
 

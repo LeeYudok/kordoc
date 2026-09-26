@@ -115,3 +115,12 @@ export function isChartTable(table: IRTable): boolean {
   const cells = table.rows * table.cols
   return cells - texts.length >= cells * 0.55 && values >= texts.length * 0.8
 }
+
+/** Display math laid out on several baselines (fraction bars, limits, "d/dx") looks like a sparse grid of short cells.
+ * Evidence: a relation sign in some cell and most filled cells being math tokens — a lone variable or an operator-bearing term. */
+export function isFormulaTable(table: IRTable): boolean {
+  const texts = table.cells.flat().map(cell => cell.text.trim()).filter(Boolean)
+  if (texts.length < 3 || table.rows > 8 || !texts.some(text => /=/.test(text))) return false
+  const math = texts.filter(text => /^[a-z]{1,2}$/.test(text) || /[=∂∑∫∣Γ∇√∞]/.test(text)).length
+  return math >= texts.length * 0.6
+}

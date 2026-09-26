@@ -5,6 +5,7 @@
  * blocksToMarkdown 이후의 문자열 수준 후처리를 담당한다.
  */
 
+import { latinSoftWrap } from "./cell-text.js"
 import type { IRBlock, IRTable } from "../types.js"
 import { stripControlChars } from "./quality.js"
 import { collapseEvenSpacing } from "./text-line.js"
@@ -67,8 +68,11 @@ export function splitSingleCellTables(blocks: IRBlock[]): IRBlock[] {
   for (const b of blocks) {
     const t = b.type === "table" ? b.table : undefined
     // 캡션 상자 — 표가 아니라 캡션 문단이다(1칸 틀 안에 든 것도)
-    const inner = t && t.rows === 1 && t.cols === 1 && t.cells[0]?.[0]?.blocks?.length === 1 && !t.cells[0][0].text.replace(/\s/g, "")
-      ? t.cells[0][0].blocks[0] : undefined
+    // 틀 칸 글은 비었거나 안쪽 표 글을 되풀이한 것
+    const only = t && t.rows === 1 && t.cols === 1 && t.cells[0]?.[0]?.blocks?.length === 1 ? t.cells[0][0].blocks[0] : undefined
+    const squash = (s: string) => s.replace(/\s/g, "")
+    const inner = only && (!squash(t!.cells[0][0].text) ||
+      (only.type === "table" && squash(t!.cells[0][0].text) === squash(only.table!.cells.flat().map((c) => c.text).join("")))) ? only : undefined
     const caption = captionTableText(t) ?? (inner?.type === "table" ? captionTableText(inner.table) : null)
     if (caption) { out.push({ type: "paragraph", text: caption, pageNumber: b.pageNumber, bbox: b.bbox }); continue }
     const cell = t && t.rows === 1 && t.cols === 1 ? t.cells[0]?.[0] : undefined
@@ -81,21 +85,53 @@ export function splitSingleCellTables(blocks: IRBlock[]): IRBlock[] {
   return out
 }
 
-export function cleanPdfText(text: string): string {
-  return mergeKoreanLines(
-    normalizeAraea(stripControlChars(text))
+/**
+ * 표 칸의 라틴 글 꺾인 줄을 공백으로 잇는다 — 영문 조판은 칸 폭에서 낱말 단위로 줄을 꺾을 뿐 문단을 가르지 않는다
+ * ("GATS XVII⏎Reservation⏎(1994)"). 한글 줄(한컴 칸 문단 경계는 칸 글 조립의 꺾임 판정이 맡음)·숫자만 든 줄(쌓인 값)·
+ * 새 항목(부호·번호) 줄은 그대로 둔다. 칸 글 줄을 문단으로 다시 푸는 단계(1×1 표 풀기) 뒤에 부른다
+ */
+export function joinLatinCellWraps(blocks: IRBlock[]): void {
+  for (const b of blocks) {
+    if (b.type !== "table" || !b.table) continue
+    for (const row of b.table.cells) for (const cell of row) {
+      if (cell.text.includes("\n")) {
+        const lines = cell.text.split("\n")
+        const out = [lines[0]]
+        for (const line of lines.slice(1)) {
+          if (latinSoftWrap(out[out.length - 1], line)) out[out.length - 1] = out[out.length - 1].trimEnd() + " " + line.trim()
+          else out.push(line)
+        }
+        cell.text = out.join("\n")
+      }
+      if (cell.blocks) joinLatinCellWraps(cell.blocks)
+    }
+  }
+}
+
+/**
+ * @param opts.keepLoneNumbers 홀로 선 숫자 줄을 남긴다 — 파서가 쪽 가장자리 띠의 쪽번호 문단을 이미 뺐을 때(본문 한가운데 차트 축 눈금·장 번호는 글이다)
+ */
+export function cleanPdfText(text: string, opts?: { keepLoneNumbers?: boolean }): string {
+  let clean = normalizeAraea(stripControlChars(text))
+  if (!opts?.keepLoneNumbers) {
+    clean = clean
       // 문서 시작 단독 페이지 번호
       .replace(/^\d{1,4}\n/, "")
-      // "- 2 -" 스타일 페이지 번호 (독립 라인 및 목록 항목 형태 포함)
-      .replace(/^[\s]*[-–—]\s*[-–—]?\d+[-–—]?[\s]*[-–—]?[\s]*$/gm, "")
-      // "1 / 5" 스타일 페이지 번호
-      .replace(/^\s*\d+\s*\/\s*\d+\s*$/gm, "")
       // 단독 페이지 번호 (줄 끝에 혼자 있는 숫자)
       .replace(/\n\d{1,4}\n/g, "\n")
       // 문서 마지막 단독 페이지 번호
       .replace(/\n\d{1,4}$/, "")
+  }
+  return mergeKoreanLines(
+    clean
+      // "- 2 -" 스타일 페이지 번호 (독립 라인 및 목록 항목 형태 포함)
+      .replace(/^[\s]*[-–—]\s*[-–—]?\d+[-–—]?[\s]*[-–—]?[\s]*$/gm, "")
+      // "1 / 5" 스타일 페이지 번호
+      .replace(/^\s*\d+\s*\/\s*\d+\s*$/gm, "")
       // 단독 숫자 헤딩 제거 ("# 6\n재무과" → "\n재무과")
       .replace(/^#{1,6}\s*\d{1,4}\s*$/gm, "")
+      // 띄어 찍은 점 리더(". . . . .")는 목차 채움선 — 점만 잇는다 (글자 사이 공백은 조판이 넣은 간격일 뿐)
+      .replace(/\.(?: \.){3,}/g, m => ".".repeat((m.length + 1) >> 1))
   )
     // 균등배분 문자열 후처리 (pdfjs가 합친 TextItem + buildGridTable 셀 텍스트) — 홀로 선 한 글자 셋 이상 연속만 붙인다
     // (collapseEvenSpacing whole=false). 줄 전체 한 글자 비율 규칙은 기호·등호 토큰까지 한 글자로 세어 원문 띄어쓰기를 통째로

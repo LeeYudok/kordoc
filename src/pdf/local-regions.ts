@@ -1,4 +1,5 @@
-import { groupByY, type NormItem } from "./text-line.js"
+import type { IRBlock } from "../types.js"
+import { computeBBox, dominantStyle, groupByY, mergeLineSimple, type NormItem } from "./text-line.js"
 
 /** Attach an oversized initial to the first body line it visually starts. */
 export function attachDropCaps(lines: NormItem[][]): NormItem[][] {
@@ -114,4 +115,28 @@ export function splitTrailingColumnRegion(items: NormItem[]): NormItem[][] | nul
   const right = lower.filter(item => item.x >= best.x)
   if (upper.length + left.length + right.length !== items.length) return null
   return [upper, left, right]
+}
+
+/**
+ * 패널 글을 서체 런(같은 서체로 이어진 줄들)마다 문단으로 편다. 다른 서체 글이 뒤따르는 짧은 런(두 줄·60자 이하, 문장부호로
+ * 끝나지 않음)은 패널 소제목이다 — 슬라이드·교재 옆 띠의 굵은 라벨("Cellular Cycle and Replication" 다음 본문 서체 설명, ODL 118).
+ */
+export function panelBlocks(items: NormItem[], panel: IRBlock, pageNum: number): IRBlock[] {
+  const lines = groupByY([...items].sort((a, b) => b.y - a.y || a.x - b.x))
+  const faceOf = (line: NormItem[]) => dominantStyle(line)?.fontName ?? ""
+  const runs: NormItem[][][] = []
+  for (const line of lines) {
+    const last = runs[runs.length - 1]
+    if (last && faceOf(last[last.length - 1]) === faceOf(line)) last.push(line)
+    else runs.push([line])
+  }
+  if (runs.length < 2) return [panel]
+  return runs.map((run, k) => {
+    const text = run.map(line => mergeLineSimple(line).trim()).filter(Boolean).join(" ")
+    const title = k + 1 < runs.length && run.length <= 2 && text.length <= 60 && /\p{L}/u.test(text) && !/[.!?:;,]$/.test(text)
+    const all = run.flat()
+    return title
+      ? { type: "heading" as const, level: 3, text, pageNumber: pageNum, bbox: computeBBox(all, pageNum), style: dominantStyle(all) }
+      : { type: "paragraph" as const, text, pageNumber: pageNum, bbox: computeBBox(all, pageNum), style: dominantStyle(all) }
+  })
 }

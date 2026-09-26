@@ -276,6 +276,14 @@ export function figureColumnBands(items: NormItem[], figures: ColRect[]): NormIt
     const s = [...line].sort((a, b) => a.x - b.x)
     const fs = Math.max(...s.map(i => i.fontSize))
     if (s[s.length - 1].x + s[s.length - 1].w - s[0].x < span * 0.75) return false
+    // 본문 줄과 옆 단 캡션 줄이 같은 높이에 나란하면 한 줄로 묶인다 — 틈 양쪽 글자 크기가 다르면 두 단의 줄이다
+    const sizeOf = (part: NormItem[]) => {
+      const by = new Map<number, number>()
+      for (const it of part) by.set(it.fontSize, (by.get(it.fontSize) ?? 0) + it.text.length)
+      return [...by].sort((a, b) => b[1] - a[1])[0][0]
+    }
+    if (s.slice(1).some((it, k) => it.x - (s[k].x + s[k].w) >= fs * 0.6 &&
+        Math.abs(sizeOf(s.slice(0, k + 1)) - sizeOf(s.slice(k + 1))) >= 0.5)) return false
     return s.slice(1).every((it, k) => it.x - (s[k].x + s[k].w) < fs * 2)
   }
   const segs: { full: boolean; lines: NormItem[][] }[] = []
@@ -310,7 +318,13 @@ export function figureColumnBands(items: NormItem[], figures: ColRect[]): NormIt
     })
     if (left.length === 0 || right.length === 0 || gapped(left) || gapped(right)) { out.push(flat); continue }
     split = true
-    out.push(left, right)
+    // 한 단의 끝줄이 다른 단 맨 아래보다도 아래에 있으면(쪽 꼬리말 "312 | Grouper …") 두 단 뒤에 온다
+    const low = (side: NormItem[], other: NormItem[]) => {
+      const floor = Math.min(...other.map(i => i.y)) - Math.max(...other.map(i => i.fontSize))
+      return side.filter(i => i.y < floor)
+    }
+    const tail = [...low(left, right), ...low(right, left)]
+    out.push(left.filter(i => !tail.includes(i)), right.filter(i => !tail.includes(i)), tail)
   }
   return split ? out.filter(g => g.length > 0) : null
 }
