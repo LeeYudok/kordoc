@@ -17,6 +17,7 @@
 
 import type { IRTable, IRCell, BoundingBox } from "../types.js"
 import { spaceGapThreshold } from "./cell-text.js"
+import { isCjkLatinAutospace } from "./text-line.js"
 import { isProseTable } from "./table-roles.js"
 
 /** parser.ts의 NormItem과 동일한 인터페이스 */
@@ -1084,7 +1085,7 @@ function joinCellItems(items: ClusterItem[]): string {
     for (let i = 1; i < line.length; i++) {
       const gap = line[i].x - (line[i - 1].x + line[i - 1].w)
       const fs = (line[i].fontSize + line[i - 1].fontSize) / 2
-      s += ((line[i].hasSpaceBefore && gap >= fs * 0.05) || gap > spaceGapThreshold(fs) ? " " : "") + line[i].text
+      s += (!isCjkLatinAutospace(line[i - 1].text, line[i].text, gap, fs) && ((line[i].hasSpaceBefore && gap >= fs * 0.05) || gap > spaceGapThreshold(fs)) ? " " : "") + line[i].text
     }
     return s
   }).join(" ")

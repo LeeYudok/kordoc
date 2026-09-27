@@ -9,7 +9,7 @@
  */
 
 import type { ExtractedCell, TextItem } from "./line-types.js"
-import { sortLineByX } from "./text-line.js"
+import { sortLineByX, isCjkLatinAutospace } from "./text-line.js"
 import { type WrapLexicon, cellLineWraps, cellLineFills, startsNewItem, wrapJoiner } from "./line-wrap.js"
 
 /** 셀 경계 내부 판별 여유 (텍스트 매핑용) */
@@ -170,7 +170,9 @@ export function cellTextToString(items: TextItem[], wrap?: { box: { x1: number; 
       const gap = s[j].x - (s[j - 1].x + s[j - 1].w)
       const avgFs = (s[j].fontSize + s[j - 1].fontSize) / 2
       // pdfjs 공백 아이템 힌트 — 단어 경계 확정 (Type3 폰트 글자 분리 셀 텍스트 복원)
-      if (s[j].hasSpaceBefore && gap >= avgFs * 0.05) {
+      if (isCjkLatinAutospace(s[j - 1].text, s[j].text, gap, avgFs)) {
+        result += s[j].text
+      } else if (s[j].hasSpaceBefore && gap >= avgFs * 0.05) {
         result += " " + s[j].text
       } else if (gap > spaceGapThreshold(avgFs)) {
         result += " " + s[j].text

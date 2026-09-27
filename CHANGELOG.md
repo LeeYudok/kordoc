@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **PDF 한자·가나와 숫자 사이 가짜 공백**: LibreOffice·Word 가 일본어·중국어 문서에서 아시아 문자와 라틴 문자·숫자 사이에 넣는 자동 간격(글자 크기 0.3배 미만)을 공백으로 읽어 "第1条"·"1番地" 가 "第 1 条"·"1 番地" 가 되던 것 — 본문·표 칸·클러스터 표 세 경로 모두 공백을 넣지 않는다(한글은 실제로 띄어 쓰는 "1 번지" 가 있어 제외). PDF 글 정답 일문 계약서 어절 F1 +0.094·중문 +0.080.
+
 ## [4.15.7] - 2026-09-28
 
 HWP5 표를 같은 문서의 HWPX 와 같은 모양으로 내고, 표 안의 표를 더 깊이·더 많은 경로에서 살린다. HWP·HWPX → Markdown 표는 1열 표를 뺀 채점에서 HWP 3,111/3,111·HWPX 9,122/9,123 이 일치한다. PDF 는 가려진 글·세로쓰기·자간 벌린 글·TeX 수식 글꼴·장 번호 제목·OCR 그림 영역 다시 읽기를 더해 ODL 200 기본 0.9345 → 0.937, `ocr: true` 0.9522 → 0.960. 글 위주 출력 `plain`, 모든 표를 들여쓴 HTML 로 내는 `htmlTables` 옵션을 새로 두었다(두 옵션과 `ocr` 를 켜면 0.971). 이슈 #91~#95 를 닫는다.
