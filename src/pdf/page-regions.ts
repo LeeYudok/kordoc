@@ -303,10 +303,12 @@ export function figureColumnBands(items: NormItem[], figures: ColRect[]): NormIt
     const rects: ColRect[] = [...flat.map(i => ({ x: i.x, y: i.y, w: i.w, h: i.h || i.fontSize })),
       ...figures.filter(f => f.y < top && f.y + f.h > bottom)]
     let best: { x: number; w: number } | null = null, run: number | null = null
-    for (let x = minX + span * 0.3; x <= minX + span * 0.7; x += 2) {
+    // 후보 수 상한 400 — 오염 좌표 쪽만 성기게 (detectPanelGutters 와 같음)
+    const step = Math.max(2, span * 0.4 / 400)
+    for (let x = minX + span * 0.3; x <= minX + span * 0.7; x += step) {
       const empty = !rects.some(r => r.x < x && r.x + r.w > x)
       if (empty && run === null) run = x
-      if ((!empty || x + 2 > minX + span * 0.7) && run !== null) {
+      if ((!empty || x + step > minX + span * 0.7) && run !== null) {
         if (x - run >= 8 && (!best || x - run > best.w)) best = { x: (run + x) / 2, w: x - run }
         run = null
       }

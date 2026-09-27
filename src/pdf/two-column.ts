@@ -272,7 +272,9 @@ export function detectPanelGutters(rects: ColRect[]): number[] | null {
   }
   const gutters: number[] = []
   let runStart: number | null = null
-  for (let x = minX + span * 0.15; x <= maxX - span * 0.15; x += 2) {
+  // 후보 수 상한 400 — 정상 판형은 2pt 그대로, 비트 뒤집힘 등으로 좌표가 터무니없는 요소가 낀 쪽만 성기게(종전엔 사실상 무한 루프)
+  const step = Math.max(2, span * 0.7 / 400)
+  for (let x = minX + span * 0.15; x <= maxX - span * 0.15; x += step) {
     const empty = !narrow.some(r => r.x < x && r.x + r.w > x)
     if (empty && runStart === null) runStart = x
     if (!empty && runStart !== null) {

@@ -87,7 +87,9 @@ export function splitTrailingColumnRegion(items: NormItem[]): NormItem[][] | nul
   if (maxX - minX < 300) return null
 
   let best: { x: number; paired: number; balance: number } | null = null
-  for (let x = minX + (maxX - minX) * 0.35; x <= minX + (maxX - minX) * 0.65; x += 2) {
+  // 후보 수 상한 400 — 오염 좌표 쪽만 성기게 (detectPanelGutters 와 같음)
+  const step = Math.max(2, (maxX - minX) * 0.3 / 400)
+  for (let x = minX + (maxX - minX) * 0.35; x <= minX + (maxX - minX) * 0.65; x += step) {
     let paired = 0, crossed = 0, leftRows = 0, rightRows = 0
     let leftChars = 0, rightChars = 0
     for (const line of lowerLines) {

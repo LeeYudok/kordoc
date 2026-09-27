@@ -155,3 +155,14 @@ describe("PDF links", () => {
     assert.equal(mergeLinkRuns(`[a](https://a.org) [b](https://b.org) ![image](image_001.png)`), `[a](https://a.org) [b](https://b.org) ![image](image_001.png)`)
   })
 })
+
+describe("PDF gutter scans on corrupted coordinates", () => {
+  it("finishes when a bit-flipped item has an absurd x extent", async () => {
+    const { detectPanelGutters } = await import("../src/pdf/two-column.js")
+    const rects = Array.from({ length: 12 }, (_, i) => ({ x: 50 + (i % 3) * 200, y: 700 - Math.floor(i / 3) * 20, w: 150, h: 10 }))
+    rects.push({ x: 60, y: 100, w: 1e30, h: 10 })
+    const t = performance.now()
+    detectPanelGutters(rects)
+    assert.ok(performance.now() - t < 1000)
+  })
+})
