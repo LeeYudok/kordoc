@@ -51,9 +51,22 @@ export function remapSymbolText(text: string, table: readonly string[]): string 
  */
 export function remapSymbolFontItems(items: NormItem[], resolveFontName: (loadedName: string) => string | undefined): number {
   const cache = new Map<string, readonly string[] | undefined>()
+  const marlett = new Map<string, boolean>()
   let changed = 0
+  let box: NormItem | null = null
+  const drop = new Set<NormItem>()
   for (const it of items) {
     if (!it.fontName || !it.text) continue
+    // Windows 양식 선택 상자(Marlett) — 상자 테두리 조각 g·f·e·d·c 를 같은 자리에 겹쳐 찍고 체크는 b (한컴 PDF 양식 개체,
+    // form-002 "gfedc 원천기술형"). 테두리 첫 조각을 ☐ 로 두고 나머지는 지우며, 같은 자리의 b 는 그 상자를 ☑ 로 바꾼다
+    if (!marlett.has(it.fontName)) marlett.set(it.fontName, /marlett/i.test(resolveFontName(it.fontName) ?? ""))
+    if (marlett.get(it.fontName)) {
+      const t = it.text.trim()
+      if (t === "g") { it.text = "☐"; box = it; changed++ }
+      else if (/^[c-f]$/.test(t)) { drop.add(it); changed++ }
+      else if (t === "b" && box && Math.abs(box.x - it.x) <= 1 && Math.abs(box.y - it.y) <= 1) { box.text = "☑"; drop.add(it); changed++ }
+      continue
+    }
     let table = cache.get(it.fontName)
     if (!cache.has(it.fontName)) {
       table = symbolFontTable(resolveFontName(it.fontName))
@@ -63,5 +76,6 @@ export function remapSymbolFontItems(items: NormItem[], resolveFontName: (loaded
     const mapped = remapSymbolText(it.text, table)
     if (mapped !== it.text) { it.text = mapped; changed++ }
   }
+  if (drop.size) for (let k = items.length - 1; k >= 0; k--) if (drop.has(items[k])) items.splice(k, 1)
   return changed
 }

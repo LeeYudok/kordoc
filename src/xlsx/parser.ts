@@ -11,7 +11,7 @@ import type {
   IRBlock, IRTable, IRCell, DocumentMetadata, InternalParseResult,
   ParseOptions, ParseWarning, ExtractedImage,
 } from "../types.js"
-import { KordocError, precheckZipSize, stripDtd } from "../utils.js"
+import { KordocError, precheckZipSize, unzipLimitBytes, stripDtd } from "../utils.js"
 import { blocksToMarkdown, MAX_COLS } from "../table/builder.js"
 import { sheetToBlocks, type SheetMerge } from "./sheet-blocks.js"
 
@@ -19,7 +19,7 @@ import { sheetToBlocks, type SheetMerge } from "./sheet-blocks.js"
 
 const MAX_SHEETS = 100
 /** ZIP 압축 해제 누적 최대 크기 (100MB) — ZIP bomb 방지 */
-const MAX_DECOMPRESS_SIZE = 100 * 1024 * 1024
+const MAX_DECOMPRESS_SIZE = unzipLimitBytes(100 * 1024 * 1024)
 /** 셀 주소 행 상한 — 엑셀 시트 최대 행(1,048,576). 표로 펼치는 행 수는 sheet-blocks 칸 예산이 따로 막는다 */
 const MAX_SHEET_ROWS = 1_048_576
 

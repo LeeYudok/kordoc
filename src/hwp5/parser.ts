@@ -213,6 +213,7 @@ export function parseHwp5Document(buffer: Buffer, options?: ParseOptions): Inter
   let bodyBlocks: IRBlock[] = []
   const doc = createHwp5DocState()
   doc.keepTrailingEmptyCols = options?.keepTrailingEmptyCols
+  doc.includeFieldPlaceholders = options?.includeFieldPlaceholders
   let parsedSections = 0
   let pageBase = 0
   for (let si = 0; si < sections.length; si++) {
@@ -247,7 +248,8 @@ export function parseHwp5Document(buffer: Buffer, options?: ParseOptions): Inter
     ? extractHwp5Images(cfb.FileIndex, blocks, warnings, !pageFilter)
     : extractHwp5ImagesLenient(lenientCfb!, blocks, warnings, !pageFilter)
 
-  // 레이아웃 테이블 해체 (heading 감지 전에 수행하여 해체된 텍스트도 heading 감지 대상)
+  // 레이아웃 테이블 해체 (heading 감지 전에 수행하여 해체된 텍스트도 heading 감지 대상). 칸 테두리가 보이는 표는 풀지 않는다 —
+  // 종전엔 3행 이하·글 많은 표를 테두리와 상관없이 풀어 같은 문서의 HWPX 표 118개가 사라지고 틀 안 중첩표가 바깥 단부터 풀렸다
   let flatBlocks = flattenLayoutTables(blocks)
   // 페이지 레이아웃 표의 반복 러닝 헤더 중복 제거 — opt-in (기본 off).
   // 위치 정보가 없는 HWP5 특성상 정당한 번호매김 반복(붙임별 재번호)까지 오삭제할 수

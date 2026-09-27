@@ -146,7 +146,7 @@ Buffer → detectFormat() [매직바이트] → 포맷별 파서 → IRBlock[] �
 | `src/pdf/parser.ts` | PDF 텍스트 추출, XY-Cut 읽기 순서, 헤딩 감지, 머리글/바닥글 제거 (텍스트+y클러스터링) |
 | `src/pdf/line-detector.ts` | 선 기반 테이블 감지 엔트리 (구현은 7모듈로 분리 — 재수출 허브) |
 | `src/pdf/line-extract.ts` | 그래픽 ops → 수평/수직 선 추출 + 전처리 (음영 스택 필터, 개방 변 가상 테두리 합성). 행마다 끊어 그은 짧은 획 조각 사슬 잇기 `chainShortSegments`(칸 클립 격자 없는 쪽만, 예산서 세로선 구멍) |
-| `src/pdf/table-grid.ts` | 선 교차점(Vertex) 기반 테이블 그리드 구성. 음영 칸에만 깐 클립 조각 격자 버리기 `dropShadingClipGrids`(cairo·한컴 구버전) |
+| `src/pdf/table-grid.ts` | 선 교차점(Vertex) 기반 테이블 그리드 구성. 음영 칸에만 깐 클립 조각 격자 버리기 `dropShadingClipGrids`(cairo·한컴 구버전). 선 격자 중첩표 `splitNestedBoxes`: 끝점이 맞닿는 선(0.5pt)끼리 이은 닫힌 상자가 다른 틀 안쪽에 네 쪽 모두 틈을 두고 떠 있으면 떼어 `lineNested` 격자로(칸 여백 5pt 를 CONNECT_TOL 이 잇던 것), 소비측 page-blocks 가 품는 칸의 blocks 로 넣는다 |
 | `src/pdf/cell-extract.ts` | 그리드 → 병합 셀 구조 (createMatrix) |
 | `src/pdf/cell-text.ts` | 텍스트→셀 매핑 + 셀 텍스트 조립. 괘선 없는 칸 경계를 걸친 글자 단위 낱말은 한 칸(`keepWordsInOneCell`), 칸 안 한글 줄 이음은 칸 상자가 있으면 꺾임 판정(line-wrap), 온전한 숫자 두 줄(천 단위·세 자리 이하)은 잇지 않음 |
 | `src/pdf/undersegmented.ts` | 과소분할 표 재구성 (row band 재유도) |
@@ -156,18 +156,18 @@ Buffer → detectFormat() [매직바이트] → 포맷별 파서 → IRBlock[] �
 | `src/pdf/image-extract.ts` | 이미지 XObject 바이트 추출 — 비동기 디코딩 대기 + 순수 JS PNG 인코딩, 표 병합 후 페이지 말미 주입 |
 | `src/pdf/line-types.ts` | 선 감지 공유 타입/상수 |
 | `src/pdf/clip-cells.ts` | 셀 클립 사각형 → 표 그리드 (v4.12.1) — 한컴 PDF 의 셀별 `W n` 클립을 셀 기하로 확정(`TableGrid.cells`). 포함 관계로 층을 나눠 같은 부모끼리만 이웃 묶음(중첩표는 별도 그리드 + `clipParent`, 틀은 자기 층의 셀), 클립 그리드·틀과 면적 절반 이상 겹치는 line 그리드 제거(`dropGridsInside`). 칸 클립 묶음과 좌표가 같은 바깥 클립은 표 겉 클립(틀 아님), 격자 끝에 맞붙은 좁은(4pt 미만) 채움 사각형은 클립 없는 가장자리 칸, 틀 칸 안 감싸개 클립은 건너뛰고 중첩표를 틀 칸에 넣는다(v4.14.3). 소비측(`page-blocks.ts`)은 클립 그리드를 면적 오름차순으로 먼저 처리하고 `clipParent` 가 있는 표는 틀 셀의 `IRCell.blocks` 에 원문 순서로 넣는다(v4.12.2). 1칸 틀은 **네 변 획**이 있을 때만 1×1 그리드 — 획 없는 큰 컨테이너는 한컴 본문 영역 클립. 표 위에 걸친 덮개(워터마크·덮개 1칸 표, 상대 클립 10~90%)는 부모가 못 되고, 괘선이 칸 클립 변에 그어진 좁은 틈(셀 간격 표·짧게 깐 문서번호 표 칸)은 이웃으로 이어 표 단위로 닫으며, 쪽을 넘는 한 칸의 뒤 쪽 조각(이웃 없는 클립, 좌우 변 0.1pt·쪽 마지막/첫 내용)은 `continues` 로 낸다(v4.14.4) |
-| `src/pdf/table-parts.ts` | 쪽 넘김 표 잇기 `mergeCrossPageTables`: 클립 표 조각은 열 경계 합집합 격자에 다시 놓고(뒤 조각에 클립 없는 열은 세로 병합 이어 늘림), 짝·홀 쪽 대칭 여백·2단 지면으로 옮겨진 조각은 쪼개진 행·글 있는 반복 머리 행 증거가 있을 때만 잇는다. 쪼개진 행은 글 이어짐(끝줄이 칸 글 오른끝까지·내어쓰기 이어짐) 또는 칸 조각 이어짐(한컴은 글 없이 쪽을 넘은 칸 조각에 클립을 안 깖)일 때 합치고, 한 줄로 끝난 이름표 뒤 다른 글이면 새 행. 쪽 경계에 걸친 세로 병합 칸 글은 다른 열이 경계를 넘을 때만 잇는다. 첫 행 이름표를 되풀이하며 값만 다른 표(서식 되풀이)는 새 표. 쪽 가장자리 글만 끼면 인접, 첨부 머리표(붙임·별지)·쪽 끝 띠 밖 표는 잇지 않음 |
+| `src/pdf/table-parts.ts` | 쪽 넘김 표 잇기 `mergeCrossPageTables`: 클립 표 조각은 열 경계 합집합 격자에 다시 놓고(뒤 조각에 클립 없는 열은 세로 병합 이어 늘림), 짝·홀 쪽 대칭 여백·2단 지면으로 옮겨진 조각은 쪼개진 행·글 있는 반복 머리 행 증거가 있을 때만 잇는다. 쪼개진 행은 글 이어짐(끝줄이 칸 글 오른끝까지·내어쓰기 이어짐) 또는 칸 조각 이어짐(한컴은 글 없이 쪽을 넘은 칸 조각에 클립을 안 깖)일 때 합치고, 한 줄로 끝난 이름표 뒤 다른 글이면 새 행. 쪽 경계에 걸친 세로 병합 칸 글은 다른 열이 경계를 넘을 때만 잇는다. 첫 행 이름표를 되풀이하며 값만 다른 표(서식 되풀이)와 전폭 제목 칸만 다르고 둘째 행 짜임·이름표가 같은 상자(`restartsTitledForm`)는 새 표. 쪽 가장자리 글만 끼면 인접, 첨부 머리표(붙임·별지)·쪽 끝 띠 밖 표는 잇지 않음 |
 | `src/pdf/cell-continuation.ts` | 쪽을 넘는 칸 잇기 `mergeContinuedCells`: 이어짐 1칸 조각(clip-cells `continues`)을 앞 쪽 표 마지막 행의 좌우 변 같은 칸에 붙이고 칸 안에서 쪽 경계로 갈린 표를 `mergeCrossPageTables` 로 다시 잇는다. parser 에서 `mergeCrossPageTables` 보다 먼저 |
 | `src/pdf/table-meta.ts` | PDF 표 IR 곁정보(WeakMap/WeakSet): 클립 표·열 경계 x·채움 칸·빈 조각·칸 글줄 상자·이어짐 칸 조각(`CONT_PARTS`). 공개 IR 에 안 나감 |
 | `src/pdf/table-trim.ts` | PDF 표 후행 빈 열 정리: HWP 계열 builder 와 같은 규칙(칸 단위 빈 열, 걸친 병합 칸은 폭 안으로), 그림만 든 칸은 빈 칸 아님 |
 | `src/pdf/text-clean.ts` | PDF 마크다운 최종 정리 — 쪽번호 제거·균등배분·`mergeKoreanLines`(한글 줄 병합). v4.12.3: `normalizeAraea`(한컴 PDF 의 ㆍ→U+119E 되돌림, 셀 blocks 포함)·`splitSingleCellTables`(중첩 없는 1×1 표는 줄마다 문단 — 1×1 줄 결합의 원인은 builder 가 아니라 mergeKoreanLines). v4.14.4: 본문 줄 이음은 line-wrap(블록 조립 단계)으로 옮겨 `mergeKoreanLines` 는 블록 안 `\n`(강등 표 글·글상자)만 |
-| `src/pdf/symbol-fonts.ts` | Wingdings 글리프 코드 → 유니코드 복원 (v4.12.1) — pdfjs 가 심볼 폰트 코드를 Latin-1 로 돌려주는 것(`è`=0xE8 ➔)을 `page.commonObjs` 폰트 실명으로 판별해 되돌림 |
+| `src/pdf/symbol-fonts.ts` | Wingdings 글리프 코드 → 유니코드 복원 (v4.12.1) — pdfjs 가 심볼 폰트 코드를 Latin-1 로 돌려주는 것(`è`=0xE8 ➔)을 `page.commonObjs` 폰트 실명으로 판별해 되돌림. Windows 양식 선택 상자(Marlett g·f·e·d·c 겹침 + 체크 b)는 ☐·☑ 한 글자로 |
 | `src/pdf/cluster-detector.ts` | 클러스터 기반 테이블 감지 (선 없는 PDF용). 칸 글은 선 표와 같은 공백 규칙(`joinCellItems`, 글자 단위 제작기의 "2 0 , 7 7 5" 방지) |
 | `src/pdf/polyfill.ts` | pdfjs-dist 호환 심 (DOMMatrix, Path2D) |
 | `src/pdf/quality.ts` | PDF 페이지별 텍스트 품질 신호 계산 (한글/제어문자/PUA 비율, needsOcr 판정). 사유 `vector_text`: 글자를 곡선으로 그린 쪽(vector-glyphs) |
 | `src/pdf/vector-glyphs.ts` | 벡터 글자 감지: 글자를 채운 곡선 경로로 그린 쪽(rhwp cairo·윤곽 인쇄): 음절 모양 채움 경로의 글줄 → quality `vector_text`(코퍼스 16,775쪽 한컴 PDF 오탐 0), OCR 쪽 그래픽 추림(글자 경로·클립 제외, cairo 는 음영 칸에만 클립) |
 | `src/pdf/line-wrap.ts` | PDF 줄 꺾임 이음: 본문 줄을 문단으로 복원(찬 줄·새 항목 아님), 칸 안 어절 중간 꺾임, 쪽 넘김 꺾임(`joinPageBreakWraps`). 한컴 텍스트층은 줄 끝 공백을 싣지 않아 어절 중간/경계는 기하로 못 가르고 글로 판정: 조사·어미, 문서 어휘 증거(`WrapLexicon`), 한 음절 조각, 날짜 줄(HWPX 정답 22,911곳 92.9%) |
-| `src/pdf/open-table-ends.ts` | 열린 위·아래 변 닫기 `closeOpenTableEnds`: 머리행 위·합계행 아래 가로선을 긋지 않고 세로선만 내려 그은 표 — 몸통 괘선 묶음 밖 같은 끝점까지 뻗은 내부 세로선 2개 이상이면 그 끝점에 가상 가로선(v4.15.5, ODL 045~047). 맨 아래 괘선에 닿은 내부 세로선이 모두 아래로 뻗었는데 끝점이 제각각이면 가장 얕은 끝점에서 닫는다(텍스트층 쪽만, ODL 182) |
+| `src/pdf/open-table-ends.ts` | 열린 위·아래 변 닫기 `closeOpenTableEnds`: 머리행 위·합계행 아래 가로선을 긋지 않고 세로선만 내려 그은 표 — 몸통 괘선 묶음 밖 같은 끝점까지 뻗은 내부 세로선 2개 이상이면 그 끝점에 가상 가로선(v4.15.5, ODL 045~047). 맨 아래 괘선에 닿은 내부 세로선이 모두 아래로 뻗었는데 끝점이 제각각이면 가장 얕은 끝점에서 닫는다(텍스트층 쪽만, ODL 182). 양끝이 같은 괘선 묶음은 세로선으로 이어진 몸통마다 갈라 본다(같은 폭 표 여럿이 위아래로 놓인 서식) |
 | `src/pdf/header-box-rows.ts` | 1행 머리 상자 아래 무괘선 행 `extendHeaderBoxRows`: 머리만 칸 괘선(음영 상자)이고 데이터는 괘선 없는 표 — 상자 칸 안에만 놓인 고른 간격 글줄을 행으로 보고 가상 괘선. 클립 격자 쪽은 안 부름(v4.15.5) |
 | `src/pdf/ruled-band-tables.ts` | 가로 괘선만 있는 표(booktabs) `detectRuledBandTables`: 끝점 정렬 가로선 3개 이상 사이 띠마다 열 틈이 있으면 표 — 열은 몸통 x 투영 틈, 머리 띠는 한 행(걸친 글은 병합 칸). 행 간격 8pt 표도 있어 가상 괘선 대신 IR 표를 바로 만들어 격자 경로(두 단 밴드 순서)에 넘긴다. 안·양끝 세로선(선 격자·테두리 상자)·목차는 제외(v4.15.5). 위·아래 괘선 둘뿐인 표는 몸통 행 간격보다 촘촘히 붙은 첫 줄 묶음을 머리 띠로(꺾인 머리 칸, 빈 머리 칸 허용 — 텍스트층 글만, ODL 170) |
 | `src/pdf/text-box-table.ts` | 보이지 않는 글상자 표 `detectTextBoxTables`: 슬라이드 PDF 는 글상자마다 불투명도 0(ca=0) 채움 틀을 깔고 표 괘선은 래스터 그림에 굽는다 — line-extract 는 ca=0 채움·CA=0 획을 선·채움 칸에서 빼고 `hiddenBoxes` 로 모으며, 왼·오른끝이 같은 틀 열 3개 이상이 행마다 윗변을 맞추면 틀을 칸으로 표를 세운다(선 격자·클립·booktabs 없는 쪽만, ODL 200). 차트 눈금 틀은 같은 폭 열이 서지 않는다(ODL 199) |
@@ -179,9 +179,9 @@ Buffer → detectFormat() [매직바이트] → 포맷별 파서 → IRBlock[] �
 | `src/pdf/paragraph-lines.ts` | 줄 → 문단 결합(page-blocks 에서 분리), drop cap 소속을 결합 전에 적용 |
 | `src/pdf/glyph-names.ts` | ToUnicode 없이 /Differences 글리프 이름만 둔 글꼴(옛 숫자 `seven.oldstyle`·작은 대문자 `c.sc`·합자 `f_l`)을 AGL 규칙으로 글자 복원 — pdfjs 가 제어 문자로 돌려주는 코드를 되살린다. `getDocument({ fontExtraProperties: true })` 가 필요. `restoreNamedGlyphs` 는 normalizeItems 전에 연산자 목록 showText 글리프(originalCharCode)를 글꼴마다 텍스트 아이템 글자에 맞춰 짚어, 공백·빈 글로 사라지는 코드(9 `nine.oldstyle`·129 `F.a`, ODL 005·006)와 ToUnicode 가 소문자로 매긴 작은 대문자(`h.smcp`, ODL 001~015)를 되살린다 — 맞춤이 어긋난 글꼴은 손대지 않음(코퍼스 PDF 1,911건 중 대상 글꼴 2건·출력 변화 0) |
 | `src/xlsx/parser.ts` | XLSX(ZIP+XML) 파싱, 공유 문자열/병합 셀 처리 |
-| `src/xlsx/sheet-blocks.ts` | XLSX·XLS 공용 시트 → 표: 열 수에 따른 칸 예산·절단 경고 |
+| `src/xlsx/sheet-blocks.ts` | XLSX·XLS 공용 시트 → 표: 글 있는 행·열만 펼침(빈 행·열 제외·병합은 남은 행·열로 축소, #91), 열 수에 따른 칸 예산·절단 경고 |
 | `src/docx/parser.ts` | DOCX(ZIP+XML) 파싱, 스타일/번호매기기/각주 처리 |
-| `src/table/builder.ts` | 2-pass 그리드 테이블 빌더 + 마크다운 변환, `escapeHtmlCellText`로 HTML 칸 원문 이스케이프 |
+| `src/table/builder.ts` | 2-pass 그리드 테이블 빌더 + 마크다운 변환, `escapeHtmlCellText`로 HTML 칸 원문 이스케이프. 캡션 안 표(`captionBlocks`)는 `captionToMarkdown`/`captionToHtml` 이 표로 낸다 |
 | `src/render/svg-render.ts` | 레이아웃 보존 렌더 — HWPX 조판 캐시(lineseg·cellAddr·pos)를 SVG 절대배치로. 문단·표·이미지·도형 region 기록 + `<g data-kordoc-*>` 래퍼. 포맷 무관 단계 `renderSectionRoots`(구역 DOM→페이지 버퍼)·`assemblePageSvgs`(페이지별 standalone SVG) 를 HWPX·HWP5 어댑터가 공유 (#75) |
 | `src/render/para-model.ts` | 렌더 문단 모델(슬롯 스트림: 글자·필러·탭)·탭 정지점(`tabAdvance`: autoTabLeft 첫 줄 = 내어쓰기, 기본 40pt)·표 실효 높이. svg-render·reflow 공유(그리기 코드 비의존) |
 | `src/render/scene.ts` | RenderScene 계약 — 1-based 페이지·페이지 로컬 pt bbox·결정적 region id(`table-000017`)·다중 페이지 조각·parentId·sourceId |
@@ -273,10 +273,10 @@ Buffer → detectFormat() [매직바이트] → 포맷별 파서 → IRBlock[] �
   0.73 → 0.96 (v4.12.1). 클립 셀 판정을 손댈 때는 `bench/pdf-table-gt.mjs` 와
   `licbyl/` HWP↔PDF 셀 대조를 함께 볼 것. `mergeParallelLines` 는 입력 선 객체를 **제자리 수정**하므로
   전처리 뒤의 선을 클립 판정(획 유무)에 넘기면 결과가 달라진다
-- **HWP5 `flattenLayoutTables` 는 서식 틀을 남긴다**: 중첩표를 품고 글이 `FORM_FRAME_MAX_TEXT`(600자)
-  이하인 표는 레이아웃 표가 아니라 별지서식 틀(3×1 제목행+틀+꼬리행) — HWPX·PDF 파서와 같은 모양으로
-  유지(v4.12.2). 페이지 사슬 레이아웃 표(글 많음)는 종전대로 해체. 임계를 바꾸면 `pairs/`·`misc/` 의
-  동의서·카테고리 표가 움직인다
+- **HWP5 `flattenLayoutTables` 는 테두리 없는 레이아웃 표만 푼다**: 칸 테두리가 보이는 표(`markBorderedTable`, DocInfo BORDER_FILL 변 종류 ≠ 0)는
+  건너뛴다 — 종전엔 테두리와 상관없이 풀어 같은 문서의 HWPX 표 118개가 사라지고 틀 안 중첩표가 바깥 단부터 풀려 5~8단이 4단이 됐다(v4.15.7).
+  칸이 A4 용지보다 높은 표(여러 쪽에 걸친 본문 상자, rhwp issue3637)는 테두리가 있어도 푼다. 중첩표를 품고 글이 `FORM_FRAME_MAX_TEXT`(600자)
+  이하인 표는 종전대로 별지서식 틀로 남긴다
 - **PDF 1칸 틀은 획 4변이 조건**: 한컴 PDF 는 본문 영역(여백 안쪽)에도 클립을 깔고 그 안에 페이지의
   모든 표·칩이 들어간다. 획 없는 컨테이너를 틀로 삼으면 페이지가 통째로 1×1 표가 되어 pair 게이트가
   0.985 → 0.87 로 무너진다(v4.12.2 실측). 테두리 없는 1칸 틀(별표 1×1 프레임·선서문 바깥)은 v4.12.3 부터

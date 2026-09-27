@@ -41,6 +41,14 @@ describe("HWPX 미기입 누름틀 안내문 — IR 에 표시, 마크다운에�
     assert.ok(r.markdown.includes("성명:") && r.markdown.includes("(서명)"), r.markdown)
   })
 
+  it("includeFieldPlaceholders 면 안내문도 마크다운에 낸다 — 빈 서식의 칸 용도 보존 (#92)", async () => {
+    const body = para(`<hp:t>대학: </hp:t>${clickHere("학교명 기재 금지", "학교명 기재 금지", "0")}`)
+    const r = await parseHwpxDocument(await build(body), { includeFieldPlaceholders: true })
+    assert.ok(r.markdown.includes("대학: 학교명 기재 금지"), r.markdown)
+    const plain = await parse(body)
+    assert.ok(!plain.markdown.includes("학교명 기재 금지"), "기본값은 종전대로 뺀다")
+  })
+
   it("수정된 필드(dirty=1)·안내문과 다른 값은 그대로", async () => {
     const r1 = await parse(para(`<hp:t>성명: </hp:t>${clickHere("여기에 입력", "여기에 입력", "1")}`))
     assert.ok(r1.markdown.includes("여기에 입력"), r1.markdown)

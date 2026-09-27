@@ -55,6 +55,25 @@ function commonEnd(ends: number[]): number | null {
 }
 
 /**
+ * 양끝이 같은 괘선 묶음을 세로선으로 이어진 몸통마다 가른다. 같은 폭으로 위아래 떨어져 놓인 표들(서식 칸 안 "기관명 | 개설일 …"
+ * 표 넷, 개인정보 분석 별지)이 한 묶음이면 맨 아래 표의 열린 아래 변만 보고 나머지는 못 닫았다. 이웃 괘선 사이를 잇는 세로선이
+ * 없으면 다른 몸통이다. 몸통(괘선 MIN_RULES 개 이상) 조각이 둘 이상일 때만 가른다 — 아니면 종전대로 한 묶음
+ */
+function splitBodies(g: LineSegment[], chained: LineSegment[]): LineSegment[][] {
+  if (g.length < MIN_RULES * 2) return [g]
+  const x1 = Math.min(...g.map(r => r.x1)), x2 = Math.max(...g.map(r => r.x2))
+  const sorted = [...g].sort((a, b) => b.y1 - a.y1)
+  const parts: LineSegment[][] = [[sorted[0]]]
+  for (let i = 1; i < sorted.length; i++) {
+    const upper = sorted[i - 1].y1, lower = sorted[i].y1
+    const joined = chained.some(v => v.x1 >= x1 - ALIGN_TOL && v.x1 <= x2 + ALIGN_TOL && v.y2 >= upper - TOUCH_TOL && v.y1 <= lower + TOUCH_TOL)
+    if (joined) parts[parts.length - 1].push(sorted[i])
+    else parts.push([sorted[i]])
+  }
+  return parts.filter(p => p.length >= MIN_RULES).length >= 2 ? parts : [g]
+}
+
+/**
  * 몸통 괘선 묶음의 위·아래로 같은 끝점까지 뻗은 내부 수직선이 둘 이상이면 그 끝점에 가상 수평 괘선을 더한다.
  * 조건 미달이면 입력을 그대로 반환한다.
  * @param textLayer 쪽 글이 모두 텍스트층(seq)일 때만 끝점이 제각각인 아래 변을 닫는다 — OCR 래스터 괘선은 끝점이 흔들린다
@@ -69,7 +88,7 @@ export function closeOpenTableEnds(horizontals: LineSegment[], verticals: LineSe
   }
   const chained = chainVerticals(verticals)
   const added: LineSegment[] = []
-  for (const g of groups) {
+  for (const g of groups.flatMap(gr => splitBodies(gr, chained))) {
     if (g.length < MIN_RULES) continue
     const x1 = Math.min(...g.map(r => r.x1)), x2 = Math.max(...g.map(r => r.x2))
     const yLo = Math.min(...g.map(r => r.y1)), yHi = Math.max(...g.map(r => r.y1))

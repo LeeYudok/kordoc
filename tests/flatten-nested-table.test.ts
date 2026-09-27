@@ -1,6 +1,6 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
-import { flattenLayoutTables, buildTable } from "../src/table/builder.js"
+import { flattenLayoutTables, buildTable, markBorderedTable } from "../src/table/builder.js"
 import type { IRBlock } from "../src/types.js"
 
 describe("flattenLayoutTables — 중첩표 구조 보존", () => {
@@ -117,5 +117,18 @@ describe("flattenLayoutTables — 중첩표 구조 보존", () => {
       assert.ok(texts.includes(t), `'${t}' 문단 존재`)
     }
     assert.ok(flat.every(b => b.pageNumber === 5), "pageNumber 보존")
+  })
+  it("칸 테두리가 보이는 표(markBorderedTable)는 글이 많아도 해체하지 않는다 — 같은 문서 HWPX 와 같은 표", () => {
+    const body = Array.from({ length: 8 }, (_, k) => `세부 목표 ${k + 1} ` + "내용 문장이 길게 이어진다. ".repeat(3)).join("\n")
+    const box = buildTable([
+      [{ text: "1) 자사 CAD 데이터 자산화", colSpan: 2, rowSpan: 1 }],
+      [{ text: "목표", colSpan: 1, rowSpan: 1 }, { text: body, colSpan: 1, rowSpan: 1 }],
+    ])
+    const block: IRBlock = { type: "table", table: box }
+    assert.equal(flattenLayoutTables([block]).filter(b => b.type === "paragraph").length > 0, true, "테두리 표시 없으면 종전대로 해체")
+    markBorderedTable(box)
+    const kept = flattenLayoutTables([block])
+    assert.equal(kept.length, 1)
+    assert.equal(kept[0].type, "table")
   })
 })

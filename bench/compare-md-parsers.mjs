@@ -3,7 +3,7 @@
 //
 // 사용법:
 //   .venv-hwpforge/bin/python bench/hwpforge-bench.py /tmp/hwpforge-md     # 비교 대상 Markdown 생성
-//   node bench/compare-md-parsers.mjs /tmp/hwpforge-md [--name=hwpforge] [--doc=부분문자열]
+//   node bench/compare-md-parsers.mjs /tmp/hwpforge-md [--name=hwpforge] [--doc=부분문자열] [--exclude-single-col]
 //
 // 두 파서 모두 **Markdown 출력만** 같은 채점기로 잰다 — kordoc 도 IR 이 아니라 markdown 을 쓴다.
 //   정답  : 원본 HWPX 의 XML 을 직접 읽은 참조(bench/ref/hwpx-ref.mjs, score.mjs 와 같은 독립 추출기).
@@ -20,7 +20,7 @@ import { join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parse } from "../dist/index.js"
 import { extractRef } from "./ref/hwpx-ref.mjs"
-import { normKey, mdToPlain } from "./lib/normalize.mjs"
+import { normKey, mdToPlain, unescapeMd } from "./lib/normalize.mjs"
 import { alignUnits, lisLength } from "./lib/align.mjs"
 import { collectIrGrids, scoreTables } from "./lib/table-score.mjs"
 
@@ -29,6 +29,8 @@ const args = process.argv.slice(2)
 const otherDir = args.find(a => !a.startsWith("--"))
 const name = (args.find(a => a.startsWith("--name=")) ?? "--name=hwpforge").split("=")[1]
 const docFilter = (args.find(a => a.startsWith("--doc=")) ?? "").split("=")[1] ?? null
+// 1열 표(목록성 틀)도 표 채점에서 뺀다 — kordoc 은 1열 표를 줄 단위 글로 내는 출력 선택이라 README 에 두 수치를 함께 적는다
+const excludeSingleCol = args.includes("--exclude-single-col")
 if (!otherDir) {
   console.error("사용법: node bench/compare-md-parsers.mjs <비교 파서 markdown 디렉토리> [--name=이름]")
   process.exit(1)
@@ -45,8 +47,20 @@ async function* walk(dir) {
 
 // ─── markdown 표 → IR 표 (두 파서 공용) ─────────────────
 
-const cellText = s => s.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").replace(/\\\|/g, "|")
-  .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&amp;/g, "&").trim()
+// 칸 글 정규화는 본문 채점(mdToPlain)과 같은 규칙이다. 참조 칸 글은 이미지·수식을 빼고 링크는 보이는 글만이라
+// 이미지 참조·수식 스팬·링크 문법을 걷고, 태그는 영문자로 시작하는 진짜 태그만 지운다(칸 글 "<비온 후 1일차>" 보존).
+// 종전엔 \| 만 풀고 "<…>" 를 모두 지워 마스킹 별표 칸 "\*\*\*"·꺾쇠 캡션 칸이 참조와 교집합 0 → 같은 표를 못 짝지었다
+const HTML_ENTITY = { lt: "<", gt: ">", quot: "\"", "#39": "'", amp: "&" }
+const stripArtifacts = s => s.replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/<img\b[^>]*>/gi, " ")
+  .replace(/\$\$[^$]+\$\$/g, " ").replace(/(^|[^\\$])\$(?!\s)((?:\\.|[^$\n\\])+?)\$/g, "$1 ")
+  .replace(/\[([^\[\]]*)\]\((?:https?:|mailto:|tel:|#)[^)\s]*\)/gi, "$1")
+// HTML 칸: 원시 HTML 이라 백슬래시 이스케이프는 글이고(CommonMark §4.6) 글은 엔티티로 나온다
+const htmlCellText = s => stripArtifacts(s).replace(/<br\s*\/?>/gi, "\n").replace(/<\/?[A-Za-z][^>]*>/g, "")
+  .replace(/&(lt|gt|quot|#39|amp);/g, (_m, e) => HTML_ENTITY[e]).trim()
+// 파이프 칸: 이스케이프되지 않은 강조 부호(* ~~)를 걷고 이스케이프를 푼다
+const pipeCellText = s => unescapeMd(stripArtifacts(s).replace(/(?<!\\)<br\s*\/?>/gi, "\n").replace(/(?<!\\)<\/?[A-Za-z][^>]*>/g, "")
+  .replace(/\\\*/g, "\x02").replace(/\*/g, "").replace(/\x02/g, "\\*")
+  .replace(/\\~/g, "\x02").replace(/~~/g, "").replace(/\x02/g, "\\~")).trim()
 
 /** HTML 표 한 개(중첩 포함) → IR 표. 칸 안의 중첩 표는 칸 blocks 로 */
 function htmlTable(html) {
@@ -75,7 +89,7 @@ function htmlTable(html) {
     } else if ((tag === "td" || tag === "th") && close && cur.cell) {
       // 칸 글 = 칸 원문에서 중첩 표를 뺀 글
       const raw = html.slice(cur.cell.from, m.index).replace(/<table\b[\s\S]*<\/table>/gi, " ")
-      cur.rows[cur.rows.length - 1].push({ text: cellText(raw), colSpan: cur.cell.colSpan, rowSpan: cur.cell.rowSpan, blocks: cur.cell.blocks })
+      cur.rows[cur.rows.length - 1].push({ text: htmlCellText(raw), colSpan: cur.cell.colSpan, rowSpan: cur.cell.rowSpan, blocks: cur.cell.blocks })
       cur.cell = null
     }
   }
@@ -108,7 +122,7 @@ function toIr(rows) {
 
 function splitPipeRow(line) {
   const t = line.trim().replace(/^\|/, "").replace(/\|$/, "")
-  return t.split(/(?<!\\)\|/).map(c => cellText(c))
+  return t.split(/(?<!\\)\|/).map(c => pipeCellText(c))
 }
 
 /** markdown → 표 블록 목록 (문서 순서) */
@@ -166,7 +180,7 @@ function scoreMd(md, ref) {
   }
   // 1×1 표(글상자형 상자)는 데이터 표가 아니라 레이아웃이다 — Markdown 에서 문단으로 풀지 1열 표로 둘지는 표현 선택이라 양쪽 모두
   // 표 채점에서 뺀다(그 글은 재현율이 채점한다)
-  const multi = t => t.rows * t.cols > 1
+  const multi = t => t.rows * t.cols > 1 && (!excludeSingleCol || t.cols > 1)
   const tbl = scoreTables(ref.tables.filter(multi), collectIrGrids(mdTables(md)).filter(multi))
   return {
     recall: total ? matched / total : 1,
@@ -190,7 +204,11 @@ for await (const file of walk(corpusDir)) {
   const refPath = isHwp ? file.replace(/\.hwp$/i, ".hwpx") : file
   if (!existsSync(refPath)) continue
   let ref
-  try { ref = await extractRef(await readFile(refPath)) } catch { continue }
+  const refBuf = await readFile(refPath)
+  // 암호를 모르는 HWPX(정책브리핑 배포용 등)는 정답이 될 수 없다 — score.mjs 의 lockedHwpx 와 같이 HWP 짝에서 뺀다
+  // (종전엔 HWP 판만 열려 156776047 산업활동동향 6.2만 자 전부가 "가짜 글"로 셌다)
+  if (isHwp && (await parse(refBuf, { filename: "ref.hwpx" }).catch(() => null))?.code === "ENCRYPTED") continue
+  try { ref = await extractRef(refBuf) } catch { continue }
   const buf = await readFile(file)
   const t = performance.now()
   const res = await parse(buf, { filename: rel.split("/").pop() }).catch(e => ({ success: false, error: String(e) }))

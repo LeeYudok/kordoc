@@ -747,6 +747,19 @@ function isInlineTbl(tbl: Element): boolean {
   return findChildByLocalName(tbl, "pos")?.getAttribute("treatAsChar") === "1"
 }
 
+/** 양식 단추 캡션을 그리는 최소 개체 폭 (HWPUNIT) — 상자(≈1,300)에 글자 한 자 이상이 들어갈 때만 한컴이 캡션을 인쇄한다.
+ *  폭 1,297 인 선택 상자는 기본 캡션 "선택 상자"가 PDF 에 안 나온다(rhwp issue2470), 폭 4,000 이상은 캡션이 나온다(form-002·서울 결재) */
+const FORM_CAPTION_MIN_WIDTH = 2300
+
+/** 양식 선택 상자(☐/☑)·라디오 단추(○/●)의 보이는 글 — bench/ref/hwpx-ref.mjs 와 같은 규칙 */
+function formButtonText(el: Element, radio: boolean): string {
+  const checked = el.getAttribute("value") === "CHECKED"
+  const mark = radio ? (checked ? "●" : "○") : (checked ? "☑" : "☐")
+  const width = Number(findChildByLocalName(el, "sz")?.getAttribute("width") ?? 0)
+  const caption = (el.getAttribute("caption") ?? "").trim()
+  return caption && width >= FORM_CAPTION_MIN_WIDTH ? `${mark} ${caption}` : mark
+}
+
 /** 자손에서 특정 태그명의 첫 번째 요소 탐색 (최대 깊이 5) */
 function findDescendant(node: Node, targetTag: string, depth = 0): Element | null {
   if (depth > 5) return null
@@ -1037,6 +1050,9 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
           if (isInlineTbl(child)) text += "\x1E"
           break
 
+        // 양식 선택 상자·라디오 단추 — 한컴이 그리는 상자 기호와 캡션 글 (종전엔 통째로 빠졌다: form-002 "원천기술형"·서울 결재 "부분공개")
+        case "checkBtn": case "radioBtn": text += formButtonText(child, tag === "radioBtn"); break
+
         // 하이퍼링크
         case "hyperlink": {
           const url = child.getAttribute("url") || child.getAttribute("href") || ""
@@ -1173,7 +1189,8 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
       else placeholderSpans.push({ text: stripPlaceholderMarks(part) })
     }
     cleanText = stripPlaceholderMarks(cleanText)
-    if (!placeholderSpans.some(s => s.placeholder && s.text)) placeholderSpans = undefined
+    // includeFieldPlaceholders(#92) 면 안내문도 보이는 글 — 표시 span 을 두지 않는다
+    if (ctx?.shared.includeFieldPlaceholders || !placeholderSpans.some(s => s.placeholder && s.text)) placeholderSpans = undefined
   }
 
   // 스타일 정보 조회

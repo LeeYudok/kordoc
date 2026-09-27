@@ -24,6 +24,7 @@ export const TAG_EQEDIT = 0x0058
 export const TAG_ID_MAPPINGS = 0x0011      // HWPTAG_BEGIN + 1
 export const TAG_BIN_DATA = 0x0012         // HWPTAG_BEGIN + 2
 export const TAG_FACE_NAME = 0x0013        // HWPTAG_BEGIN + 3
+export const TAG_BORDER_FILL = 0x0014      // HWPTAG_BEGIN + 4
 export const TAG_DOC_CHAR_SHAPE = 0x0015   // HWPTAG_BEGIN + 5
 export const TAG_NUMBERING = 0x0017        // HWPTAG_BEGIN + 7
 export const TAG_BULLET = 0x0018           // HWPTAG_BEGIN + 8
@@ -195,6 +196,8 @@ export interface HwpDocInfo {
   numberings: HwpNumbering[]
   /** BULLET 정의 (1-based bulletId → bullets[id-1]) */
   bullets: HwpBullet[]
+  /** BORDER_FILL 에 보이는 변(종류 ≠ 없음)이 하나라도 있는가 (1-based borderFillId → [id-1]) */
+  borderFillVisible?: boolean[]
 }
 
 /** length-prefixed UTF-16LE 문자열 읽기 (HWP WCHAR 배열) */
@@ -215,8 +218,14 @@ export function parseDocInfo(records: HwpRecord[]): HwpDocInfo {
   const binData: HwpBinDataItem[] = []
   const numberings: HwpNumbering[] = []
   const bullets: HwpBullet[] = []
+  const borderFillVisible: boolean[] = []
 
   for (const rec of records) {
+    // BORDER_FILL — 속성 u16@0 · 변 4개(왼/오/위/아래) = @2+6k (종류 u8 · 굵기 u8 · 색 u32), 종류 0 = 없음 (hwp5-scene 과 같은 규약)
+    if (rec.tagId === TAG_BORDER_FILL) {
+      borderFillVisible.push(rec.data.length >= 26 && [2, 8, 14, 20].some(o => rec.data[o] !== 0))
+    }
+
     // PARA_SHAPE — 문단 모양 (rhwp doc_info.rs parse_para_shape)
     // attr1(u32@0) 비트 팩: bits 23-24 = 머리 종류, bits 25-27 = 문단 수준
     // numberingId: u16@30 (attr1 4 + 여백/간격 i32*6 = 24 + tabDefId 2 → offset 30)
@@ -344,7 +353,7 @@ export function parseDocInfo(records: HwpRecord[]): HwpDocInfo {
     }
   }
 
-  return { charShapes, paraShapes, styles, binData, numberings, bullets }
+  return { charShapes, paraShapes, styles, binData, numberings, bullets, borderFillVisible }
 }
 
 // ─── UTF-16LE 텍스트 추출 (21가지 제어문자 처리) ─────

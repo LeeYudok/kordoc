@@ -32,6 +32,7 @@ program
   .option("--dedupe-headers", "HWP5 레이아웃 표 페이지 반복 러닝 헤더 중복 제거 (기본 off — 붙임별 재번호 오삭제 주의)")
   .option("--keep-empty-cols", "표 오른쪽 끝 빈 열(서식 입력란) 보존 (#47, 기본 off: 후행 빈 열 트림)")
   .option("--keep-empty-paragraphs", "빈 문단 보존 — 본문은 빈 paragraph 블록, 표 셀은 빈 줄로 (#57, 기본 off: 빈 문단 제거)")
+  .option("--include-field-placeholders", "미기입 누름틀 안내문도 출력 — 빈 서식의 칸 용도 보존 (#92, 기본 off: 인쇄되지 않는 안내문 제외)")
   .option("--inline-images", "이미지를 base64 data URI 로 마크다운에 인라인 (BMP→PNG 압축, HWP5 전용 — 인라인된 경우만 파일 미저장, 그 외 포맷은 저장 유지)")
   .option("--image-refs", "--format json 에서 이미지 바이트를 인라인하지 않고 파일 참조(images/<파일명>)만 남김 (#65 — 이미지가 수백 장인 문서의 직렬화 한계 회피, -o/-d 와 함께 사용)")
   .option("--password <pw>", "암호로 보호된 문서의 열기 암호 (#59, HWPX·HWP3·HWP5. 한컴 DRM 문서는 해당 없음)")
@@ -80,6 +81,7 @@ program
         if (opts.dedupeHeaders) parseOptions.dedupeRunningHeaders = true
         if (opts.keepEmptyCols) parseOptions.keepTrailingEmptyCols = true
         if (opts.keepEmptyParagraphs) parseOptions.keepEmptyParagraphs = true
+        if (opts.includeFieldPlaceholders) parseOptions.includeFieldPlaceholders = true
         if (opts.inlineImages) parseOptions.inlineImages = true
         if (opts.password) parseOptions.password = opts.password as string
         if (opts.images === false) parseOptions.images = false

@@ -154,12 +154,13 @@ describe("regress-D #4: xlsx r 속성 부재 시 순차 유도", () => {
     // 순차 유도 위치 검증: r="4" 다음의 r 없는 row는 5행(0-based 4)
     const table = r.blocks.find(b => b.type === "table")?.table
     assert.ok(table)
-    assert.equal(table.rows, 5)
+    // 빈 3행은 표에서 빠진다(#91) — 4행 라·5행 마 순서와 열은 그대로
+    assert.equal(table.rows, 4)
     assert.equal(table.cells[0][0].text, "가")
     assert.equal(table.cells[0][1].text, "나")
     assert.equal(table.cells[1][0].text, "다")
-    assert.equal(table.cells[3][1].text, "라")
-    assert.equal(table.cells[4][0].text, "마")
+    assert.equal(table.cells[2][1].text, "라")
+    assert.equal(table.cells[3][0].text, "마")
   })
 })
 

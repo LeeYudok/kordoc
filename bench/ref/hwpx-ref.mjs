@@ -320,6 +320,16 @@ export async function extractRef(buffer) {
         }
         if (t === "br" || t === "linebreak") { addText("\n"); continue }
         if (t === "fwspace" || t === "hwspace") { addText(" "); continue }
+        // 양식 선택 상자(☐/☑)·라디오 단추(○/●) — 한컴이 인쇄하는 상자와 캡션(캡션은 개체 폭이 상자 + 글자 한 자 이상일 때만,
+        // rhwp issue2470 폭 1297 은 상자만 나옴)
+        if (t === "checkbtn" || t === "radiobtn") {
+          const sz = ch.children.find(c => typeof c !== "string" && c.tag === "sz")
+          const cap = (ch.attrs.caption ?? "").trim()
+          const on = ch.attrs.value === "CHECKED"
+          const mark = t === "radiobtn" ? (on ? "●" : "○") : (on ? "☑" : "☐")
+          addText(cap && Number(sz?.attrs.width ?? 0) >= 2300 ? `${mark} ${cap}` : mark)
+          continue
+        }
         if (t === "equation") {
           const script = findDesc(ch, "script")
           if (script && textOfAll(script, counters).trim()) specials.equations++ // presence 분리 (whitelist)

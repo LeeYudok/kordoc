@@ -532,8 +532,11 @@ function firstRowSig(t: IRTable): Array<{ x1: number; x2: number; t: string }> |
  */
 function restartsTable(blocks: IRBlock[], i: number, curr: IRTable, pageHeights?: Map<number, number>): boolean {
   const cs = firstRowSig(curr)
-  if (!cs || cs.length < RESTART_MIN_ANCHORS) return false
-  const hs = firstRowSig(blocks[chainHead(blocks, i, pageHeights)].table!)
+  if (!cs) return false
+  const head = blocks[chainHead(blocks, i, pageHeights)].table!
+  if (cs.length === 1 && restartsTitledForm(head, curr)) return true
+  if (cs.length < RESTART_MIN_ANCHORS) return false
+  const hs = firstRowSig(head)
   if (!hs || hs.length !== cs.length) return false
   const dx = hs[hs.length - 1].x2 - cs[cs.length - 1].x2
   if (!hs.every((h, n) => Math.abs(h.x1 - cs[n].x1 - dx) <= CONTINUATION_COL_TOL && Math.abs(h.x2 - cs[n].x2 - dx) <= CONTINUATION_COL_TOL)) return false
@@ -544,6 +547,26 @@ function restartsTable(blocks: IRBlock[], i: number, curr: IRTable, pageHeights?
     else diff++
   }
   return same >= 2 && diff >= 1
+}
+
+/**
+ * 전폭 제목 칸으로 시작하는 서식의 되풀이 — 두 표 첫 행이 모두 전폭 한 칸이고 글이 다르며, 둘째 행의 칸 짜임과 첫 칸 이름표가 같다.
+ * "3) 공공데이터 자동수집 / 목표 | … / 세부 목표 | …" 상자를 과제마다 놓은 계획서(tac-img-02)에서 쪽 끝 상자와 다음 쪽 첫 상자가
+ * 쪽 넘김 기하로 이어져 6×2 로 뭉쳤다. 이어진 조각이면 첫 행이 제목 칸일 때 그 아래 행 이름표까지 표 첫머리와 같을 까닭이 없다
+ */
+function restartsTitledForm(head: IRTable, curr: IRTable): boolean {
+  if (head.rows < 2 || curr.rows < 2 || head.cols !== curr.cols) return false
+  const full = (t: IRTable) => t.cells[0][0]?.colSpan === t.cols
+  if (!full(head) || !full(curr)) return false
+  const norm = (c: IRCell | undefined) => (c?.text ?? "").replace(/\s+/g, "")
+  const ht = norm(head.cells[0][0]), ct = norm(curr.cells[0][0])
+  if (!ht || !ct || ht === ct) return false
+  // 제목 칸만 — 앞 쪽에서 넘어온 본문 칸("ㅇ …"·"- …" 긴 글)으로 시작하는 이어진 조각끼리는 짜임이 같아도 새 표가 아니다(form-002)
+  const titleLike = (t: string) => t.length <= TITLE_ROW_MAX_CHARS && !/^[ㅇ○◦•·\-–※*□■▪☞]/.test(t)
+  if (!titleLike(ht) || !titleLike(ct)) return false
+  const spans = (t: IRTable) => anchorsOf(t).filter(a => a.r === 1).map(a => `${a.c}:${a.cs}`).join(",")
+  const label = norm(head.cells[1][0])
+  return spans(head) === spans(curr) && label !== "" && label === norm(curr.cells[1][0])
 }
 
 /**
@@ -599,4 +622,6 @@ function shiftedSame(px: number[], cx: number[], allowShift = true): boolean {
 const PAGE_EDGE_BAND = 0.16
 /** 새 표 시작 판정 — 첫 행 앵커가 이만큼 이상인 표만 (칸 짜임이 같다는 게 우연이 아닐 만큼), 사슬 첫 조각은 이 쪽 수까지 거슬러 찾는다 */
 const RESTART_MIN_ANCHORS = 3
+/** 되풀이 서식의 전폭 제목 칸 글 길이 상한 (공백 뺀 글자) */
+const TITLE_ROW_MAX_CHARS = 40
 const RESTART_LOOKBACK_PAGES = 5

@@ -236,6 +236,9 @@ export interface ParseOptions {
    *  개체(표·이미지·글상자)만 있는 문단은 개체 출력이 따로 있어 대상이 아니다.
    *  현재 HWPX 경로 적용. */
   keepEmptyParagraphs?: boolean
+  /** 미기입 누름틀 안내문도 마크다운에 낸다 (#92). 기본 false: 종전대로 뺀다(한컴은 화면에만 흐리게 보이고 인쇄하지 않는 글).
+   *  빈 서식 문서에서 "이 칸에 무엇을 적나"(예: "학교명 기재 금지")가 안내문뿐일 때 켠다. HWPX·HWP5 */
+  includeFieldPlaceholders?: boolean
   /** 비밀번호로 보호된 문서의 열기 암호.
    *  HWPX(ODF AES-256-CBC)·HWP3(DES) 지원. 한컴 DRM(문서 보안)은 별개라 해당 없음. */
   password?: string

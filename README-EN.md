@@ -121,14 +121,16 @@ The same corpus converted to Markdown by [HwpForge](https://github.com/ai-scream
 | | kordoc | HwpForge 0.16.6 |
 | --- | ---: | ---: |
 | HWPX, 2,305 docs — conversion failures | **0** | 123 |
-| HWPX — text recall (converted docs only) | **100.00%** (100.00%) | 59.25% (98.68%) |
-| HWPX — exact tables (10,392) | **89.8%** | 35.8% |
-| HWPX — cell F1 | **0.925** | 0.462 |
-| HWP 5.x, 1,109 docs — conversion failures | **0** | 19 |
-| HWP — text recall | **99.99%** | 86.41% |
-| HWP — exact tables (3,500) | **89.0%** | 31.6% |
+| HWPX — text recall (converted docs only) | **100.00%** (100.00%) | 59.23% (98.64%) |
+| HWPX — exact tables (10,392) | **90.5%** | 36.0% |
+| HWPX — cell F1 | **0.928** | 0.463 |
+| HWPX — exact tables, single-column tables excluded (9,123) | **99.9%** | 32.2% |
+| HWP 5.x, 1,108 docs — conversion failures | **0** | 19 |
+| HWP — text recall | **100.00%** | 86.41% |
+| HWP — exact tables (3,500) | **91.7%** | 32.1% |
+| HWP — exact tables, single-column tables excluded (3,111) | **99.5%** | 27.0% |
 
-HwpForge focuses on generation and editing; its Markdown uses pipe tables only, so merged cells cannot be expressed, which accounts for most of the table gap. Reproduce: `bench/hwpforge-bench.py`, then `node bench/compare-md-parsers.mjs <output dir>`.
+HwpForge focuses on generation and editing; its Markdown uses pipe tables only, so merged cells cannot be expressed, which accounts for most of the table gap. Most of kordoc's own misses come from rendering single-column frame tables as lines of text (an output choice), so the numbers without single-column tables are shown too. The HWP count excludes one pair whose HWPX is distribution-encrypted (no ground truth). Reproduce: `bench/hwpforge-bench.py`, then `node bench/compare-md-parsers.mjs <output dir>` (add `--exclude-single-col` for the single-column-excluded rows).
 
 ---
 

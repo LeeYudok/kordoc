@@ -120,6 +120,7 @@ export async function parseHwpxDocument(buffer: ArrayBuffer, options?: ParseOpti
   shared.kordocLayout = await readKordocLayout(zip)
   shared.keepTrailingEmptyCols = options?.keepTrailingEmptyCols
   shared.keepEmptyParagraphs = options?.keepEmptyParagraphs
+  shared.includeFieldPlaceholders = options?.includeFieldPlaceholders
   // 섹션 근사 폴백 시 블록 pageNumber를 섹션 번호로 되돌리기 위한 구간 기록
   const sectionRanges: Array<{ sectionNum: number; start: number; end: number }> = []
   let parsedSections = 0

@@ -5,7 +5,7 @@
  * 깔지 않는다 — 종전 XLS 는 (maxRow+1)×(maxCol+1) 밀집 격자를 선할당해 셀 하나(65535행·999열)로 6,553만 칸·
  * 약 500MB 를 잡았다.
  *
- * 표로 펼치는 범위는 글 있는 첫 행 ~ 끝 행 × 0 ~ maxCol 이다. 행 상한은 열 수에 맞춘 칸 예산(`sheetRowCap`) —
+ * 표로 펼치는 것은 글 있는 행 × 글 있는 열뿐이다(빈 행·열은 뺀다, #91 — keepAnchoredEmptyCols 면 열은 0 ~ maxCol). 행 상한은 열 수에 맞춘 칸 예산(`sheetRowCap`) —
  * 종전엔 열 수와 무관하게 1만 행에서 경고 없이 잘렸다(4열 사업체 명단 15,212행·59열 개표 결과 22,692행이 1만 행으로,
  * 칸 수로는 예산의 3%·29%). 예산을 넘는 시트는 뒤 행을 자르고 TRUNCATED_TABLE 경고를 낸다.
  */
@@ -51,43 +51,56 @@ export function sheetToBlocks(
   }
   if (firstRow === -1) return blocks
 
-  const rowCap = sheetRowCap(maxCol + 1)
-  if (lastRow - firstRow + 1 > rowCap) {
-    warnings.push({
-      page: sheetIndex + 1,
-      message: `시트 "${sheetName}": ${lastRow - firstRow + 1}행 × ${maxCol + 1}열 중 앞 ${rowCap}행만 표로 냈습니다 (표 칸 상한 ${MAX_TABLE_CELLS})`,
-      code: "TRUNCATED_TABLE",
-    })
-    lastRow = firstRow + rowCap - 1
+  // 글 있는 행·열만 표로 편다 — 범위 안의 빈 행·열까지 펼치면 셀 6개짜리 희소 시트(A1~BZ5000)가 5,000행×78열 빈 칸
+  // 118만 자가 됐다(#91). keepAnchoredEmptyCols(빈 열 유지 계약)면 열은 종전대로 0 ~ maxCol
+  const keepRows: number[] = []
+  for (let r = firstRow; r <= lastRow; r++) if (rows.get(r)?.some(v => v !== "")) keepRows.push(r)
+  let keepCols: number[]
+  if (keepAnchoredEmptyCols) keepCols = Array.from({ length: maxCol + 1 }, (_, c) => c)
+  else {
+    const used = new Set<number>()
+    for (const r of keepRows) rows.get(r)!.forEach((v, c) => { if (v !== "") used.add(c) })
+    keepCols = [...used].sort((a, b) => a - b)
   }
 
-  // 병합 맵 — 펼칠 행 범위로 자른다. 덮인 칸 표시도 범위 안만(시트 전체를 덮는 병합 하나가 칸 수만큼 키를 만들던 것).
-  // 행 범위 밖으로 뻗은 rowSpan 은 표 밖을 가리키는 IR 이 되고(끝 빈 행으로 이어진 병합 — xls web035 마지막 행 rowspan 2),
-  // 머리가 범위 위(글 없는 행)에 있는 병합은 덮인 칸만 빠져 그 행 칸들이 왼쪽으로 밀린다 — 머리를 범위 첫 행으로 옮긴다
-  const mergeMap = new Map<string, { colSpan: number; rowSpan: number }>()
+  const rowCap = sheetRowCap(keepCols.length)
+  if (keepRows.length > rowCap) {
+    warnings.push({
+      page: sheetIndex + 1,
+      message: `시트 "${sheetName}": ${keepRows.length}행 × ${keepCols.length}열 중 앞 ${rowCap}행만 표로 냈습니다 (표 칸 상한 ${MAX_TABLE_CELLS})`,
+      code: "TRUNCATED_TABLE",
+    })
+    keepRows.length = rowCap
+  }
+  const rowIdx = new Map(keepRows.map((r, i) => [r, i]))
+  const colIdx = new Map(keepCols.map((c, i) => [c, i]))
+
+  // 병합 — 남은 행·열로 줄인다. 머리가 빈 행·열(빠진 줄)에 있으면 병합 안 첫 남은 칸이 머리가 되고, 남은 칸이 없으면 병합을 버린다
+  // (시트 전체를 덮는 병합 하나가 칸 수만큼 키를 만들지 않게 남은 행·열만 돈다)
+  const mergeMap = new Map<string, { colSpan: number; rowSpan: number; text: string }>()
   const mergeSkip = new Set<string>()
   for (const m of merges) {
-    const r1 = Math.max(m.r1, firstRow)
-    const r2 = Math.min(m.r2, lastRow)
-    if (r1 > r2 || m.c2 < m.c1) continue // 범위 밖·거꾸로 적힌 병합(손상 파일) — span 0 이하 칸은 builder 에서 글이 사라진다
-    mergeMap.set(`${r1},${m.c1}`, { colSpan: m.c2 - m.c1 + 1, rowSpan: r2 - r1 + 1 })
-    for (let r = r1; r <= r2; r++) {
-      for (let c = m.c1; c <= Math.min(m.c2, maxCol); c++) {
-        if (r !== r1 || c !== m.c1) mergeSkip.add(`${r},${c}`)
-      }
-    }
+    if (m.r2 < m.r1 || m.c2 < m.c1) continue // 거꾸로 적힌 병합(손상 파일) — span 0 이하 칸은 builder 에서 글이 사라진다
+    const rr = keepRows.filter(r => r >= m.r1 && r <= m.r2)
+    const cc = keepCols.filter(c => c >= m.c1 && c <= m.c2)
+    if (!rr.length || !cc.length) continue
+    // 병합 글은 원래 머리 칸의 글 — 머리 행·열이 빠졌으면 병합 안 첫 글
+    let text = rows.get(m.r1)?.[m.c1] ?? ""
+    for (let k = 0; !text && k < rr.length; k++) for (const c of cc) { text = rows.get(rr[k])?.[c] ?? ""; if (text) break }
+    mergeMap.set(`${rowIdx.get(rr[0])},${colIdx.get(cc[0])}`, { colSpan: cc.length, rowSpan: rr.length, text })
+    for (const r of rr) for (const c of cc) if (r !== rr[0] || c !== cc[0]) mergeSkip.add(`${rowIdx.get(r)},${colIdx.get(c)}`)
   }
 
   // CellContext[][] → buildTable (2-pass)
   const cellRows: CellContext[][] = []
-  for (let r = firstRow; r <= lastRow; r++) {
-    const cells = rows.get(r)
+  for (let ri = 0; ri < keepRows.length; ri++) {
+    const cells = rows.get(keepRows[ri])
     const row: CellContext[] = []
-    for (let c = 0; c <= maxCol; c++) {
-      const key = `${r},${c}`
+    for (let ci = 0; ci < keepCols.length; ci++) {
+      const key = `${ri},${ci}`
       if (mergeSkip.has(key)) continue
       const merge = mergeMap.get(key)
-      row.push({ text: cells?.[c] ?? "", colSpan: merge?.colSpan ?? 1, rowSpan: merge?.rowSpan ?? 1 })
+      row.push({ text: merge ? merge.text : cells?.[keepCols[ci]] ?? "", colSpan: merge?.colSpan ?? 1, rowSpan: merge?.rowSpan ?? 1 })
     }
     cellRows.push(row)
   }

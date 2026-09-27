@@ -11,13 +11,13 @@ import type {
   CellContext, IRBlock, DocumentMetadata, InternalParseResult,
   ParseOptions, ParseWarning, ExtractedImage, InlineStyle,
 } from "../types.js"
-import { KordocError, precheckZipSize, stripDtd, sanitizeHref } from "../utils.js"
+import { KordocError, precheckZipSize, unzipLimitBytes, stripDtd, sanitizeHref } from "../utils.js"
 import { blocksToMarkdown, buildTable } from "../table/builder.js"
 import { ommlElementToLatex, isDisplayMath } from "./equation.js"
 import { detectImageMime } from "../hwp5/images.js"
 
 /** ZIP 압축 해제 누적 최대 크기 (100MB) — ZIP bomb 방지 */
-const MAX_DECOMPRESS_SIZE = 100 * 1024 * 1024
+const MAX_DECOMPRESS_SIZE = unzipLimitBytes(100 * 1024 * 1024)
 
 // ─── XML 헬퍼 ──────────────────────────────────────────
 

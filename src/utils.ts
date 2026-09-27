@@ -88,6 +88,18 @@ export function compareSectionPaths(a: string, b: string): number {
 
 // ─── ZIP 안전 로딩 (ZIP bomb 방지) ────────────────────
 
+/** ZIP 비압축 상한 env 의 최대값 (MB) — 오타로 사실상 무제한이 되지 않게 */
+const MAX_UNZIP_ENV_MB = 8192
+
+/**
+ * ZIP 비압축 크기 상한 — `KORDOC_MAX_UNZIP_MB` 가 양수면 그 값(MB, 최대 8192), 아니면 포맷 기본값.
+ * 빈 행이 수백만 개인 XLSX 처럼 내용은 작고 XML 만 큰 실문서를 폐쇄망 대량 적재에서 받으려는 설정 (#91)
+ */
+export function unzipLimitBytes(defaultBytes: number): number {
+  const mb = Number(process.env.KORDOC_MAX_UNZIP_MB)
+  return Number.isFinite(mb) && mb > 0 ? Math.min(mb, MAX_UNZIP_ENV_MB) * 1024 * 1024 : defaultBytes
+}
+
 /**
  * ZIP bomb 사전 검사 — Central Directory에서 비압축 합계와 엔트리 수 확인.
  * HWPX/XLSX/DOCX 등 모든 ZIP 기반 포맷에서 공통 사용.

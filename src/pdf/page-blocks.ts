@@ -309,14 +309,18 @@ function cleanCellText(text: string): string {
 /** 틀 셀 좌표와 같은 부모를 가진 중첩표를 pending 에서 꺼낸다 (제자리 제거) */
 const FRAME_RECT_TOL = 1.5
 function takePendingNested(
-  pending: Array<{ parent: { x1: number; y1: number; x2: number; y2: number }; block: IRBlock }>,
+  pending: Array<{ parent: { x1: number; y1: number; x2: number; y2: number }; block: IRBlock; contained?: true }>,
   cellBox: { x1: number; y1: number; x2: number; y2: number },
+  clipCell: boolean,
 ): IRBlock[] {
   const out: IRBlock[] = []
   for (let i = pending.length - 1; i >= 0; i--) {
     const p = pending[i].parent
-    if (Math.abs(p.x1 - cellBox.x1) <= FRAME_RECT_TOL && Math.abs(p.x2 - cellBox.x2) <= FRAME_RECT_TOL
-      && Math.abs(p.y1 - cellBox.y1) <= FRAME_RECT_TOL && Math.abs(p.y2 - cellBox.y2) <= FRAME_RECT_TOL) {
+    // 선 격자 중첩표(contained)는 칸이 자기 상자를 품으면 그 칸의 표 — 클립 중첩표는 틀 칸 클립과 같은 사각형일 때만
+    if (pending[i].contained
+      ? p.x1 >= cellBox.x1 - FRAME_RECT_TOL && p.x2 <= cellBox.x2 + FRAME_RECT_TOL && p.y1 >= cellBox.y1 - FRAME_RECT_TOL && p.y2 <= cellBox.y2 + FRAME_RECT_TOL
+      : clipCell && Math.abs(p.x1 - cellBox.x1) <= FRAME_RECT_TOL && Math.abs(p.x2 - cellBox.x2) <= FRAME_RECT_TOL
+        && Math.abs(p.y1 - cellBox.y1) <= FRAME_RECT_TOL && Math.abs(p.y2 - cellBox.y2) <= FRAME_RECT_TOL) {
       out.push(pending[i].block)
       pending.splice(i, 1)
     }
@@ -378,7 +382,7 @@ function extractBlocksWithGrids(
   const proseSidebars = new Set<IRBlock>()
   // 중첩 클립 그리드(clipParent)에서 만든 표 — 틀 셀을 처리할 때 그 셀의 blocks 로 들어간다.
   // 면적 오름차순 처리라 안쪽 표가 항상 틀보다 먼저 여기 쌓인다
-  const pendingNested: Array<{ parent: { x1: number; y1: number; x2: number; y2: number }; block: IRBlock }> = []
+  const pendingNested: Array<{ parent: { x1: number; y1: number; x2: number; y2: number }; block: IRBlock; contained?: true }> = []
 
   // 그리드를 Y좌표 내림차순 정렬 (위→아래). 셀이 확정된 클립 그리드가 먼저 글을 가져간다 —
   // 틀 표(3×3 테두리 등)가 위에서 먼저 삼키면 안쪽 "발신명의 | 직인" 표가 빈 채로 죽는다.
@@ -388,6 +392,9 @@ function extractBlocksWithGrids(
   const sortedGrids = [...grids].sort((a, b) =>
     (b.cells ? 1 : 0) - (a.cells ? 1 : 0)
     || (a.cells && b.cells ? gridArea(a) - gridArea(b) : 0) // 클립 그리드끼리는 면적 오름차순 — 중첩표가 틀보다 먼저
+    // 선 격자 중첩표도 품는 칸보다 먼저, 안쪽 단부터(면적 오름차순)
+    || (b.lineNested ? 1 : 0) - (a.lineNested ? 1 : 0)
+    || (a.lineNested && b.lineNested ? gridArea(a) - gridArea(b) : 0)
     || b.bbox.y2 - a.bbox.y2)
 
   for (const grid of sortedGrids) {
@@ -397,10 +404,14 @@ function extractBlocksWithGrids(
     const numGridRows = grid.rowYs.length - 1
     const numGridCols = grid.colXs.length - 1
     const gridW = grid.bbox.x2 - grid.bbox.x1
-    if (!grid.cells && numGridRows === 1 && numGridCols >= 2) continue
+    // 선 격자 중첩표를 품은 틀은 머리행·쪽 레이아웃 틀로 거르지 않는다 — 걸러지면 안쪽 표가 칸을 잃고 따로 나간다
+    const holdsNested = !grid.cells && pendingNested.some(p => p.contained &&
+      p.parent.x1 >= grid.bbox.x1 - FRAME_RECT_TOL && p.parent.x2 <= grid.bbox.x2 + FRAME_RECT_TOL &&
+      p.parent.y1 >= grid.bbox.y1 - FRAME_RECT_TOL && p.parent.y2 <= grid.bbox.y2 + FRAME_RECT_TOL)
+    if (!grid.cells && !holdsNested && numGridRows === 1 && numGridCols >= 2) continue
     // Full-width one-column frames are usually page layout. The compact
     // repeated-row candidate is checked again after text is mapped to cells.
-    if (!grid.cells && numGridCols === 1 && numGridRows >= 2 &&
+    if (!grid.cells && !holdsNested && numGridCols === 1 && numGridRows >= 2 &&
         (numGridRows < 5 || gridW > pageWidth * 0.7)) continue
     // 그리드 영역 내 텍스트 아이템 수집
     const tableItems: NormItem[] = []
@@ -449,7 +460,7 @@ function extractBlocksWithGrids(
       // 틀 셀 — 안쪽 클립 그리드가 낸 표를 이 셀의 blocks 에 원문 순서(위→아래)로 넣는다.
       // 지정서·영치증의 "발신명의 | 직인" 표가 틀 뒤 별도 블록으로 빠지던 것을 HWP 파서 IR 과
       // 같은 모양(셀 안 문단 + 중첩표)으로 (v4.12.2)
-      const nested = grid.cells ? takePendingNested(pendingNested, cell.bbox) : []
+      const nested = pendingNested.length ? takePendingNested(pendingNested, cell.bbox, !!grid.cells) : []
       if (nested.length > 0) {
         nestedAttached = true
         const built = buildFrameCellBlocks(cellItems, nested, pageNum, { box: cell.bbox, lex })
@@ -582,13 +593,14 @@ function extractBlocksWithGrids(
     // 프로즈 박스: 가짜 열 위로 전폭 프로즈가 흐르는 표 → 표를 버리고 아이템을
     // 프로즈 폴백으로 재추출 (셀 조인 demote는 찢긴 조각을 스크램블하므로 부적합)
     // 클립 그리드는 셀 기하가 확정된 실제 표 — 프로즈 박스·의사 표 강등을 적용하지 않는다
-    if (!grid.cells && isProseBoxGrid(grid, verticals, irTable)) {
+    // 중첩표를 품은 표는 강등하지 않는다 — 강등 경로는 자기 글 아이템만 되살려 붙은 중첩 블록이 통째로 사라진다
+    if (!grid.cells && !nestedAttached && isProseBoxGrid(grid, verticals, irTable)) {
       for (const it of tableItems) usedItems.delete(it)
       continue
     }
     // 벡터로 그린 막대 차트의 눈금선·막대 격자는 표가 아니다 — 값 글자는 차트 영역 안에서
     // 위→아래 줄 순서의 글로 둔다(쪽 본문과 섞으면 열 감지가 본문을 찢는다, table-roles.ts)
-    if (!grid.cells && isChartTable(irTable)) {
+    if (!grid.cells && !nestedAttached && isChartTable(irTable)) {
       blocks.push(chartBlock(tableItems, pageNum, { page: pageNum, x: grid.bbox.x1, y: grid.bbox.y1, width: gridW, height: grid.bbox.y2 - grid.bbox.y1 }))
       continue
     }
@@ -632,6 +644,11 @@ function extractBlocksWithGrids(
       continue
     }
 
+    // 선 격자 중첩표 — 자기 상자를 품는 칸(나중에 처리되는 바깥 표)의 blocks 로
+    if (grid.lineNested) {
+      pendingNested.push({ parent: grid.bbox, block: { type: "table", table: irTable, pageNumber: pageNum, bbox: tableBbox }, contained: true })
+      continue
+    }
     blocks.push({ type: "table", table: irTable, pageNumber: pageNum, bbox: tableBbox })
   }
   // 틀 셀에 못 붙은 중첩표(틀이 빈 표로 걸러졌거나 셀 좌표가 어긋난 경우) — 종전대로 독립 블록

@@ -87,14 +87,15 @@ describe("XLS — 먼 좌표 셀 하나로 밀집 격자를 깔지 않는다", (
     assert.ok(r.markdown.includes("머리"))
   })
 
-  it("65535행·150열 셀 하나만: 그 행 하나짜리 표 (앞 빈 행·빈 열을 격자로 선할당하지 않음)", async () => {
+  it("65535행·150열 셀 하나만: 그 칸 하나짜리 표 (앞 빈 행·빈 열을 격자로 선할당하지도, 표로 펼치지도 않음 #91)", async () => {
     const r = await parseXls(buildXls([label(65535, 150, "먼칸")]))
     assert.equal(r.success, true)
     if (!r.success) return
     const t = r.blocks.find(b => b.type === "table")?.table
     assert.ok(t)
     assert.equal(t.rows, 1)
-    assert.equal(t.cells[0][150].text, "먼칸")
+    assert.equal(t.cols, 1)
+    assert.equal(t.cells[0][0].text, "먼칸")
   })
 })
 
@@ -191,12 +192,22 @@ describe("병합은 펼칠 행 범위로 자른다", () => {
 
   it("글 없는 행에 머리가 있는 병합은 첫 행으로 머리를 옮겨 칸이 밀리지 않는다", () => {
     // 0행은 비어 있고(표에서 빠짐) A1:A3 병합이 1~2행의 A 칸을 덮는다 — 종전엔 덮인 A 칸만 빠져 "값" 이 A 열로 밀렸다
-    const rows = new Map<number, string[]>([[0, ["", ""]], [1, ["", "값1"]], [2, ["", "값2"]]])
+    const rows = new Map<number, string[]>([[0, ["", ""]], [1, ["구분", "값1"]], [2, ["", "값2"]]])
     const blocks = sheetToBlocks("S", rows, 1, [{ r1: 0, c1: 0, r2: 2, c2: 0 }], 0, [])
     const t = blocks.find(b => b.type === "table")!.table!
     assert.equal(t.rows, 2)
     assert.equal(t.cells[0][0].rowSpan, 2)
     assert.equal(t.cells[0][1].text, "값1")
     assert.equal(t.cells[1][1].text, "값2")
+  })
+
+  it("희소 시트: 글 있는 행·열만 표로 편다 (#91 — A1~BZ5000 에 셀 6개가 5,000행×78열 빈 칸이 되던 것)", () => {
+    const rows = new Map<number, string[]>()
+    const put = (r: number, c: number, v: string) => { const a = rows.get(r) ?? []; a[c] = v; rows.set(r, Array.from(a, x => x ?? "")) }
+    put(0, 0, "보고서"); put(4, 2, "금액"); put(4, 3, "비고"); put(1999, 0, "합계"); put(2999, 51, "끝"); put(4999, 77, "최종")
+    const t = sheetToBlocks("S", rows, 77, [], 0, []).find(b => b.type === "table")!.table!
+    assert.equal(t.rows, 5)
+    assert.equal(t.cols, 5)
+    assert.deepEqual(t.cells[1].map(c => c.text), ["", "금액", "비고", "", ""])
   })
 })

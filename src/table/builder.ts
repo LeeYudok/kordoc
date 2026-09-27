@@ -283,7 +283,9 @@ function sanitizeText(text: string): string {
  * 적은 행(≤3) + 셀 내 줄바꿈 다량 → table 블록을 paragraph 블록들로 분해
  * heading 감지 전에 호출해야 해체된 텍스트에 heading 감지 적용 가능
  *
- * 호출 정책(의도): HWP5 파서만 호출한다. 구형 HWP5 문서는 제목/본문을 표로
+ * 호출 정책(의도): HWP5·HWP3 파서만 호출한다. 칸 테두리가 보이는 표(markBorderedTable, HWP5 borderFill)는 해체하지 않는다 —
+ * 레이아웃 표는 테두리 없는 틀이고, 테두리 있는 표를 풀면 같은 문서의 HWPX 표와 어긋나고 틀 안 중첩표가 바깥 단부터 풀렸다
+ * (v4.15.7). 구형 문서는 제목/본문을 표로
  * 감싼 레이아웃 표가 흔하지만, HWPX는 그 관행이 드물고 무엇보다 patchHwpx/
  * fillHwpx 무손실 라운드트립이 "파서 렌더 = 소스맵 표 서수" 대응에 의존하므로
  * HWPX에서 표를 문단으로 해체하면 표 매핑이 깨진다. HWPX 적용은 코퍼스
@@ -292,11 +294,17 @@ function sanitizeText(text: string): string {
 /** 서식 틀로 보는 표의 총 글자 수 상한 — 별지서식 틀은 수백 자(영치증 ~400), 페이지 레이아웃 표는 그 이상 */
 const FORM_FRAME_MAX_TEXT = 600
 
+/** 칸 테두리가 보이는 표 — 레이아웃 표가 아니다 (HWP5 파서가 borderFill 로 표시, flattenLayoutTables 가 건너뜀) */
+const BORDERED_TABLES = new WeakSet<IRTable>()
+export function markBorderedTable(table: IRTable): void {
+  BORDERED_TABLES.add(table)
+}
+
 export function flattenLayoutTables(blocks: IRBlock[]): IRBlock[] {
   const result: IRBlock[] = []
 
   for (const block of blocks) {
-    if (block.type !== "table" || !block.table) {
+    if (block.type !== "table" || !block.table || BORDERED_TABLES.has(block.table)) {
       result.push(block)
       continue
     }
@@ -553,10 +561,7 @@ export function blocksToMarkdown(blocks: IRBlock[]): string {
         lines.push("")
       }
       // 표 캡션 — 표 위에 강조 문단으로 출력 (v3.0)
-      if (block.table.caption) {
-        const caption = sanitizeText(block.table.caption)
-        if (caption) lines.push(`**${escapeGfm(caption)}**`, "")
-      }
+      lines.push(...captionToMarkdown(block.table))
       const tableMd = tableToMarkdown(block.table)
       if (tableMd) {
         lines.push(tableMd)
@@ -566,6 +571,42 @@ export function blocksToMarkdown(blocks: IRBlock[]): string {
   }
 
   return lines.join("\n").trim()
+}
+
+/** 표 캡션 → 마크다운 줄. 캡션 안 표(#55 captionBlocks)는 " / " 평탄화 글 대신 표로 낸다 — 종전엔 IR 에만 있고
+ *  마크다운에서 표 구조가 사라졌다(issue1891 공사비 6×5). 글 문단은 종전처럼 강조 문단 */
+function captionToMarkdown(table: IRTable): string[] {
+  if (table.captionBlocks?.some(b => b.type === "table" && b.table)) {
+    return table.captionBlocks.flatMap(b => {
+      if (b.type === "table" && b.table) {
+        const md = tableToMarkdown(b.table)
+        return [...captionToMarkdown(b.table), ...(md ? [md, ""] : [])]
+      }
+      const t = sanitizeText(b.text ?? "")
+      return t ? [`**${escapeGfm(t)}**`, ""] : []
+    })
+  }
+  const caption = table.caption ? sanitizeText(table.caption) : ""
+  return caption ? [`**${escapeGfm(caption)}**`, ""] : []
+}
+
+/** 표 캡션 → HTML 칸 글 (중첩표 캡션). 캡션 안 표는 표로 */
+function captionToHtml(table: IRTable): string {
+  if (table.captionBlocks?.some(b => b.type === "table" && b.table)) {
+    return table.captionBlocks
+      .map(b => {
+        if (b.type === "table" && b.table) {
+          const cap = captionToHtml(b.table)
+          return (cap ? cap + "<br>" : "") + tableToHtml(b.table)
+        }
+        const t = sanitizeText(b.text ?? "")
+        return t ? escapeHtmlCellText(t).replace(/\n/g, "<br>") : ""
+      })
+      .filter(Boolean)
+      .join("<br>")
+  }
+  const cap = table.caption ? sanitizeText(table.caption) : ""
+  return cap ? escapeHtmlCellText(cap).replace(/\n/g, "<br>") : ""
 }
 
 /** 병합 셀 존재 여부 확인 */
@@ -630,8 +671,8 @@ function cellInnerHtml(cell: IRCell): string {
       .map(b => {
         if (b.type === "table" && b.table) {
           // 중첩표 캡션도 보존 — 표 위에 텍스트로
-          const cap = b.table.caption ? sanitizeText(b.table.caption) : ""
-          return (cap ? escapeHtmlCellText(cap) + "<br>" : "") + tableToHtml(b.table)
+          const cap = captionToHtml(b.table)
+          return (cap ? cap + "<br>" : "") + tableToHtml(b.table)
         }
         if (b.type === "image" && b.text) return `<img src="${escapeHtml(b.text, true)}" alt="image">`
         const t = sanitizeText(visibleText(b))
@@ -749,6 +790,7 @@ function tableToMarkdown(table: IRTable): string {
       if (!cell) continue
       // 왕복 채널 셀 spans (v4.0.4) — 강조 마커 재방출 (문단별, 개행은 <br> 규약).
       // 이미지 블록이 있는 셀도 blocks 순서대로 직렬화 — text 평탄화에 참조가 없어도 `![image](src)` 가 남는다 (#76)
+      // 문단 안 줄바꿈(span 글의 \n)도 <br> — 종전엔 blocks 경로만 빠져 GFM 행이 칸 중간에서 끊겼다(issue6143 5×2 → 3×2)
       display[r][c] = (cell.blocks?.some(b => b.spans || (b.type === "image" && b.text))
         ? cell.blocks
           .map(b => b.type === "image" && b.text
@@ -756,8 +798,8 @@ function tableToMarkdown(table: IRTable): string {
             : b.spans ? spansToMarkdown(b.spans) + escapeGfm(noteSuffix(b)) : escapeGfm(sanitizeText(b.text ?? "") + noteSuffix(b)))
           .filter(Boolean)
           .join("<br>")
-        : escapeGfm(sanitizeText(cell.text)).replace(/\n/g, "<br>")
-      ).replace(/(?<!\\)\|/g, "\\|") // 코드 span 등 escapeGfm 밖의 파이프만 (이중 이스케이프 방지)
+        : escapeGfm(sanitizeText(cell.text))
+      ).replace(/\n/g, "<br>").replace(/(?<!\\)\|/g, "\\|") // 코드 span 등 escapeGfm 밖의 파이프만 (이중 이스케이프 방지)
 
       // colSpan/rowSpan: 병합된 열은 빈 칸으로 유지 (텍스트 중복 방지)
       for (let dr = 0; dr < cell.rowSpan; dr++) {
@@ -773,42 +815,16 @@ function tableToMarkdown(table: IRTable): string {
     }
   }
 
-  // rowSpan 잔류 처리:
-  // 1) 완전 빈 행 제거
-  // 2) "첫 열만 값, 나머지 빈" 행 → 다음 데이터 행의 첫 열에 값을 전파
-  //    단, colSpan으로 인한 빈 열(skip 셀)은 이 대상이 아님
+  // rowSpan 잔류 처리: 병합에 덮인 칸만 있는 빈 행(병합+수식 GFM 경로)만 뺀다.
+  // "첫 열만 값인 행을 다음 행 첫 칸에 합치기"(v0.1)는 뺐다 — 서로 다른 행을 한 행으로 섞었다(희소 시트 "보고서" 행과
+  // "금액 | 비고" 행이 한 행이 됨 #91, 개조식 과제 표 "① 규제영역" 행). 병합은 IR 이 rowSpan 으로 이미 나타낸다
   const uniqueRows: string[][] = []
-  let pendingLabelRow: string[] | null = null
   for (let r = 0; r < display.length; r++) {
     const row = display[r]
-    if (row.every(cell => cell === "")) {
-      // rowSpan 잔류 행(병합 커버 셀 포함 — 병합+수식 GFM 경로)만 제거.
-      // 앵커 셀이 전부 빈 텍스트인 진짜 빈 행은 문서 구조 — 보존해야 왕복이 성립한다.
-      if (row.some((_, c) => skip.has(`${r},${c}`))) continue
-      if (pendingLabelRow) { uniqueRows.push(pendingLabelRow); pendingLabelRow = null }
-      uniqueRows.push(row)
-      continue
-    }
-
-    // 첫 열만 값이 있고 나머지 모두 빈 행 → 다음 데이터 행의 첫 열에 전파
-    // 단, colSpan으로 인한 빈 열(skip 셀)은 "진짜 빈"이 아니므로 제외
-    const nonEmptyCols = row.filter(cell => cell !== "")
-    const hasSkipInRow = row.some((_, c) => skip.has(`${r},${c}`))
-    if (!hasSkipInRow && nonEmptyCols.length === 1 && row[0] !== "" && row.slice(1).every(c => c === "")) {
-      if (pendingLabelRow) uniqueRows.push(pendingLabelRow) // 연속 보류 — 앞 행 소실 방지
-      pendingLabelRow = row
-      continue
-    }
-
-    // 보류한 첫 열 값을 현재 행의 빈 첫 열에 전파, 전파 불가면 보류 행 그대로 출력
-    if (pendingLabelRow) {
-      if (row[0] === "") row[0] = pendingLabelRow[0]
-      else uniqueRows.push(pendingLabelRow)
-      pendingLabelRow = null
-    }
+    // 앵커 셀이 전부 빈 텍스트인 진짜 빈 행은 문서 구조 — 보존해야 왕복이 성립한다
+    if (row.every(cell => cell === "") && row.some((_, c) => skip.has(`${r},${c}`))) continue
     uniqueRows.push(row)
   }
-  if (pendingLabelRow) uniqueRows.push(pendingLabelRow) // 표 끝 보류 행 소실 방지
 
   if (uniqueRows.length === 0) return ""
 

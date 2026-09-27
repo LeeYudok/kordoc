@@ -48,6 +48,16 @@ const CUT_VCHAIN_X_TOL = 1.5
  *  CHAIN_GAP(3)보다 좁게 잡아 별개 표의 경계 간격을 잇지 않는다 */
 const CUT_VCHAIN_GAP = 1.0
 
+// ─── 선 격자 중첩표 ──────────────────────────────────
+/** 한 표의 괘선은 끝점이 맞닿는다 — 이 허용차로 이은 성분이 괘선이 실제로 이어진 표 하나다 */
+const NEST_STRICT_TOL = 0.5
+/** 중첩 상자는 바깥 상자 안쪽에 칸 여백만큼 떠 있다(한컴 기본 안 여백 1.8mm ≈ 5pt, 아래 여백 1pt 실측) */
+const NEST_MIN_GAP = 0.8
+/** 상자 변: 그 변을 이루는 선이 변 길이의 이만큼 이상을 덮어야 닫힌 상자 */
+const NEST_EDGE_COVER = 0.95
+/** 이중 테두리: 안쪽 선이 바깥 선에서 이 거리(pt) 안에 네 쪽 모두 붙어 있으면 두 줄 테두리 한 벌 */
+const NEST_DOUBLE_RULE_GAP = 6
+
 // ─── Vertex(교차점) 생성 ─────────────────────────────
 
 /**
@@ -211,10 +221,14 @@ export function buildTableGrids(
 
   // 적층 표 분리 — 분리된 밴드는 공유 컷라인 위 vertex가 반대편 표의 수직선 x를
   // 나르므로(교차점이 경계선상에 생김) 전역 vertex 대신 밴드 자기 선으로 재계산한다
-  const groups: Array<{ lines: TypedLine[]; fromSplit: boolean }> = []
-  for (const g of groupConnectedLines(allLines)) {
+  const groups: Array<{ lines: TypedLine[]; fromSplit: boolean; nested?: boolean }> = []
+  for (const g0 of groupConnectedLines(allLines)) {
+    // 칸 안에 떠 있는 닫힌 표(선 격자 중첩표)는 CONNECT_TOL 로 바깥 괘선에 붙어 한 격자로 뭉친다 — 먼저 떼어 따로 세운다
+    const { outer: g, nested } = splitNestedBoxes(g0)
+    for (const n of nested) groups.push({ lines: n, fromSplit: true, nested: true })
+    if (g.length === 0) continue
     const bands = splitStackedGroup(g)
-    for (const b of bands) groups.push({ lines: b, fromSplit: bands.length > 1 })
+    for (const b of bands) groups.push({ lines: b, fromSplit: bands.length > 1 || nested.length > 0 })
   }
   const grids: TableGrid[] = []
 
@@ -233,7 +247,7 @@ export function buildTableGrids(
     return lo
   }
 
-  for (const { lines: group, fromSplit } of groups) {
+  for (const { lines: group, fromSplit, nested } of groups) {
     const hLines = group.filter(l => l.type === "h")
     const vLines = group.filter(l => l.type === "v")
 
@@ -315,10 +329,11 @@ export function buildTableGrids(
       x2: validColXs[validColXs.length - 1], y2: validRowYs[0],
     }
 
-    grids.push({ rowYs: validRowYs, colXs: validColXs, bbox, vertexRadius: groupRadius })
+    grids.push({ rowYs: validRowYs, colXs: validColXs, bbox, vertexRadius: groupRadius, ...(nested ? { lineNested: true } : {}) })
   }
 
-  return mergeAdjacentGrids(grids)
+  // 중첩표는 제자리에 둔다 — 같은 열 수로 위아래 붙은 칸 안 표 둘을 한 표로 잇지 않는다
+  return [...mergeAdjacentGrids(grids.filter(g => !g.lineNested)), ...grids.filter(g => g.lineNested)]
 }
 
 /** 음영 클립 판정: 클립 칸과 채움 사각형 좌표 허용 차 (pt) */
@@ -587,6 +602,63 @@ function splitStackedGroup(group: TypedLine[]): TypedLine[][] {
   return bands.filter(b => b.length > 0)
 }
 
+/**
+ * 선 격자 중첩표 떼어내기 — 칸 클립이 없는 PDF(rhwp·워드 등)에서 틀 칸 안의 표는 칸 여백(≈5pt)만큼 떨어져 그려지는데
+ * CONNECT_TOL(5) 이 그 틈을 이어 틀과 안쪽 표가 격자 하나(개인정보 분석 별지 17×11)로 뭉쳤다. 끝점이 실제로 맞닿는
+ * 선끼리(NEST_STRICT_TOL) 이은 성분 가운데 네 변이 닫힌 상자이고, 다른 성분의 상자 안쪽에 네 변 모두 NEST_MIN_GAP 이상
+ * 떨어져 있으며, 다른 성분의 선이 그 안을 지나지 않는 것을 중첩표로 본다. 한 표 안의 괘선은 맞닿으므로 떨어지지 않는다
+ */
+function splitNestedBoxes(group: TypedLine[]): { outer: TypedLine[]; nested: TypedLine[][] } {
+  const comps = groupConnectedLines(group, NEST_STRICT_TOL)
+  if (comps.length < 2) return { outer: group, nested: [] }
+  const boxes = comps.map(c => {
+    const hs = c.filter(l => l.type === "h"), vs = c.filter(l => l.type === "v")
+    if (hs.length < 2 || vs.length < 2) return null
+    const x1 = Math.min(...vs.map(v => v.x1)), x2 = Math.max(...vs.map(v => v.x1))
+    const y1 = Math.min(...hs.map(h => h.y1)), y2 = Math.max(...hs.map(h => h.y1))
+    if (x2 - x1 < 1 || y2 - y1 < 1) return null
+    const cover = (segs: Array<[number, number]>, a: number, b: number) =>
+      segs.reduce((s, [p, q]) => s + Math.max(0, Math.min(q, b) - Math.max(p, a)), 0) >= (b - a) * NEST_EDGE_COVER
+    const edgeH = (y: number) => cover(hs.filter(h => Math.abs(h.y1 - y) <= NEST_STRICT_TOL).map(h => [h.x1, h.x2]), x1, x2)
+    const edgeV = (x: number) => cover(vs.filter(v => Math.abs(v.x1 - x) <= NEST_STRICT_TOL).map(v => [v.y1, v.y2]), y1, y2)
+    return edgeH(y1) && edgeH(y2) && edgeV(x1) && edgeV(x2) ? { x1, y1, x2, y2 } : null
+  })
+  const bboxOf = (c: TypedLine[]) => ({
+    x1: Math.min(...c.map(l => Math.min(l.x1, l.x2))), x2: Math.max(...c.map(l => Math.max(l.x1, l.x2))),
+    y1: Math.min(...c.map(l => Math.min(l.y1, l.y2))), y2: Math.max(...c.map(l => Math.max(l.y1, l.y2))),
+  })
+  const extents = comps.map(bboxOf)
+  const nestedIdx = new Set<number>()
+  comps.forEach((_, i) => {
+    const b = boxes[i]
+    if (!b) return
+    const e = extents[i]
+    // 안쪽에 떠 있기: 다른 성분(좌우 세로선이 있는 틀 — 쪽을 넘어 윗변·아랫변이 없는 틀 조각 포함)이 네 쪽 모두 틈을 두고 감싼다
+    // 안쪽 괘선 없는 상자(네 변뿐)가 바깥 상자에 네 쪽 모두 바짝 붙어 있으면 이중 테두리 글상자다(인천 현장실습 매뉴얼 2쪽:
+    // 65~490 / 69~486 이중선 상자 둘) — 중첩표로 떼면 바깥 틀이 산문 상자로 강등되며 글이 사라졌다
+    const uniq = (xs: number[]) => xs.filter((x, k) => xs.findIndex(y => Math.abs(y - x) <= NEST_STRICT_TOL) === k).length
+    const bare = uniq(comps[i].filter(l => l.type === "h").map(l => l.y1)) === 2 && uniq(comps[i].filter(l => l.type === "v").map(l => l.x1)) === 2
+    const inside = comps.some((c, j) => {
+      if (j === i || c.filter(l => l.type === "v").length < 2 || !c.some(l => l.type === "h")) return false
+      const p = extents[j]
+      const gaps = [e.x1 - p.x1, p.x2 - e.x2, e.y1 - p.y1, p.y2 - e.y2]
+      return gaps.every(g => g >= NEST_MIN_GAP) && !(bare && gaps.every(g => g <= NEST_DOUBLE_RULE_GAP))
+    })
+    if (!inside) return
+    // 다른 성분의 선이 상자 안을 지나면(격자의 한 조각) 중첩표가 아니다
+    const crossed = comps.some((c, j) => j !== i && c.some(l => l.type === "h"
+      ? l.y1 > e.y1 + NEST_MIN_GAP && l.y1 < e.y2 - NEST_MIN_GAP && Math.min(l.x2, e.x2) - Math.max(l.x1, e.x1) > NEST_MIN_GAP
+      : l.x1 > e.x1 + NEST_MIN_GAP && l.x1 < e.x2 - NEST_MIN_GAP && Math.min(l.y2, e.y2) - Math.max(l.y1, e.y1) > NEST_MIN_GAP)
+      && !(extents[j].x1 >= e.x1 && extents[j].x2 <= e.x2 && extents[j].y1 >= e.y1 && extents[j].y2 <= e.y2))
+    if (!crossed) nestedIdx.add(i)
+  })
+  if (nestedIdx.size === 0) return { outer: group, nested: [] }
+  return {
+    outer: comps.filter((_, i) => !nestedIdx.has(i)).flat(),
+    nested: comps.filter((_, i) => nestedIdx.has(i)),
+  }
+}
+
 /** 선 bbox 버킷 그리드 셀 크기 (pt) — 근접 후보 열거용 */
 const GROUP_BUCKET_CELL = 100
 
@@ -597,7 +669,7 @@ const GROUP_BUCKET_CELL = 100
  * 연결 컴포넌트가 동일하고, 그룹 출력 순서(컴포넌트 최소 선 인덱스 순·그룹 내
  * 인덱스 순)는 union 순서와 무관해 기존과 결과가 같다.
  */
-function groupConnectedLines(lines: TypedLine[]): TypedLine[][] {
+function groupConnectedLines(lines: TypedLine[], tol = CONNECT_TOL): TypedLine[][] {
   const parent = lines.map((_, i) => i)
 
   function find(x: number): number {
@@ -642,7 +714,7 @@ function groupConnectedLines(lines: TypedLine[]): TypedLine[][] {
         const key = i * lines.length + j
         if (tested.has(key)) continue
         tested.add(key)
-        if (linesIntersect(lines[i], lines[j])) {
+        if (linesIntersect(lines[i], lines[j], tol)) {
           union(i, j)
         }
       }
@@ -660,20 +732,19 @@ function groupConnectedLines(lines: TypedLine[]): TypedLine[][] {
 }
 
 /** 수평선과 수직선의 교차 판정 (tolerance 포함) */
-function linesIntersect(a: TypedLine, b: TypedLine): boolean {
+function linesIntersect(a: TypedLine, b: TypedLine, tol = CONNECT_TOL): boolean {
   if (a.type === b.type) {
     if (a.type === "h") {
-      if (Math.abs(a.y1 - b.y1) > CONNECT_TOL) return false
-      return Math.min(a.x2, b.x2) >= Math.max(a.x1, b.x1) - CONNECT_TOL
+      if (Math.abs(a.y1 - b.y1) > tol) return false
+      return Math.min(a.x2, b.x2) >= Math.max(a.x1, b.x1) - tol
     } else {
-      if (Math.abs(a.x1 - b.x1) > CONNECT_TOL) return false
-      return Math.min(a.y2, b.y2) >= Math.max(a.y1, b.y1) - CONNECT_TOL
+      if (Math.abs(a.x1 - b.x1) > tol) return false
+      return Math.min(a.y2, b.y2) >= Math.max(a.y1, b.y1) - tol
     }
   }
 
   const h = a.type === "h" ? a : b
   const v = a.type === "h" ? b : a
-  const tol = CONNECT_TOL
 
   return (
     v.x1 >= h.x1 - tol && v.x1 <= h.x2 + tol &&
