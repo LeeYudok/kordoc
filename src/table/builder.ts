@@ -684,21 +684,6 @@ function cellInnerHtml(cell: IRCell): string {
   return escapeHtmlCellText(sanitizeText(cell.text)).replace(/\n/g, "<br>")
 }
 
-function containsInlineMath(text: string): boolean {
-  // 교대 중복 금지: [^$\n\\]가 백슬래시를 제외해 \\.와 겹치지 않는다 —
-  // 겹치면 "$"+백슬래시 연속 입력에서 지수 백트래킹(ReDoS)
-  return /(^|[^\\])\$(?=\S)(?:[^$\n\\]|\\.)+?\S\$/.test(text)
-}
-
-function tableContainsInlineMath(table: IRTable): boolean {
-  for (const row of table.cells) {
-    for (const cell of row) {
-      if (containsInlineMath(cell.text)) return true
-    }
-  }
-  return false
-}
-
 /** 병합 테이블 → HTML <table> 출력 (rowspan/colspan 보존) */
 function tableToHtml(table: IRTable): string {
   const { cells, rows: numRows, cols: numCols } = table
@@ -744,13 +729,12 @@ function tableToMarkdown(table: IRTable): string {
 
   // 구조 콘텐츠(중첩표·구분선)는 항상 HTML (#76 — hasNestedTables 일반화). GFM 은 셀 안 표를 담을 수
   // 없어 1×1·1열 경로가 중첩표를 " / " 평탄화 줄로 뭉갠다 — 수식이 섞였다고 GFM 으로 보내면 표 구조가
-  // 통째로 사라졌다 (issue1949 3×1 틀 안 중첩표 13개 → 표 0개). 병합만 있는 표는 종전대로: 수식이 있으면
-  // GFM (많은 Markdown 렌더러가 raw HTML table 내부의 $...$를 수식으로 다시 처리하지 않는다)
+  // 통째로 사라졌다 (issue1949 3×1 틀 안 중첩표 13개 → 표 0개). 병합 칸이 있는 표도 수식과 무관하게 HTML — GFM 은 병합을
+  // 빈 칸으로 펴 열이 밀린다(대기환경보전법 별표 17열 부과계수 표·결재 대장). HTML 칸 안의 $...$ 를 수식으로 그리지 않는
+  // 렌더러가 있어도 LaTeX 원문은 남는다
   if (hasStructuredCellContent(table)) return tableToHtml(table)
   if (table.renderAsTable) return tableToHtml(table)
-  if (hasMergedCells(table) && !tableContainsInlineMath(table)) {
-    return tableToHtml(table)
-  }
+  if (hasMergedCells(table)) return tableToHtml(table)
 
   // 1행 1열 → 구조화된 텍스트 (빈 셀이면 스킵)
   if (numRows === 1 && numCols === 1) {

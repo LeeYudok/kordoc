@@ -145,7 +145,7 @@ describe("blocksToMarkdown", () => {
     assert.ok(md.includes("값2"))
   })
 
-  it("수식이 있는 병합 표는 Markdown 표로 출력", () => {
+  it("수식이 있는 병합 표도 HTML 표 — 병합 보존, 수식 원문 유지", () => {
     const blocks: IRBlock[] = [
       {
         type: "table",
@@ -156,8 +156,8 @@ describe("blocksToMarkdown", () => {
       },
     ]
     const md = blocksToMarkdown(blocks)
-    assert.ok(!md.includes("<table>"), "수식 렌더링을 위해 HTML table을 피함")
-    assert.ok(md.includes("| 각도($^\\circ$) |  |"))
+    assert.ok(md.includes("<table>") && md.includes('colspan="2"'), "병합은 GFM 이 못 담는다")
+    assert.ok(md.includes("각도($^\\circ$)"))
     assert.ok(md.includes("$\\frac{1}{2}$"))
   })
 

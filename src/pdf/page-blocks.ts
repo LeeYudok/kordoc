@@ -300,6 +300,21 @@ function isProseBoxGrid(grid: TableGrid, verticals: LineSegment[], table: IRTabl
   return true
 }
 
+/**
+ * OCR 쪽의 성긴 산문 격자 — 인포그래픽의 장식 선·말풍선 틀이 격자를 이뤄 칸 넷 중 셋 이상이 비고 글은 긴 문장 칸에
+ * 몰린 것(ODL 141 "10 THINGS YOU SHOULD KNOW ABOUT COPYRIGHT"). 표가 아니라 본문이다. 텍스트층 서식(빈 기입칸 많은 신청서)과
+ * 섞이지 않게 OCR 로 읽은 쪽에서만 본다
+ */
+function isSparseProseGrid(table: IRTable): boolean {
+  if (table.rows < 4) return false
+  const texts = table.cells.flat().map(c => c.text.trim())
+  const filled = texts.filter(Boolean)
+  if (filled.length === 0 || filled.length > texts.length * 0.25) return false
+  const chars = filled.reduce((n, t) => n + t.length, 0)
+  const prose = filled.filter(t => t.length >= 60 && /[.!?。]/.test(t)).reduce((n, t) => n + t.length, 0)
+  return prose >= chars * 0.6
+}
+
 /** 셀 텍스트 정리 — 페이지 번호 표시("- 2 -") 제거 + 줄별 균등배분 공백 제거("경 제 총 괄 반" → "경제총괄반") */
 function cleanCellText(text: string): string {
   const stripped = text.replace(/^[\s]*[-–—]\s*\d+\s*[-–—][\s]*$/gm, "").trim()
@@ -373,6 +388,8 @@ function extractBlocksWithGrids(
   lex?: WrapLexicon,
   ruled: RuledTable[] = [],
 ): IRBlock[] {
+  // OCR 로 읽은 쪽(글이 모두 인식 결과) — 성긴 산문 격자 판정(isSparseProseGrid)은 이 쪽에서만
+  const ocrPage = items.length > 0 && items.every(i => i.fontName === "ocr")
   const blocks: IRBlock[] = []
   const usedItems = new Set<NormItem>()
   for (const r of ruled) {
@@ -594,7 +611,7 @@ function extractBlocksWithGrids(
     // 프로즈 폴백으로 재추출 (셀 조인 demote는 찢긴 조각을 스크램블하므로 부적합)
     // 클립 그리드는 셀 기하가 확정된 실제 표 — 프로즈 박스·의사 표 강등을 적용하지 않는다
     // 중첩표를 품은 표는 강등하지 않는다 — 강등 경로는 자기 글 아이템만 되살려 붙은 중첩 블록이 통째로 사라진다
-    if (!grid.cells && !nestedAttached && isProseBoxGrid(grid, verticals, irTable)) {
+    if (!grid.cells && !nestedAttached && (isProseBoxGrid(grid, verticals, irTable) || ocrPage && isSparseProseGrid(irTable))) {
       for (const it of tableItems) usedItems.delete(it)
       continue
     }

@@ -30,6 +30,7 @@ import { remapSymbolFontItems } from "./symbol-fonts.js"
 import { wrapEquationRuns } from "./equation-runs.js"
 import { remapControlGlyphs, restoreNamedGlyphs } from "./glyph-names.js"
 import { occludedTextItems } from "./occluded-text.js"
+import { joinVerticalColumns } from "./vertical-text.js"
 import { demoteNonHeadingRoles } from "./heading-demote.js"
 import { computeMedianFontSizeFromFreq, detectHeadings, mergeStackedHeadingLines, detectTypographyHeadings, detectDocumentStyleHeadings, detectSiblingStyleHeadings, detectRepeatedPageLabels, detectPageLeadHeadings, refineDocumentStyleHeadings, detectMarkerHeadings, detectTableCaptions, detectKoreanListBlocks, removeHeaderFooterBlocks } from "./block-detect.js"
 import { sanitizeBlockControlChars, cleanPdfText, splitSingleCellTables, joinLatinCellWraps } from "./text-clean.js"
@@ -175,7 +176,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
 
         // hidden text 필터링 + 경고 수집
         const filtered = filterHiddenText(items, pageW, pageH, viewX1, viewY1)
-        const { visible } = filtered
+        // 세로쓰기 글상자(한 자씩 쌓은 기둥이 오른쪽→왼쪽)는 기둥마다 한 줄로
+        const visible = joinVerticalColumns(filtered.visible)
         const hiddenCount = filtered.hiddenCount + occluded.size
         if (hiddenCount > 0) {
           warnings.push({ page: i, message: `${hiddenCount}개 숨겨진 텍스트 요소 필터링됨`, code: "HIDDEN_TEXT_FILTERED" })

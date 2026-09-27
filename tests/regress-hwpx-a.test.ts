@@ -95,9 +95,9 @@ describe("regress-a 1: containsInlineMath ReDoS", () => {
     assert.ok(md.length > 0)
   })
 
-  it("정상 인라인 수식 표는 여전히 GFM 경로(수식 보존)로 간다", () => {
+  it("인라인 수식이 든 병합 표도 HTML — 병합 보존, 수식 원문 유지", () => {
     const md = blocksToMarkdown([mergedTableBlock("에너지 $E=mc^2$ 공식")])
-    assert.ok(!md.includes("<table>"), "인라인 수식 병합 표는 HTML 표로 강등되지 않아야 한다")
+    assert.ok(md.includes("<table>") && md.includes("colspan") && md.includes("$E=mc^2$"))
   })
 })
 

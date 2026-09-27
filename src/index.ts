@@ -4,6 +4,7 @@
  * HWP, HWPX, PDF → Markdown 변환 통합 라이브러리
  */
 
+import { toPlainMarkdown } from "./plain-markdown.js"
 import { readFile } from "fs/promises"
 import { detectFormat, detectOle2Format, detectZipFormat, isHwpxFile, isOldHwpFile, isPdfFile, isZipFile } from "./detect.js"
 import { parseHwpxDocument } from "./hwpx/parser.js"
@@ -81,11 +82,16 @@ export async function parse(input: string | ArrayBuffer | Buffer, options?: Pars
   // 페이지별 마크다운(#68)은 파서가 채운 pageNumber 의 사영이라 여기서 한 번에
   // 붙인다. 포맷별 파서를 직접 부르는 호출자는 `blocksToPages(result.blocks)` 로
   // 같은 값을 얻는다.
+  let out = result
   if (result.success && !result.pages) {
     const pages = blocksToPages(result.blocks)
-    if (pages) return { ...result, pages }
+    if (pages) out = { ...result, pages }
   }
-  return result
+  // plain: 그림 자리 표시·링크 URL·밑줄/굵게 표기를 걷은 글 위주 Markdown (블록 IR 은 그대로)
+  if (out.success && opts?.plain) {
+    out = { ...out, markdown: toPlainMarkdown(out.markdown), ...(out.pages ? { pages: out.pages.map(p => ({ ...p, markdown: toPlainMarkdown(p.markdown) })) } : {}) }
+  }
+  return out
 }
 
 /** 블록 트리(자식·표 셀·캡션)에서 이미지 바이트(imageData)를 뗀다. 그림 자리 표시 블록은 남긴다 */

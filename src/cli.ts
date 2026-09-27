@@ -36,6 +36,7 @@ program
   .option("--inline-images", "이미지를 base64 data URI 로 마크다운에 인라인 (BMP→PNG 압축, HWP5 전용 — 인라인된 경우만 파일 미저장, 그 외 포맷은 저장 유지)")
   .option("--image-refs", "--format json 에서 이미지 바이트를 인라인하지 않고 파일 참조(images/<파일명>)만 남김 (#65 — 이미지가 수백 장인 문서의 직렬화 한계 회피, -o/-d 와 함께 사용)")
   .option("--password <pw>", "암호로 보호된 문서의 열기 암호 (#59, HWPX·HWP3·HWP5. 한컴 DRM 문서는 해당 없음)")
+  .option("--plain", "평문 Markdown — 그림 자리 표시·링크 URL·밑줄/굵게 표기를 빼고 글만 (제목·목록·표 구조는 유지, 색인·RAG 용)")
   .option("--no-images", "이미지 바이트를 추출·출력하지 않음: 글자만 필요할 때 (그림 자리 표시는 남김, PDF 는 PNG 인코딩을 건너뜀)")
   .option("--silent", "진행 메시지 숨기기")
   .action(async (files: string[], opts) => {
@@ -85,6 +86,7 @@ program
         if (opts.inlineImages) parseOptions.inlineImages = true
         if (opts.password) parseOptions.password = opts.password as string
         if (opts.images === false) parseOptions.images = false
+        if (opts.plain) parseOptions.plain = true
         if (!opts.silent) {
           parseOptions.onProgress = (current: number, total: number) => {
             process.stderr.write(`\r[kordoc] ${filePrefix}${fileName} (${format}) [${current}/${total}]`)

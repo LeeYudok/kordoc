@@ -223,6 +223,9 @@ export interface ParseOptions {
   onProgress?: (current: number, total: number) => void
   /** PDF 머리글/바닥글 자동 제거 */
   removeHeaderFooter?: boolean
+  /** 평문 Markdown — 그림 자리 표시·링크 URL·밑줄(`<u>`)·굵게(`**`) 표기를 빼고 글만 (제목·목록·표 구조는 유지).
+   *  이미지 바이트를 따로 저장하지 않는 색인·RAG 용. 기본 false. `blocks` IR 은 그대로 */
+  plain?: boolean
   /** 표 오른쪽 끝의 빈 열(서식 문서의 입력란) 보존 (#47).
    *  기본 false: 마크다운 가독성을 위해 후행 빈 열을 트림.
    *  양식 인식 경로(parse_form·fill)는 내부적으로 항상 켠다. */
