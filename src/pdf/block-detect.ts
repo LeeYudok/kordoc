@@ -315,7 +315,8 @@ export function detectPageLeadHeadings(blocks: IRBlock[]): void {
     byPage.set(b.pageNumber ?? 0, page)
   }
   for (const page of byPage.values()) {
-    const content = page.filter(b => b.type !== "image" && b.type !== "separator")
+    // OCR 로 끼운 그림 속 글(style 없음 — mergeOcrImageRegions, 쪽 머리 로고)은 쪽 첫머리 판정에 끼지 않는다
+    const content = page.filter(b => b.type !== "image" && b.type !== "separator" && !(b.type === "paragraph" && !b.style))
     const [first, second, third] = content
     if (!first?.bbox || !first.text || !first.style?.fontSize || !second) continue
     const firstText = first.text.trim()

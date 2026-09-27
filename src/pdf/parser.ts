@@ -238,7 +238,9 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
             const area = (r.x2 - r.x1) * (r.y2 - r.y1)
             // 쪽 면적 2% 넘는 그림은 OCR 영역 후보(로고 글 "LAW LIBRARY", ODL 085), 5% 넘는 것만 "읽지 못한 그림" 경고 — 1% 로 내리면
             // 아이콘이 잡음 글("0 0")로 들어와 제목 구조가 흐트러진다(ODL 200 실측)
-            if (area < pageArea * 0.02) continue // 작은 장식 이미지 무시
+            // 쪽 머리 띠(위 20%)의 작은 로고(0.5% 이상)도 — 기관·사업 이름이 로고 글로만 있다(ODL 147·148·150 "ECO Circle")
+            const headerLogo = area >= pageArea * 0.005 && r.y1 >= pageH * 0.8
+            if (area < pageArea * 0.02 && !headerLogo) continue // 작은 장식 이미지 무시
             const large = area >= pageArea * 0.05
             if (large) pagesWithLargeImage.add(i)
             const hasText = visible.some(it => {
