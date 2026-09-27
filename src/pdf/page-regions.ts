@@ -79,9 +79,11 @@ function columnPair(left: NormItem[], right: NormItem[]): NormItem[][] {
   const out: NormItem[][] = []
   const pitch = (lines: NormItem[][]) => medianOf(lines.slice(1).map((l, i) => lines[i][0].y - l[0].y))
   const fs = medianOf([...left, ...right].map(i => i.fontSize)) || 10
-  // 두 단 맨 위 같은 높이 줄 — 아래로 큰 틈이 있으면 쪽 머리
+  // 두 단 맨 위 같은 높이 줄 — 아래로 큰 틈이 있으면 쪽 머리. 틈은 그 줄 글자 크기로도 잰다: 슬라이드 두 패널 제목(11pt, 줄 간격 21pt)은
+  // 쪽 글 대부분이 5pt 차트 라벨이라 중앙값 기준으로는 꺾인 제목의 줄 간격도 큰 틈이 되어 두 제목이 한 줄로 붙었다(ODL 199)
+  const headFs = (line: NormItem[]) => Math.max(fs, ...line.map(i => i.fontSize))
   if (L.length > 1 && R.length > 1 && Math.abs(L[0][0].y - R[0][0].y) <= 2 &&
-      L[0][0].y - L[1][0].y >= fs * 2 && R[0][0].y - R[1][0].y >= fs * 2) {
+      L[0][0].y - L[1][0].y >= headFs(L[0]) * 2 && R[0][0].y - R[1][0].y >= headFs(R[0]) * 2) {
     out.push([...L[0], ...R[0]])
     L = L.slice(1); R = R.slice(1)
   }

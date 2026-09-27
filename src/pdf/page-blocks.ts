@@ -29,6 +29,7 @@ import { WrapLexicon } from "./line-wrap.js"
 import { closeOpenTableEnds } from "./open-table-ends.js"
 import { extendHeaderBoxRows } from "./header-box-rows.js"
 import { detectRuledBandTables, type RuledTable } from "./ruled-band-tables.js"
+import { detectTextBoxTables } from "./text-box-table.js"
 import { bridgeSkippedRowVerticals } from "./vertical-bridge.js"
 import { splitSidebarTitleRegion, splitTrailingColumnRegion, panelBlocks } from "./local-regions.js"
 import { pushLineParagraphs } from "./paragraph-lines.js"
@@ -130,6 +131,8 @@ export function extractPageBlocksWithLines(
 
   // 가로 괘선만 있는 표(booktabs)는 표를 먼저 세우고 나머지 글은 격자 경로의 두 단·밴드 순서를 따른다
   const ruled = detectTables && clipGrids.length === 0 ? detectRuledBandTables(horizontals, verticals, items, pageNum) : []
+  // 괘선을 그림에 구운 슬라이드 표는 보이지 않는 글상자 틀이 칸이다 (text-box-table)
+  if (detectTables && clipGrids.length === 0 && ruled.length === 0 && lineGrids.length === 0) ruled.push(...detectTextBoxTables(extracted.hiddenBoxes, items, pageNum))
   if (ruled.length > 0) {
     const imageRegions = extractImageRegions(opList.fnArray, opList.argsArray).filter(r => r.x2 - r.x1 >= 8 && r.y2 - r.y1 >= 8)
     return extractBlocksWithGrids(items, pageNum, pageWidth, pageHeight, grids, horizontals, verticals, imageRegions, lex, ruled)
@@ -986,6 +989,18 @@ export function columnTextToBlocks(text: string, pageNum: number, bbox: Bounding
 }
 
 /**
+ * 윗부분 띠에서 찾은 거터가 쪽 전체 거터와 어긋나면 쪽 전체 쪽을 믿는다 — 윗띠 스캔은 가장 왼쪽 빈 자리를 고르므로, 한 단 안에서
+ * 차트 옆이 넓게 빈 자리를 거터로 잡는다(ODL 199 슬라이드: 아래 띠의 캡션·각주를 뺀 윗띠 거터 285pt 는 왼 패널 차트 오른쪽이라
+ * 왼 패널 캡션·각주가 단을 가르는 경계 줄이 됐고, 쪽 전체 거터 354pt 가 두 패널 사이다). 쪽 전체 거터는 좌우 균형·행 가드를 다 통과한 값이다
+ */
+function persistentGutter(textRects: ColRect[]): number | null {
+  const cut = detectPersistentColumnGutter(textRects)
+  if (cut === null) return null
+  const whole = detectColumnGutter(textRects)
+  return whole !== null && Math.abs(whole - cut) > 10 ? whole : cut
+}
+
+/**
  * 기존 휴리스틱 기반 페이지 블록 추출 (선이 없는 PDF 대비 fallback).
  *
  * fullPage: 페이지 전체 아이템으로 호출됐을 때만 true — 2단 조판 본문 감지는
@@ -1030,7 +1045,7 @@ export function extractPageBlocksFallback(items: NormItem[], pageNum: number, fu
   const textRects = items.map(i => ({ x: i.x, y: i.y, w: i.w, h: i.h > 0 ? i.h : i.fontSize }))
   // 한 단 위쪽을 그림이 차지하면 글만으로는 거터가 끊겨 보인다 — 그림 사각형을 더해 쪽 전체 거터를 확정한다
   const earlyProseCut = fullPage && detectTables
-    ? findTwoColumnProseCutX(clusterItems) ?? detectPersistentColumnGutter(textRects) ??
+    ? findTwoColumnProseCutX(clusterItems) ?? persistentGutter(textRects) ??
       (figures.length > 0 ? detectColumnGutter([...textRects, ...figures]) : null)
     : null
   if (earlyProseCut !== null) {

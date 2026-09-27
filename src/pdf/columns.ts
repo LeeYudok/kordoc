@@ -14,7 +14,7 @@ import { type NormItem, mergeLineSimple, collapseEvenSpacing } from "./text-line
 
 /** prose 라인 판별: 아이템 간 gap이 모두 작으면 문장 (단어 나열) */
 function isProseSpread(items: NormItem[]): boolean {
-  if (items.length < 4) return false
+  if (items.length < 3) return false
   const sorted = [...items].sort((a, b) => a.x - b.x)
   const gaps: number[] = []
   for (let i = 1; i < sorted.length; i++) {
@@ -24,7 +24,14 @@ function isProseSpread(items: NormItem[]): boolean {
   const maxGap = safeMax(gaps)
   const avgLen = items.reduce((s, i) => s + i.text.length, 0) / items.length
   // 짧은 단어들이 좁은 간격으로 나열 = prose (예: "위 표 제3호나목에서 남은 유효기간...")
-  return maxGap < 40 && avgLen < 5
+  if (items.length >= 4 && maxGap < 40 && avgLen < 5) return true
+  // 양쪽 정렬 영문 줄 — 낱말마다 아이템이고 줄 안 낱말 틈이 모두 같다(조판기가 남는 폭을 고르게 나눔). 좁은 단의 틈은 1em 을
+  // 넘어 낱말 시작 x 가 가짜 열 3~4개를 만들고, 줄들이 한 표 행으로 뭉쳐 뒤섞였다(ODL 043 오른 단 인용문 "interesting the and
+  // COVID, …"). 표 칸 사이 틈은 칸마다 다르다. 숫자·표시(O·X) 칸은 폭이 같아 틈도 같을 수 있어 소문자로 시작하는 낱말이
+  // 절반 이상인 줄만 본다(표 칸은 대개 대문자·숫자로 시작, 한글은 대소문자가 없어 해당 없음)
+  const minGap = safeMin(gaps)
+  return minGap > 0 && maxGap - minGap <= Math.max(2, maxGap * 0.15) &&
+    items.filter(i => /^\P{L}*\p{Ll}/u.test(i.text)).length * 2 >= items.length
 }
 
 export function detectColumns(yLines: NormItem[][]): number[] | null {
@@ -114,7 +121,7 @@ export function detectColumns(yLines: NormItem[][]): number[] | null {
   // Repeated x starts alone are insufficient: equations and justified prose
   // can create three peaks without any actual multi-cell data row.
   const shortMultiColumnRows = tableYLines.filter(line => {
-    if (mergeLineSimple(line).length > 80) return false
+    if (mergeLineSimple(line).length > 80 || isProseSpread(line)) return false
     const used = new Set(line.map(item => findColumn(item.x, columns)))
     return used.size >= 3
   }).length

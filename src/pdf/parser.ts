@@ -27,7 +27,7 @@ import { mergeCrossPageTables } from "./table-parts.js"
 import { mergeContinuedCells } from "./cell-continuation.js"
 import { trimTrailingEmptyTableCols } from "./table-trim.js"
 import { remapSymbolFontItems } from "./symbol-fonts.js"
-import { remapControlGlyphs } from "./glyph-names.js"
+import { remapControlGlyphs, restoreNamedGlyphs } from "./glyph-names.js"
 import { demoteNonHeadingRoles } from "./heading-demote.js"
 import { computeMedianFontSizeFromFreq, detectHeadings, mergeStackedHeadingLines, detectTypographyHeadings, detectDocumentStyleHeadings, detectSiblingStyleHeadings, detectRepeatedPageLabels, detectPageLeadHeadings, refineDocumentStyleHeadings, detectMarkerHeadings, detectTableCaptions, detectKoreanListBlocks, removeHeaderFooterBlocks } from "./block-detect.js"
 import { sanitizeBlockControlChars, cleanPdfText, splitSingleCellTables, joinLatinCellWraps } from "./text-clean.js"
@@ -158,6 +158,15 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
         const pageW = viewX2 - viewX1, pageH = viewY2 - viewY1
         pageHeights.set(i, pageH)
         const rawItems = tc.items as PdfTextItem[]
+        // 선 기반 테이블 감지를 위한 operatorList — 글리프 이름 복원(restoreNamedGlyphs)이 공백 정리 전에 써서 먼저 받는다
+        const rawOps = await page.getOperatorList()
+        // 폰트 실명·/Differences 는 operatorList 로드 뒤에야 commonObjs 에 있다
+        const fontObj = (loadedName: string) => {
+          try { return page.commonObjs.has(loadedName) ? page.commonObjs.get(loadedName) as { name?: string; isType3Font?: boolean } | null : undefined }
+          catch { return undefined }
+        }
+        const differencesOf = (loadedName: string) => (fontObj(loadedName) as { differences?: ArrayLike<string | undefined> } | null | undefined)?.differences
+        restoreNamedGlyphs(rawItems, rawOps.fnArray, rawOps.argsArray, differencesOf)
         const items = normalizeItems(rawItems)
 
         // hidden text 필터링 + 경고 수집
@@ -177,8 +186,6 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
           applyLinkAnnotations(visible, annots)
         } catch { /* 어노테이션 파싱 실패 무시 */ }
 
-        // 선 기반 테이블 감지를 위한 operatorList
-        const rawOps = await page.getOperatorList()
         // Downstream table/header/page-break geometry assumes an origin of (0,0).
         // Translate both text and graphics, after annotations have matched user coordinates.
         // Filtering alone would retain text but misclassify a repeated body as a header.
@@ -189,13 +196,9 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
           argsArray: [[1, 0, 0, 1, -viewX1, -viewY1], ...rawOps.argsArray],
         } : rawOps
 
-        // 심볼 폰트(Wingdings) 글리프 복원 — 폰트 실명은 operatorList 로드 뒤에야 commonObjs 에 있다
-        const fontObj = (loadedName: string) => {
-          try { return page.commonObjs.has(loadedName) ? page.commonObjs.get(loadedName) as { name?: string; isType3Font?: boolean } | null : undefined }
-          catch { return undefined }
-        }
+        // 심볼 폰트(Wingdings) 글리프 복원
         remapSymbolFontItems(visible, (loadedName) => fontObj(loadedName)?.name)
-        remapControlGlyphs(visible, (loadedName) => (fontObj(loadedName) as { differences?: ArrayLike<string | undefined> } | null | undefined)?.differences)
+        remapControlGlyphs(visible, differencesOf)
         // 글꼴 id(g_d0_fN)는 글꼴 객체마다 다르다. 크롬은 한 서체를 Type3 글꼴 객체 여러 개(256자마다 새 객체)로 쪼개
         // 같은 본문이 "다른 서체"로 보여 제목으로 승격된다(#89). Type3 는 서브셋 접두(ABCDEF+)를 뗀 서체 이름으로 맞춘다.
         // 다른 글꼴은 같은 이름의 서브셋 객체 차이가 굵게 흉내 낸 제목의 유일한 증거일 수 있어 그대로 둔다(ODL 181 Calibri).

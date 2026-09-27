@@ -170,13 +170,14 @@ Buffer → detectFormat() [매직바이트] → 포맷별 파서 → IRBlock[] �
 | `src/pdf/open-table-ends.ts` | 열린 위·아래 변 닫기 `closeOpenTableEnds`: 머리행 위·합계행 아래 가로선을 긋지 않고 세로선만 내려 그은 표 — 몸통 괘선 묶음 밖 같은 끝점까지 뻗은 내부 세로선 2개 이상이면 그 끝점에 가상 가로선(v4.15.5, ODL 045~047). 맨 아래 괘선에 닿은 내부 세로선이 모두 아래로 뻗었는데 끝점이 제각각이면 가장 얕은 끝점에서 닫는다(텍스트층 쪽만, ODL 182) |
 | `src/pdf/header-box-rows.ts` | 1행 머리 상자 아래 무괘선 행 `extendHeaderBoxRows`: 머리만 칸 괘선(음영 상자)이고 데이터는 괘선 없는 표 — 상자 칸 안에만 놓인 고른 간격 글줄을 행으로 보고 가상 괘선. 클립 격자 쪽은 안 부름(v4.15.5) |
 | `src/pdf/ruled-band-tables.ts` | 가로 괘선만 있는 표(booktabs) `detectRuledBandTables`: 끝점 정렬 가로선 3개 이상 사이 띠마다 열 틈이 있으면 표 — 열은 몸통 x 투영 틈, 머리 띠는 한 행(걸친 글은 병합 칸). 행 간격 8pt 표도 있어 가상 괘선 대신 IR 표를 바로 만들어 격자 경로(두 단 밴드 순서)에 넘긴다. 안·양끝 세로선(선 격자·테두리 상자)·목차는 제외(v4.15.5). 위·아래 괘선 둘뿐인 표는 몸통 행 간격보다 촘촘히 붙은 첫 줄 묶음을 머리 띠로(꺾인 머리 칸, 빈 머리 칸 허용 — 텍스트층 글만, ODL 170) |
+| `src/pdf/text-box-table.ts` | 보이지 않는 글상자 표 `detectTextBoxTables`: 슬라이드 PDF 는 글상자마다 불투명도 0(ca=0) 채움 틀을 깔고 표 괘선은 래스터 그림에 굽는다 — line-extract 는 ca=0 채움·CA=0 획을 선·채움 칸에서 빼고 `hiddenBoxes` 로 모으며, 왼·오른끝이 같은 틀 열 3개 이상이 행마다 윗변을 맞추면 틀을 칸으로 표를 세운다(선 격자·클립·booktabs 없는 쪽만, ODL 200). 차트 눈금 틀은 같은 폭 열이 서지 않는다(ODL 199) |
 | `src/pdf/grid-header-line.ts` | 선 격자 바로 위 무괘선 머리행 `headerLineAbove`: 몸통만 괘선으로 가른 표의 머리 줄이 격자 폭 안에서 열마다 따로 놓이면(두 열 이상·칸 경계 걸친 글 없음·캡션 줄 아님) 머리행으로 붙인다. 텍스트층 글(seq)만 — OCR 래스터 괘선 경로에서 괴산 예산서가 무너진 전력(ODL 052·182) |
 | `src/pdf/page-regions.ts` | 쪽 지면 영역(page-blocks 에서 분리): 두 단 밴드 `splitTwoColumnProse`(쪽 머리 줄·다른 단 위로 떨어진 짧은 캡션 띠 먼저, 작은 글자 각주 띠는 두 단 본문 뒤), 두 단 위 표 밴드, 3단 머리 표, 쌓인 캡션 표, 카드·인포그래픽 3열 |
 | `src/pdf/local-regions.ts` | 지역 읽기 영역: 전폭 영역 아래 짧은 좌·우 단, 여백의 큰 표시 제목과 독립 본문, drop cap 줄 소속 |
 | `src/pdf/table-roles.ts` | 무괘선 표 후보의 역할: 목차(증가하는 쪽번호 열)·산문 표(긴 문장 칸 과반, 짧은 라벨 열 없음)·차트(값 축·빈 칸 과반 수량) |
 | `src/pdf/heading-demote.ts` | 승격 뒤 제목 강등: 쪽 가장자리 머리말·꼬리말, 캡션, 수식 번호·관계 기호 줄(#89), 소문자 시작 이어진 문장, 본문 스타일 긴 문장, 제목 바로 아래 본문 크기 기울임 필자 줄(실제 서체 이름), 7.5pt 미만 글. 같은 줄 소문자 항목 부호("n.") + 굵은 도입문은 문단으로, 다른 서체로 떨어진 절 번호·소문자로 꺾인 둘째 줄·"&" 이음 줄은 제목에 잇는다 |
 | `src/pdf/paragraph-lines.ts` | 줄 → 문단 결합(page-blocks 에서 분리), drop cap 소속을 결합 전에 적용 |
-| `src/pdf/glyph-names.ts` | ToUnicode 없이 /Differences 글리프 이름만 둔 글꼴(옛 숫자 `seven.oldstyle`·작은 대문자 `c.sc`·합자 `f_l`)을 AGL 규칙으로 글자 복원 — pdfjs 가 제어 문자로 돌려주는 코드를 되살린다. `getDocument({ fontExtraProperties: true })` 가 필요 |
+| `src/pdf/glyph-names.ts` | ToUnicode 없이 /Differences 글리프 이름만 둔 글꼴(옛 숫자 `seven.oldstyle`·작은 대문자 `c.sc`·합자 `f_l`)을 AGL 규칙으로 글자 복원 — pdfjs 가 제어 문자로 돌려주는 코드를 되살린다. `getDocument({ fontExtraProperties: true })` 가 필요. `restoreNamedGlyphs` 는 normalizeItems 전에 연산자 목록 showText 글리프(originalCharCode)를 글꼴마다 텍스트 아이템 글자에 맞춰 짚어, 공백·빈 글로 사라지는 코드(9 `nine.oldstyle`·129 `F.a`, ODL 005·006)와 ToUnicode 가 소문자로 매긴 작은 대문자(`h.smcp`, ODL 001~015)를 되살린다 — 맞춤이 어긋난 글꼴은 손대지 않음(코퍼스 PDF 1,911건 중 대상 글꼴 2건·출력 변화 0) |
 | `src/xlsx/parser.ts` | XLSX(ZIP+XML) 파싱, 공유 문자열/병합 셀 처리 |
 | `src/xlsx/sheet-blocks.ts` | XLSX·XLS 공용 시트 → 표: 열 수에 따른 칸 예산·절단 경고 |
 | `src/docx/parser.ts` | DOCX(ZIP+XML) 파싱, 스타일/번호매기기/각주 처리 |

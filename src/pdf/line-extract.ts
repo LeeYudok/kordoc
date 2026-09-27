@@ -39,7 +39,7 @@ const HIDDEN_FILL_TOL = 0.5
 export function extractLines(
   fnArray: Uint32Array | number[],
   argsArray: unknown[][],
-): { horizontals: LineSegment[]; verticals: LineSegment[]; clipRects: ClipRect[]; fillRects: ClipRect[]; shortH: LineSegment[]; shortV: LineSegment[] } {
+): { horizontals: LineSegment[]; verticals: LineSegment[]; clipRects: ClipRect[]; fillRects: ClipRect[]; hiddenBoxes: ClipRect[]; shortH: LineSegment[]; shortV: LineSegment[] } {
   const horizontals: LineSegment[] = []
   const verticals: LineSegment[] = []
   // MIN_LINE_LENGTH 미만 획 조각 — 칸 클립 격자가 없는 쪽에서 같은 좌표 조각 사슬로 이어 붙일 후보 (chainShortSegments, page-blocks)
@@ -56,6 +56,11 @@ export function extractLines(
   // 채움 색 추적 — 같은 색 채움 안에 칠한 채움은 보이는 경계가 없다 (아래 flushPath)
   let fillColor = 0
   const colorStack: number[] = []
+  // 채움·획 불투명도(ExtGState ca·CA) — 0 이면 그려도 보이지 않는다
+  let fillAlpha = 1, strokeAlpha = 1
+  const alphaStack: Array<[number, number]> = []
+  /** 보이지 않는(ca=0) 채움 사각형 — 슬라이드 제작기가 글상자마다 까는 틀 (text-box-table) */
+  const hiddenBoxes: ClipRect[] = []
   /** 지금까지 칠한 사각형 채움 (색별) */
   const paintedFills = new Map<number, ClipRect[]>()
   /** 얇은 채움 사각형 괘선 — 짧은 조각은 thinShort 로, 긴 조각은 thinFill 로 모아 끝에서 사슬 잇기 */
@@ -111,6 +116,21 @@ export function extractLines(
   }
 
   function flushPath(isStroke: boolean, fromFill = false, filled = fromFill) {
+    // 불투명도 0 으로 칠하거나 그은 경로는 보이지 않는다 — 괘선·채움 칸 증거가 아니다. 슬라이드 제작기는 글상자마다 ca=0 채움
+    // 틀을 깔아, 그 변이 칸마다 높이가 다른 어긋난 격자와 글줄 위 가짜 취소선이 됐다(ODL 200: 보이는 회색 행 괘선은 래스터 그림,
+    // 벡터 괘선 0·틀 45개). 채움 틀은 글상자 칸 증거로 따로 모은다 (text-box-table)
+    if (isStroke && (fromFill ? fillAlpha === 0 : strokeAlpha === 0 && !(filled && fillAlpha > 0))) {
+      if (fromFill) {
+        if (pathRects.length) hiddenBoxes.push(...pathRects)
+        else captureClipRect(currentPath, hiddenBoxes)
+      }
+      pathRects = []
+      pathRectSegs = []
+      pendingClip = false
+      currentPath = []
+      return
+    }
+    if (filled && fillAlpha === 0) filled = false
     if (filled) {
       if (pathRects.length) for (const r of pathRects) fillRects.push(r)
       else captureClipRect(currentPath, fillRects, 0.3, 0.3)
@@ -170,12 +190,26 @@ export function extractLines(
       case OPS.save:
         ctmStack.push(ctm.slice())
         colorStack.push(fillColor)
+        alphaStack.push([fillAlpha, strokeAlpha])
         break
 
       case OPS.restore:
         ctm = ctmStack.pop() ?? [1, 0, 0, 1, 0, 0]
         fillColor = colorStack.pop() ?? 0
+        ;[fillAlpha, strokeAlpha] = alphaStack.pop() ?? [1, 1]
         break
+
+      case OPS.setGState: {
+        // pdfjs 인자는 [[키, 값], …] 목록 — 불투명도 ca(채움)·CA(획)만 본다
+        const entries = (args as unknown[])[0]
+        if (!Array.isArray(entries)) break
+        for (const e of entries) {
+          if (!Array.isArray(e) || typeof e[1] !== "number") continue
+          if (e[0] === "ca") fillAlpha = e[1]
+          else if (e[0] === "CA") strokeAlpha = e[1]
+        }
+        break
+      }
 
       case OPS.setFillRGBColor: {
         const c = args as unknown as ArrayLike<number>
@@ -191,6 +225,7 @@ export function extractLines(
         if (op === OPS.paintFormXObjectBegin) {
           ctmStack.push(ctm.slice())
           colorStack.push(fillColor)
+          alphaStack.push([fillAlpha, strokeAlpha])
           const m = (args as unknown[])[0]
           if (!Array.isArray(m) || m.length < 6) break
           t = m as number[]
@@ -208,6 +243,7 @@ export function extractLines(
       case OPS.paintFormXObjectEnd:
         ctm = ctmStack.pop() ?? [1, 0, 0, 1, 0, 0]
         fillColor = colorStack.pop() ?? 0
+        ;[fillAlpha, strokeAlpha] = alphaStack.pop() ?? [1, 1]
         break
 
       case OPS.constructPath: {
@@ -318,7 +354,7 @@ export function extractLines(
   return {
     horizontals: chainShortSegments(horizontals, thinShortH, "h", l => thinFill.has(l)),
     verticals: chainShortSegments(verticals, thinShortV, "v", l => thinFill.has(l)),
-    clipRects, fillRects, shortH, shortV,
+    clipRects, fillRects, hiddenBoxes, shortH, shortV,
   }
 }
 

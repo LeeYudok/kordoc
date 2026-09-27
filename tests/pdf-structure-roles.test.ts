@@ -77,6 +77,19 @@ describe("PDF heading demotion", () => {
     assert.equal(blocks[0].text, "6. ECO CIRCLE FRAMEWORK")
   })
 
+  it("joins a widely spaced lowercase second title line still promoted as a heading (ODL 199)", () => {
+    const blocks = [heading("Upstage universal OCR model E2E performance", 275), heading("evaluation1", 253), paragraph("Body.", 200)]
+    demoteNonHeadingRoles(blocks, new Map([[1, 405]]))
+    assert.deepEqual(blocks.map(b => [b.type, b.text]), [["heading", "Upstage universal OCR model E2E performance evaluation1"], ["paragraph", "Body."]])
+  })
+
+  it("rechecks a value label after joining the number beside it (ODL 199)", () => {
+    const label = (text: string, x: number): IRBlock => ({ ...paragraph(text, 95), bbox: { page: 1, x, y: 95, width: 10, height: 6 }, style: { fontSize: 6, fontName: "Body" } })
+    const blocks = [label("9", 560), heading("82.65", 95, { bbox: { page: 1, x: 579, y: 95, width: 16, height: 6 }, style: { fontSize: 6, fontName: "Body" } })]
+    demoteNonHeadingRoles(blocks, new Map([[1, 405]]))
+    assert.deepEqual(blocks.map(b => [b.type, b.text]), [["paragraph", "9 82.65"]])
+  })
+
   it("treats a part title between contents entries as an entry", () => {
     const toc = (y: number) => tocBlock(table([["Section 1.1", "3"], ["Section 1.2", "5"], ["Section 1.3", "8"]]), 1,
       { page: 1, x: 72, y, width: 300, height: 40 })

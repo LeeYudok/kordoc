@@ -1,12 +1,13 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
-import { glyphNameText, remapControlGlyphs } from "../src/pdf/glyph-names.js"
+import { OPS } from "pdfjs-dist/legacy/build/pdf.mjs"
+import { glyphNameText, remapControlGlyphs, restoreNamedGlyphs } from "../src/pdf/glyph-names.js"
 import { detectPanelGutters, orderByPanels } from "../src/pdf/two-column.js"
 import { splitSingleCellTables } from "../src/pdf/text-clean.js"
 import { bridgeSkippedRowVerticals } from "../src/pdf/vertical-bridge.js"
 import { demoteNonHeadingRoles } from "../src/pdf/heading-demote.js"
 import type { LineSegment } from "../src/pdf/line-types.js"
-import type { NormItem } from "../src/pdf/text-line.js"
+import type { NormItem, PdfTextItem } from "../src/pdf/text-line.js"
 import type { IRBlock } from "../src/types.js"
 
 const h = (y: number, x1: number, x2: number): LineSegment => ({ x1, y1: y, x2, y2: y, lineWidth: 0.5 })
@@ -29,6 +30,38 @@ describe("glyph names", () => {
     const items = [item("May \u0017 \b\u0006.", 0, 0)]
     remapControlGlyphs(items, () => diffs)
     assert.equal(items[0].text, "May 1 65.")
+  })
+
+  // 연산자 목록 글리프 흉내 — pdfjs showText 인자는 글리프 객체와 자간 숫자가 섞인 배열
+  const glyph = (code: number, unicode: string) => ({ originalCharCode: code, unicode })
+  const raw = (str: string, fontName = "F1"): PdfTextItem => ({ str, transform: [10, 0, 0, 10, 0, 0], width: 50, height: 10, fontName })
+
+  it("restores small caps and tab/C1 glyph codes from the operator list (ODL 005·010)", () => {
+    const diffs: string[] = []
+    diffs[9] = "nine.oldstyle"; diffs[129] = "F.a"; diffs[30] = "h.smcp"
+    const items = [raw("IG 1 6h.")]
+    const n = restoreNamedGlyphs(items, [OPS.setFont, OPS.showText], [["F1", 10],
+      [[glyph(129, ""), glyph(73, "I"), glyph(71, "G"), glyph(32, " "), glyph(49, "1"), glyph(9, "\t"), glyph(54, "6"), -20, glyph(30, "h"), glyph(46, ".")]]], () => diffs)
+    assert.equal(n, 1)
+    assert.equal(items[0].str, "FIG 196H.")
+  })
+
+  it("puts a named whitespace glyph that left no space at the end of the previous item (ODL 006 page 19)", () => {
+    const diffs: string[] = []
+    diffs[9] = "nine.oldstyle"; diffs[129] = "F.a"
+    const items = [raw("1"), raw(""), raw("IG")]
+    restoreNamedGlyphs(items, [OPS.setFont, OPS.showText], [["F1", 10], [[glyph(49, "1"), glyph(9, "\t"), glyph(129, ""), glyph(73, "I"), glyph(71, "G")]]], () => diffs)
+    assert.deepEqual(items.map(it => it.str), ["19", "", "FIG"])
+  })
+
+  it("leaves a font untouched when its glyphs cannot be aligned, and fonts without named glyphs alone", () => {
+    const diffs: string[] = []
+    diffs[30] = "h.smcp"
+    const items = [raw("h"), raw("xyz"), raw("h", "F2")]
+    const n = restoreNamedGlyphs(items, [OPS.setFont, OPS.showText, OPS.setFont, OPS.showText],
+      [["F1", 10], [[glyph(30, "h"), glyph(97, "a")]], ["F2", 10], [[glyph(30, "h")]]], name => name === "F1" ? diffs : undefined)
+    assert.equal(n, 0)
+    assert.deepEqual(items.map(it => it.str), ["h", "xyz", "h"])
   })
 })
 

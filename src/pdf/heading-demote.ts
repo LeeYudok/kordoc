@@ -77,8 +77,10 @@ export function demoteNonHeadingRoles(blocks: IRBlock[], pageHeights: Map<number
       blocks.splice(i--, 1)
       continue
     }
-    // 제목이 두 줄로 꺾여 둘째 줄이 소문자 낱말로 시작하면(같은 서체·크기, 바로 아래) 소문자 시작 강등에 걸려 본문으로 떨어진다 — 제목에 잇는다
-    if (next?.type === "paragraph" && next.pageNumber === block.pageNumber && next.text && next.bbox && block.bbox &&
+    // 제목이 두 줄로 꺾여 둘째 줄이 소문자 낱말로 시작하면(같은 서체·크기, 바로 아래) 소문자 시작 강등에 걸려 본문으로 떨어진다 — 제목에 잇는다.
+    // 줄 간격이 넓어(1.9em) 쌓인 제목 줄 잇기(mergeStackedHeadingLines)를 못 받은 둘째 줄은 아직 제목이다(ODL 199 슬라이드 패널 제목 "…E2E performance ⏎ evaluation1").
+    // 캡션("Table 2: …") 아래 제목 모양 줄은 캡션에 잇지 않고 따로 강등한다(종전 동작, pdf-structure-roles 테스트 고정)
+    if ((next?.type === "paragraph" || next?.type === "heading" && !CAPTION.test(text)) && next.pageNumber === block.pageNumber && next.text && next.bbox && block.bbox &&
         next.style?.fontName === block.style?.fontName && next.style?.fontSize === block.style?.fontSize && fsz > 0 &&
         /^[a-z]/.test(next.text.trim()) && next.text.trim().length <= 40 && !/[.:;!?]$/.test(next.text.trim()) &&
         block.bbox.y - (next.bbox.y + next.bbox.height) < fsz * 1.2 &&
@@ -113,7 +115,8 @@ export function demoteNonHeadingRoles(blocks: IRBlock[], pageHeights: Map<number
           Math.abs(prev.bbox.x - block.bbox.x) < 2 && (prev.style?.fontSize ?? 0) >= fsz && prev.bbox.y - (block.bbox.y + block.bbox.height) < fsz * 1.5)) {
       block.text = `${prev.text!.trim()} ${block.text.trim()}`
       blocks.splice(i - 1, 1)
-      i--
+      // 붙인 제목도 아래 강등 판정을 다시 받는다 — 슬라이드 차트 값 라벨 "82.65" 가 옆 라벨 "9" 를 절 번호로 붙여 글자 없는·작은 글 강등을 건너뛰고 제목으로 남았다(ODL 199)
+      i -= 2
       continue
     }
     // 쪽 맨 위, 바로 아래 더 큰 제목 위에 붙은 작은 머리표(슬라이드 키커 "Recommendation Pack: Track Record")는 제목이 아니다
