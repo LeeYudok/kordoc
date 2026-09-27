@@ -114,6 +114,22 @@ Beyond plain text extraction, kordoc automates the **entire lifecycle of Korean 
 
 Every number is reproduced by `npm run bench:gate`, which every `npm publish` must pass.
 
+### HWP · HWPX → Markdown: against HwpForge with the same scorer
+
+The same corpus converted to Markdown by [HwpForge](https://github.com/ai-screams/HwpForge) 0.16.6 (`to_md`, lossy) and by kordoc, both scored against the **original HWPX XML** (tables from both outputs go through the same Markdown table parser; 1×1 text-box tables excluded for both).
+
+| | kordoc | HwpForge 0.16.6 |
+| --- | ---: | ---: |
+| HWPX, 2,305 docs — conversion failures | **0** | 123 |
+| HWPX — text recall (converted docs only) | **100.00%** (100.00%) | 59.25% (98.68%) |
+| HWPX — exact tables (10,392) | **89.8%** | 35.8% |
+| HWPX — cell F1 | **0.925** | 0.462 |
+| HWP 5.x, 1,109 docs — conversion failures | **0** | 19 |
+| HWP — text recall | **99.99%** | 86.41% |
+| HWP — exact tables (3,500) | **89.0%** | 31.6% |
+
+HwpForge focuses on generation and editing; its Markdown uses pipe tables only, so merged cells cannot be expressed, which accounts for most of the table gap. Reproduce: `bench/hwpforge-bench.py`, then `node bench/compare-md-parsers.mjs <output dir>`.
+
 ---
 
 ## What's New in v4.15.6

@@ -135,6 +135,22 @@ MCP 등록 대신 스킬(SKILL.md) 형태로 쓰려면:
 
 모든 수치는 `npm run bench:gate`로 재현되며, 배포(`npm publish`) 때마다 이 게이트를 통과해야만 올라갑니다.
 
+### HWP·HWPX → Markdown: HwpForge와 같은 채점기로
+
+같은 코퍼스를 [HwpForge](https://github.com/ai-screams/HwpForge) 0.16.6(`to_md`, lossy)과 kordoc으로 각각 Markdown으로 바꾸고, **원본 HWPX XML을 정답**으로 같은 채점기에 넣었습니다(표는 두 출력 모두 같은 Markdown 표 파서로 격자화, 1×1 글상자형 표는 양쪽 모두 제외).
+
+| | kordoc | HwpForge 0.16.6 |
+| --- | ---: | ---: |
+| HWPX 2,305문서 — 변환 실패 | **0** | 123 |
+| HWPX — 글 재현율 (변환 성공 문서만) | **100.00%** (100.00%) | 59.25% (98.68%) |
+| HWPX — 표 완전 일치 (10,392표) | **89.8%** | 35.8% |
+| HWPX — 칸 F1 | **0.925** | 0.462 |
+| HWP 5.x 1,109문서 — 변환 실패 | **0** | 19 |
+| HWP — 글 재현율 | **99.99%** | 86.41% |
+| HWP — 표 완전 일치 (3,500표) | **89.0%** | 31.6% |
+
+HwpForge는 생성·편집 중심 라이브러리이고, Markdown 표가 파이프 표뿐이라 병합 칸을 표현하지 못하는 점이 표 점수 차이의 대부분입니다. kordoc의 IR(구조 데이터) 기준으로는 위 HWPX 표가 100% 일치합니다. 재현: `bench/hwpforge-bench.py` → `node bench/compare-md-parsers.mjs <출력 폴더>`.
+
 ---
 
 ## v4.15.6 변경사항
