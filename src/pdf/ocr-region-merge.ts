@@ -38,7 +38,13 @@ export function mergeOcrImageRegions(
         return x * y > b.width * b.height * 0.2
       })
       if (hasOriginal) continue
-      const index = blocks.findIndex(existing => existing.pageNumber === page && existing.bbox && existing.bbox.y < b.y)
+      // 그림 아래로 내려간 블록, 또는 그림과 높이가 겹치며 그 오른쪽에 놓인 블록(옆 캡션 "Figure 4.3- …", ODL 126) 앞에 끼운다
+      const index = blocks.findIndex(existing => {
+        const e = existing.bbox
+        if (existing.pageNumber !== page || !e) return false
+        const beside = e.y < region.y2 && e.y + e.height > region.y1 && e.x >= region.x2 - 1
+        return e.y < b.y || beside
+      })
       // 그림 속 글은 제목 후보가 아니다 — OCR 글자 크기(상자 높이 추정)를 떼어 뒤의 제목 승격이 보지 않게 한다
       const placed: IRBlock = block.type === "paragraph" ? { ...block, style: undefined } : block
       blocks.splice(index < 0 ? blocks.length : index, 0, placed)
