@@ -348,7 +348,7 @@ function mergeCellTextLines(textLines: string[], wrap?: { wraps: boolean[]; lex?
     // 잇고, 글 뒤에 붙은 번호 조각("02-123" / "4567")은 홀로 선 수가 아니라 종전대로 잇는다
     else if (/[\d,]$/.test(prev) && /^[\d,]+[)\]]?$/.test(curr.trim()) && curr.trim().length <= 10
       && !(/\d,\d{3}$/.test(prev) && /^\d/.test(curr.trim()))
-      && !(/(?:^|[^\d,])\d{1,3}$/.test(prev) && /^(\d{1,3}(,\d{3})+|\d{1,3})$/.test(curr.trim()))
+      && !(/(?:^|[^\d,])\d{1,3}$/.test(prev) && /^(\d{1,3}(,\d{3})+|\d{1,3})$/.test(curr.trim()) && !wrap?.wraps[i - 1])
       && !(/(?:^|\s)\d{1,7}$/.test(prev) && /^\d{1,7}$/.test(curr.trim()) && !wrap?.wraps[i - 1])) {
       merged[merged.length - 1] = prev + curr.trim()
     }
