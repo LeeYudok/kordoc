@@ -159,6 +159,10 @@ describe("cellTextToString — 칸에 쌓인 숫자 줄", () => {
   it("쉼표 뒤에서 잘린 숫자는 잇는다", () => {
     assert.equal(cellTextToString([item("20,775,", 100), item("661", 85)]), "20,775,661")
   })
+  it("줄마다 적은 네 자리 수 목록은 잇지 않는다 (\"600\" / \"1000\"·\"1500\" / \"2500\", table_giant_cell_overfill)", () => {
+    assert.equal(cellTextToString([item("600", 100), item("1000", 85)]), "600\n1000")
+    assert.equal(cellTextToString([item("1500", 100), item("2500", 85), item("4000", 70)]), "1500\n2500\n4000")
+  })
 })
 
 describe("detectClusterTables — 글자 단위로 그린 칸 글", () => {

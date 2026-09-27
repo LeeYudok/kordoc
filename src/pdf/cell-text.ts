@@ -343,10 +343,11 @@ function mergeCellTextLines(textLines: string[], wrap?: { wraps: boolean[]; lex?
     // 줄바꿈에 잘린 숫자 조각("1,234,5" / "67")은 잇되, 온전한 숫자 뒤 숫자 줄은 잇지 않는다 — 병합 칸에 쌓인 천 단위 숫자
     // ("20,775,661" / "5,187,590")와 쉼표 없는 세 자리 이하 숫자("810" / "810" → 종전 "810810810", "2,240" / "0" →
     // "2,2400", 괴산·부천 예산서 텍스트층·OCR 공통). 쉼표 뒤 세 자리로 끝난 줄에 숫자 줄을 이으면 ",dddd" 꼴이 되므로 늘 끊고,
-    // 쉼표 없는 세 자리 이하 숫자는 다음 줄도 온전한 숫자일 때 끊는다
+    // 쉼표 없는 온전한 정수 줄은 다음 줄도 온전한 숫자면 끊는다 — 칸에 줄마다 적은 "600" / "1000"·"1500" / "2500"
+    // (table_giant_cell_overfill). 칸 폭을 채우고 꺾인 줄(wraps)은 좁은 칸에서 잘린 한 숫자라 잇는다
     else if (/[\d,]$/.test(prev) && /^[\d,]+[)\]]?$/.test(curr.trim()) && curr.trim().length <= 10
       && !(/\d,\d{3}$/.test(prev) && /^\d/.test(curr.trim()))
-      && !(/(?:^|[^\d,])\d{1,3}$/.test(prev) && /^(\d{1,3}(,\d{3})+|\d{1,3})$/.test(curr.trim()))) {
+      && !(/(?:^|[^\d,])\d{1,7}$/.test(prev) && /^(\d{1,3}(,\d{3})+|\d{1,7})$/.test(curr.trim()) && !wrap?.wraps[i - 1])) {
       merged[merged.length - 1] = prev + curr.trim()
     }
     else {
