@@ -191,6 +191,8 @@ function markStrikethroughItems(items: NormItem[], horizontals: LineSegment[]): 
     if (line.lineWidth > STRIKE_MAX_THICKNESS) continue
     const matches: NormItem[] = []
     for (const item of items) {
+      // OCR 글상자는 잉크 외곽 어림이라 그림 속 눈금선이 한가운데를 지나기 쉽다(차트 라벨 "Reading experience", ODL 107)
+      if (item.fontName === "ocr") continue
       const h = item.h > 0 ? item.h : item.fontSize
       if (h <= 0 || item.w <= 0) continue
       if (line.lineWidth > h * STRIKE_MAX_THICKNESS_RATIO) continue
