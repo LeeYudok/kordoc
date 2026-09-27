@@ -247,6 +247,11 @@ export async function pdfCrossCoverage(filePath, buffer, kordocPlainText, needsO
     weak = true // 단일 추출기 — 보고만, 게이트 제외
   }
 
+  // 해독되지 않은 사용자 영역 글자(PUA)가 든 3-gram 은 검증할 수 없다 — 두 추출기가 같은 코드를 내도 글자 의미가 없다
+  // (한컴 수식 글꼴 HyhwpEQ 의 숫자·변수가 U+E0xx: kordoc 은 이를 되살려 $…$ 수식으로 내고 평문 비교에선 수식을 뺀다).
+  // normPdf 가 한컴 글머리표 PUA 는 이미 표준 글자로 바꾼 뒤라 여기 남는 것은 뜻 없는 코드뿐
+  for (const g of [...consensus.keys()]) if (/[\uE000-\uF8FF]/.test(g)) consensus.delete(g)
+
   const consensusSize = bagSize(consensus)
   if (consensusSize < 50) {
     return { status: "tiny-consensus", coverage: null, weak: true, consensusSize }

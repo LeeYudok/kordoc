@@ -177,6 +177,7 @@ Buffer → detectFormat() [매직바이트] → 포맷별 파서 → IRBlock[] �
 | `src/pdf/table-roles.ts` | 무괘선 표 후보의 역할: 목차(증가하는 쪽번호 열)·산문 표(긴 문장 칸 과반, 짧은 라벨 열 없음)·차트(값 축·빈 칸 과반 수량) |
 | `src/pdf/heading-demote.ts` | 승격 뒤 제목 강등: 쪽 가장자리 머리말·꼬리말, 캡션, 수식 번호·관계 기호 줄(#89), 소문자 시작 이어진 문장, 본문 스타일 긴 문장, 제목 바로 아래 본문 크기 기울임 필자 줄(실제 서체 이름), 7.5pt 미만 글. 같은 줄 소문자 항목 부호("n.") + 굵은 도입문은 문단으로, 다른 서체로 떨어진 절 번호·소문자로 꺾인 둘째 줄·"&" 이음 줄은 제목에 잇는다 |
 | `src/pdf/paragraph-lines.ts` | 줄 → 문단 결합(page-blocks 에서 분리), drop cap 소속을 결합 전에 적용 |
+| `src/pdf/equation-runs.ts` | 한컴 수식 글꼴(HyhwpEQ) 글 → `$…$`: U+E0xx 코드 해독표(숫자 E034~E03D·이탤릭 a~z E0E5~·A~Z E000~·그리스 E09D~·기호), 가까운 수식 글자 union-find 묶음(분수 막대는 가로로 늘려 찍어 글자 크기가 막대 길이만큼 커지므로 크기 판단에서 뺌), 막대 위·아래 `\frac`, √+윗줄 `\sqrt`, 첨자 `^{}`·`_{}`. parser 가 리터럴 `$` 이스케이프 뒤에 부른다 |
 | `src/pdf/glyph-names.ts` | ToUnicode 없이 /Differences 글리프 이름만 둔 글꼴(옛 숫자 `seven.oldstyle`·작은 대문자 `c.sc`·합자 `f_l`)을 AGL 규칙으로 글자 복원 — pdfjs 가 제어 문자로 돌려주는 코드를 되살린다. `getDocument({ fontExtraProperties: true })` 가 필요. `restoreNamedGlyphs` 는 normalizeItems 전에 연산자 목록 showText 글리프(originalCharCode)를 글꼴마다 텍스트 아이템 글자에 맞춰 짚어, 공백·빈 글로 사라지는 코드(9 `nine.oldstyle`·129 `F.a`, ODL 005·006)와 ToUnicode 가 소문자로 매긴 작은 대문자(`h.smcp`, ODL 001~015)를 되살린다 — 맞춤이 어긋난 글꼴은 손대지 않음(코퍼스 PDF 1,911건 중 대상 글꼴 2건·출력 변화 0) |
 | `src/xlsx/parser.ts` | XLSX(ZIP+XML) 파싱, 공유 문자열/병합 셀 처리 |
 | `src/xlsx/sheet-blocks.ts` | XLSX·XLS 공용 시트 → 표: 글 있는 행·열만 펼침(빈 행·열 제외·병합은 남은 행·열로 축소, #91), 열 수에 따른 칸 예산·절단 경고 |
@@ -273,10 +274,10 @@ Buffer → detectFormat() [매직바이트] → 포맷별 파서 → IRBlock[] �
   0.73 → 0.96 (v4.12.1). 클립 셀 판정을 손댈 때는 `bench/pdf-table-gt.mjs` 와
   `licbyl/` HWP↔PDF 셀 대조를 함께 볼 것. `mergeParallelLines` 는 입력 선 객체를 **제자리 수정**하므로
   전처리 뒤의 선을 클립 판정(획 유무)에 넘기면 결과가 달라진다
-- **HWP5 `flattenLayoutTables` 는 테두리 없는 레이아웃 표만 푼다**: 칸 테두리가 보이는 표(`markBorderedTable`, DocInfo BORDER_FILL 변 종류 ≠ 0)는
-  건너뛴다 — 종전엔 테두리와 상관없이 풀어 같은 문서의 HWPX 표 118개가 사라지고 틀 안 중첩표가 바깥 단부터 풀려 5~8단이 4단이 됐다(v4.15.7).
-  칸이 A4 용지보다 높은 표(여러 쪽에 걸친 본문 상자, rhwp issue3637)는 테두리가 있어도 푼다. 중첩표를 품고 글이 `FORM_FRAME_MAX_TEXT`(600자)
-  이하인 표는 종전대로 별지서식 틀로 남긴다
+- **HWP5 `flattenLayoutTables` 는 여러 쪽 본문 상자만 푼다**: 칸이 A4 용지(84,188 HWPUNIT)보다 높은 표만 해체 대상이고, 나머지는
+  `markNonLayoutTable` 로 건너뛴다(v4.15.7) — 종전엔 3행 이하·글 많은 표를 모두 풀어 같은 문서의 HWPX 표 130개가 사라지고 틀 안 중첩표가
+  바깥 단부터 풀려 5~8단이 4단이 됐다(score·roundtrip·한국 PDF 표 게이트 출력은 그대로). 칸 테두리 기준(보이는 변 있는 표만 유지)은 91.7%로
+  여러 쪽 기준 92.7%보다 낮아 버렸다. 본문 전체를 9쪽짜리 상자에 담은 문서(rhwp issue3637)는 여전히 푼다
 - **PDF 1칸 틀은 획 4변이 조건**: 한컴 PDF 는 본문 영역(여백 안쪽)에도 클립을 깔고 그 안에 페이지의
   모든 표·칩이 들어간다. 획 없는 컨테이너를 틀로 삼으면 페이지가 통째로 1×1 표가 되어 pair 게이트가
   0.985 → 0.87 로 무너진다(v4.12.2 실측). 테두리 없는 1칸 틀(별표 1×1 프레임·선서문 바깥)은 v4.12.3 부터

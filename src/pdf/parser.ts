@@ -27,6 +27,7 @@ import { mergeCrossPageTables } from "./table-parts.js"
 import { mergeContinuedCells } from "./cell-continuation.js"
 import { trimTrailingEmptyTableCols } from "./table-trim.js"
 import { remapSymbolFontItems } from "./symbol-fonts.js"
+import { wrapEquationRuns } from "./equation-runs.js"
 import { remapControlGlyphs, restoreNamedGlyphs } from "./glyph-names.js"
 import { demoteNonHeadingRoles } from "./heading-demote.js"
 import { computeMedianFontSizeFromFreq, detectHeadings, mergeStackedHeadingLines, detectTypographyHeadings, detectDocumentStyleHeadings, detectSiblingStyleHeadings, detectRepeatedPageLabels, detectPageLeadHeadings, refineDocumentStyleHeadings, detectMarkerHeadings, detectTableCaptions, detectKoreanListBlocks, removeHeaderFooterBlocks } from "./block-detect.js"
@@ -218,6 +219,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
         // 리터럴 $ 는 \$ — $…$ 는 수식 스팬 전용(IR 규약, HWPX·HWP5 와 같음). 종전엔 "단가(US $) … 금액(US $)" 사이가
         // 마크다운에서 수식으로 읽혀 사라졌다(야생생물 신고서·어셈블리 "lda $30,-16($30)"). 심볼 글꼴 복원 뒤라야 글자 표가 안 어긋난다
         for (const it of visible) if (it.text.includes("$")) it.text = escapeLiteralDollar(it.text)
+        // 한컴 수식 글꼴 글자 → $…$ 수식 스팬 (HWPX·HWP5 수식 출력과 같은 모양, 리터럴 $ 이스케이프 뒤)
+        wrapEquationRuns(visible, face => faceNames.get(face))
 
         // 이미지 영역 감지 — 텍스트 없는 큰 이미지는 무음 정보손실이므로 가시화 (ODL 아이디어)
         const pageArea = pageW * pageH

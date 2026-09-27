@@ -283,9 +283,9 @@ function sanitizeText(text: string): string {
  * 적은 행(≤3) + 셀 내 줄바꿈 다량 → table 블록을 paragraph 블록들로 분해
  * heading 감지 전에 호출해야 해체된 텍스트에 heading 감지 적용 가능
  *
- * 호출 정책(의도): HWP5·HWP3 파서만 호출한다. 칸 테두리가 보이는 표(markBorderedTable, HWP5 borderFill)는 해체하지 않는다 —
- * 레이아웃 표는 테두리 없는 틀이고, 테두리 있는 표를 풀면 같은 문서의 HWPX 표와 어긋나고 틀 안 중첩표가 바깥 단부터 풀렸다
- * (v4.15.7). 구형 문서는 제목/본문을 표로
+ * 호출 정책(의도): HWP5·HWP3 파서만 호출한다. HWP5 는 여러 쪽에 걸친 본문 상자만 넘기고 나머지 표는 markNonLayoutTable 로
+ * 표시해 건너뛴다(v4.15.7) — 같은 문서의 HWPX 는 표로 두는데 HWP5 만 풀어 표 130개가 사라지고 틀 안 중첩표가 바깥 단부터 풀렸다.
+ * 구형 문서는 제목/본문을 표로
  * 감싼 레이아웃 표가 흔하지만, HWPX는 그 관행이 드물고 무엇보다 patchHwpx/
  * fillHwpx 무손실 라운드트립이 "파서 렌더 = 소스맵 표 서수" 대응에 의존하므로
  * HWPX에서 표를 문단으로 해체하면 표 매핑이 깨진다. HWPX 적용은 코퍼스
@@ -294,17 +294,17 @@ function sanitizeText(text: string): string {
 /** 서식 틀로 보는 표의 총 글자 수 상한 — 별지서식 틀은 수백 자(영치증 ~400), 페이지 레이아웃 표는 그 이상 */
 const FORM_FRAME_MAX_TEXT = 600
 
-/** 칸 테두리가 보이는 표 — 레이아웃 표가 아니다 (HWP5 파서가 borderFill 로 표시, flattenLayoutTables 가 건너뜀) */
-const BORDERED_TABLES = new WeakSet<IRTable>()
-export function markBorderedTable(table: IRTable): void {
-  BORDERED_TABLES.add(table)
+/** 레이아웃 표로 풀지 않을 표 (HWP5 파서가 여러 쪽 본문 상자가 아닌 표에 표시, flattenLayoutTables 가 건너뜀) */
+const NON_LAYOUT_TABLES = new WeakSet<IRTable>()
+export function markNonLayoutTable(table: IRTable): void {
+  NON_LAYOUT_TABLES.add(table)
 }
 
 export function flattenLayoutTables(blocks: IRBlock[]): IRBlock[] {
   const result: IRBlock[] = []
 
   for (const block of blocks) {
-    if (block.type !== "table" || !block.table || BORDERED_TABLES.has(block.table)) {
+    if (block.type !== "table" || !block.table || NON_LAYOUT_TABLES.has(block.table)) {
       result.push(block)
       continue
     }

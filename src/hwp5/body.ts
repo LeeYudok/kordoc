@@ -7,7 +7,7 @@ import {
 } from "./record.js"
 import { NumberingState, expandNumberingFormat, formatNumber, shapeFormatToNumFmt } from "./numbering.js"
 import { hwpEquationToLatex } from "./equation.js"
-import { buildTable, flattenLayoutTables, markBorderedTable, MAX_COLS, MAX_ROWS } from "../table/builder.js"
+import { buildTable, flattenLayoutTables, markNonLayoutTable, MAX_COLS, MAX_ROWS } from "../table/builder.js"
 import {
   INLINE_TABLE_MARK, blocksPlainText, buildAddressedTable, cellTextFromBlocks, emitParagraphBlocks,
 } from "./ir-assemble.js"
@@ -551,8 +551,6 @@ function hyperlinkUrlFromCommand(command: string): string | null {
 interface Hwp5Cell extends CellContext {
   blocks?: IRBlock[]
   isHeader?: boolean
-  /** 칸 테두리에 보이는 변이 있다 (borderFillId → DocInfo BORDER_FILL) */
-  bordered?: boolean
   /** 칸 높이가 A4 용지보다 크다 — 여러 쪽에 걸친 칸 */
   pageSpanning?: boolean
 }
@@ -560,10 +558,10 @@ interface Hwp5Cell extends CellContext {
 /** A4 용지 높이 (HWPUNIT, 297mm) — 이보다 높은 칸은 한 쪽에 들어갈 수 없다 */
 const A4_HEIGHT = 84188
 
-/** 레이아웃 표 해체(flattenLayoutTables)에서 뺄 표 — 칸 테두리가 보이는 표. 다만 칸이 여러 쪽에 걸친 표는 테두리가 있어도
- *  본문을 감싼 상자다(보도자료 본문 전체를 9쪽짜리 3×1 테두리 상자에 담은 문서, rhwp issue3637) */
-function markIfBordered(table: IRTable, cells: Hwp5Cell[]): void {
-  if (cells.some(c => c.bordered) && !cells.some(c => c.pageSpanning)) markBorderedTable(table)
+/** 레이아웃 표 해체(flattenLayoutTables)는 여러 쪽에 걸친 칸이 있는 본문 상자만 — 나머지 표는 같은 문서의 HWPX 처럼 표로 둔다.
+ *  보도자료 본문 전체를 9쪽짜리 3×1 상자에 담은 문서(rhwp issue3637)는 표로 두면 문서가 거대한 HTML 칸 하나가 된다 */
+function keepUnlessPageSpanning(table: IRTable, cells: Hwp5Cell[]): void {
+  if (!cells.some(c => c.pageSpanning)) markNonLayoutTable(table)
 }
 
 /**
@@ -633,7 +631,7 @@ function parseTableControl(ctrl: ParsedCtrl, records: HwpRecord[], ctx: Hwp5Ctx)
     if (!table) return null
     if (caption) table.caption = caption
     if (sourceId) table.sourceId = sourceId
-    markIfBordered(table, cells)
+    keepUnlessPageSpanning(table, cells)
     return table
   }
 
@@ -643,7 +641,7 @@ function parseTableControl(ctrl: ParsedCtrl, records: HwpRecord[], ctx: Hwp5Ctx)
   const table = buildTable(cellRows, { keepAnchoredEmptyCols: ctx.doc.keepTrailingEmptyCols })
   if (caption && table.rows > 0) table.caption = caption
   if (sourceId && table.rows > 0) table.sourceId = sourceId
-  markIfBordered(table, cells)
+  keepUnlessPageSpanning(table, cells)
   return table.rows > 0 ? table : null
 }
 
@@ -680,7 +678,6 @@ function parseCell(records: HwpRecord[], lhIdx: number, end: number, ctx: Hwp5Ct
   const cell: Hwp5Cell = { text, colSpan, rowSpan, colAddr, rowAddr }
   if (hasStructure && blocks.length > 0) cell.blocks = blocks
   if (isHeader) cell.isHeader = true
-  if (rec.data.length >= 34 && ctx.docInfo?.borderFillVisible?.[rec.data.readUInt16LE(32) - 1]) cell.bordered = true
   if (rec.data.length >= 24 && rec.data.readUInt32LE(20) > A4_HEIGHT) cell.pageSpanning = true
   return cell
 }

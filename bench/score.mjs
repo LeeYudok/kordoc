@@ -315,7 +315,12 @@ async function scorePdf(file, buf) {
     return { ok: true, status: "ocr-only", coverage: null, needsOcrPages: needsOcrPages.size, totalPages }
   }
 
-  const { text: plain } = mdToPlain(res.markdown)
+  // 수식 스팬은 글로 풀어 대조한다 — 두 추출기 합의 글에는 한컴 수식 글꼴의 로마자(sin·lim·점 이름 A)가 평문으로 섞여 있는데
+  // mdToPlain 은 $…$ 를 통째로 지운다(HWPX 트랙은 정답도 수식을 빼 대칭이지만 PDF 합의 글은 수식을 가를 수 없다).
+  // LaTeX 명령·괄호·첨자 기호만 걷고 함수 이름은 남긴다 (해독 못 한 수식 글자는 pdf-consensus 가 합의에서 뺀다)
+  const unmath = body => body.replace(/\\(sin|cos|tan|log|ln|lim|exp|max|min)\b/g, "$1").replace(/\\[a-zA-Z]+/g, " ").replace(/[{}^_]/g, "")
+  const mathAsText = res.markdown.replace(/(^|[^\\$])\$(?!\s)((?:\\.|[^$\n\\])+?)\$/g, (_m, pre, body) => `${pre} ${unmath(body)} `)
+  const { text: plain } = mdToPlain(mathAsText)
   const cov = await pdfCrossCoverage(file, pdfBytes, plain, needsOcrPages)
   return {
     ok: true,
