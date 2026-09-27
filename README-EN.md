@@ -11,6 +11,8 @@ HWP 3.x/5.x, HWPX, HWPML, PDF, XLS, XLSX, DOCX, images (PNG/JPG/WebP) — parse,
 
 [한국어](./README.md)
 
+> 📊 **Public PDF benchmark (opendataloader-bench, 200 documents): overall 0.935 — higher than all 12 published PDF parsers (commercial included), at 0.04 s per page.** Korean government documents are scored against their original HWPX files; all 13,041 HWPX tables match cell for cell. → [Performance at a glance](#-performance-at-a-glance)
+
 [![kordoc — watch the demo](./docs/video-demo.jpg)](https://youtu.be/Q13GmgDcIw0)
 
 <sub>▶ Click to play on YouTube. Narration is in Korean.</sub>
@@ -71,6 +73,52 @@ Beyond plain text extraction, kordoc automates the **entire lifecycle of Korean 
 *   **🤖 AI agent integration (MCP)**: Let `Claude Desktop`, `Cursor`, `Codex`, and friends call `kordoc` directly to read and produce documents.
 
 ---
+
+## 📊 Performance at a glance
+
+### PDF → Markdown: ahead of the 12 engines on the public benchmark
+
+[opendataloader-bench](https://github.com/opendataloader-project/opendataloader-bench) scores 200 PDFs (papers, reports, slides, posters, scans) against human-made ground truth for **reading order (NID), table structure (TEDS) and heading hierarchy (MHS)**. 1.0 means identical to the ground truth.
+
+| Rank | Engine | Overall | Reading order | Tables | Headings | Time / page |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| **1** | **kordoc (default)** | **0.935** | **0.938** | **0.931** | **0.926** | **0.04 s** |
+| ref. | kordoc `ocr: true` (text inside images too) | 0.952 | 0.955 | 0.974 | 0.934 | 0.39 s |
+| 2 | opendataloader-hybrid | 0.907 | 0.934 | 0.928 | 0.821 | 0.46 s |
+| 3 | nutrient (commercial) | 0.885 | 0.925 | 0.708 | 0.819 | 0.01 s |
+| 4 | docling | 0.882 | 0.898 | 0.887 | 0.824 | 0.76 s |
+| 5 | marker | 0.861 | 0.890 | 0.808 | 0.796 | 53.9 s |
+| 6 | unstructured-hires | 0.841 | 0.904 | 0.588 | 0.749 | 3.01 s |
+| 7 | edgeparse | 0.837 | 0.894 | 0.717 | 0.706 | 0.04 s |
+| 8 | mineru | 0.831 | 0.857 | 0.873 | 0.743 | 5.96 s |
+| 9 | opendataloader | 0.831 | 0.902 | 0.489 | 0.739 | 0.02 s |
+| 10 | pymupdf4llm | 0.732 | 0.885 | 0.401 | 0.412 | 0.09 s |
+| 11 | unstructured | 0.686 | 0.882 | 0.000 | 0.388 | 0.08 s |
+| 12 | markitdown | 0.589 | 0.844 | 0.273 | 0.000 | 0.11 s |
+| 13 | liteparse | 0.576 | 0.866 | 0.000 | 0.000 | 1.06 s |
+
+- The default is **first on all four columns** — no GPU, cloud API or LLM, just Node.js.
+- Other engines' scores are the benchmark repository's published results (Apple M4 32GB); kordoc was measured on the same PDFs and ground truth with the **unmodified evaluator** (Apple M4 24GB, 200 documents in one process, 8 s). Re-scoring the repository's opendataloader-hybrid predictions with the same evaluator gives 0.9066, matching its published score. Reproduce: `node bench/odl-bench.mjs <bench clone>`, then the benchmark's `src/evaluator.py`.
+
+### Korean government documents: scored against the original HWPX
+
+| Area | Size | Result |
+| --- | --- | --- |
+| HWPX text and tables | 2,286 documents, 13,041 tables | 0 missing text · all 13,041 tables match cell for cell · reading order 100% |
+| HWP 5.x | 1,120 HWP/HWPX pairs | identical to the HWPX result |
+| PDF text | 751 pairs (HWPX ground truth) | recall 99.5% · precision 97.0% · order 98.3% |
+| PDF tables | 716 pairs, 2,692 tables (HWPX ground truth) | found 98.9% · exact cell match 94.2% · cell F1 0.966 |
+| Built-in OCR (local CPU) | 54 documents, 104 pages | char recall 98.1% · Hangul recall 99.3% · precision 97.5% · 0.9 s/page |
+| DOCX · XLSX · XLS · HML | 88 documents | 0 missing text or numbers |
+| Markdown → HWPX → Markdown | 83 runs | no loss of text, tables, headings or equations |
+
+Every number is reproduced by `npm run bench:gate`, which every `npm publish` must pass.
+
+---
+
+## What's New in v4.15.6
+
+PDF structure recovery went up another step: the public ODL 200-document overall rose from 0.905513 (4.15.5) to **0.934509** (reading order 0.938 · tables 0.931 · headings 0.926). `ocr: true` now also reads text inside charts and logos region by region (0.952); in the default path, pages that need OCR get a warning telling you to re-parse with `ocr: true` / `--ocr`.
 
 ## What's New in v4.15.0
 

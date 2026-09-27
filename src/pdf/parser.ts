@@ -371,7 +371,7 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     if (isImageBased && ocrDone.size === 0) {
       // OCR 미설정/실패 — 빈 출력을 무경고로 내보내지 않고 경고 + 플래그로 가시화 (v3.0)
       warnings.push({
-        message: `이미지 기반 PDF (${pageCount}페이지, 텍스트 ${totalChars}자) — 텍스트 레이어가 없어 OCR이 필요합니다`,
+        message: `이미지 기반 PDF (${pageCount}페이지, 텍스트 ${totalChars}자) — 텍스트 레이어가 없어 OCR이 필요합니다. ocr: true (CLI --ocr) 로 다시 파싱하면 읽습니다`,
         code: "NEEDS_OCR",
       })
     }
@@ -391,7 +391,7 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
       for (const pq of pageQuality) {
         if (!pq.needsOcr || !pq.ocrReason || pq.ocrApplied) continue
         if (pq.ocrReason === "low_text" && !pagesWithLargeImage.has(pq.page)) continue
-        warnings.push({ page: pq.page, message: `${OCR_REASON_MESSAGES[pq.ocrReason]} — OCR 검토 필요`, code: "NEEDS_OCR" })
+        warnings.push({ page: pq.page, message: `${OCR_REASON_MESSAGES[pq.ocrReason]} — OCR 검토 필요 (ocr: true / CLI --ocr 로 다시 파싱)`, code: "NEEDS_OCR" })
       }
     }
 
@@ -400,7 +400,7 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     if (!isImageBased) {
       for (const [page, count] of [...skippedImagePages.entries()].sort((a, b) => a[0] - b[0])) {
         if (ocrDone.has(page)) continue
-        warnings.push({ page, message: `${count}개 이미지 영역에 추출 가능한 텍스트 없음 (그림/차트/도장 내용 누락 가능)`, code: "SKIPPED_IMAGE" })
+        warnings.push({ page, message: `${count}개 이미지 영역에 추출 가능한 텍스트 없음 (그림/차트/도장 내용 누락 가능 — 그림 속 글은 ocr: true / CLI --ocr 로 읽습니다)`, code: "SKIPPED_IMAGE" })
       }
     }
 
