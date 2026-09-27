@@ -3,7 +3,7 @@
 //
 // 사용법:
 //   .venv-hwpforge/bin/python bench/hwpforge-bench.py /tmp/hwpforge-md     # 비교 대상 Markdown 생성
-//   node bench/compare-md-parsers.mjs /tmp/hwpforge-md [--name=hwpforge] [--doc=부분문자열] [--exclude-single-col]
+//   node bench/compare-md-parsers.mjs /tmp/hwpforge-md [--name=hwpforge] [--doc=부분문자열] [--include-single-col]
 //
 // 두 파서 모두 **Markdown 출력만** 같은 채점기로 잰다 — kordoc 도 IR 이 아니라 markdown 을 쓴다.
 //   정답  : 원본 HWPX 의 XML 을 직접 읽은 참조(bench/ref/hwpx-ref.mjs, score.mjs 와 같은 독립 추출기).
@@ -11,7 +11,7 @@
 //   글    : 참조 문단·셀·글상자 글을 markdown 평문에 정렬(align.mjs) — 재현율(빠진 글), 가짜 글 비율(참조에 없는 본문 문자),
 //           읽기 순서(고유 본문 유닛 위치의 최장 증가 부분열 비율)
 //   표    : markdown 의 파이프 표·HTML 표(colspan·rowspan·중첩)를 같은 파서로 격자화해 score.mjs 와 같은 scoreTables 로 대조 —
-//           표 완전 일치(칸 구조·글 모두)·칸 F1. 1×1 글상자형 표는 양쪽 모두 뺀다(문단/1열 표는 표현 선택)
+//           표 완전 일치(칸 짜임)·칸 F1. 1열 표(1×1 포함)는 양쪽 모두 뺀다(꾸밈 틀 — 문단/표는 표현 선택, --include-single-col 로 포함)
 // 출력: bench/out/compare-<name>.json + 콘솔 요약
 
 import { readdir, readFile, writeFile, mkdir } from "node:fs/promises"
@@ -29,8 +29,9 @@ const args = process.argv.slice(2)
 const otherDir = args.find(a => !a.startsWith("--"))
 const name = (args.find(a => a.startsWith("--name=")) ?? "--name=hwpforge").split("=")[1]
 const docFilter = (args.find(a => a.startsWith("--doc=")) ?? "").split("=")[1] ?? null
-// 1열 표(목록성 틀)도 표 채점에서 뺀다 — kordoc 은 1열 표를 줄 단위 글로 내는 출력 선택이라 README 에 두 수치를 함께 적는다
-const excludeSingleCol = args.includes("--exclude-single-col")
+// 1열 표(1×1 포함)는 기본적으로 표 채점에서 뺀다 — 코퍼스 1열 표 1,288개 가운데 제목·본문 상자 43%, 빈 여백 행 틀 28%, 목록형은 3%뿐인
+// 꾸밈 틀이라 Markdown 에서 표로 낼지 줄 글로 낼지는 표현 선택이다(그 글은 재현율이 채점한다). --include-single-col 은 종전 기준
+const includeSingleCol = args.includes("--include-single-col")
 if (!otherDir) {
   console.error("사용법: node bench/compare-md-parsers.mjs <비교 파서 markdown 디렉토리> [--name=이름]")
   process.exit(1)
@@ -178,9 +179,8 @@ function scoreMd(md, ref) {
     if ((u.text.match(/[\p{L}\p{N}]/gu) ?? []).length < 4 || freq.get(u.text) !== 1) continue
     positions.push(r.pos)
   }
-  // 1×1 표(글상자형 상자)는 데이터 표가 아니라 레이아웃이다 — Markdown 에서 문단으로 풀지 1열 표로 둘지는 표현 선택이라 양쪽 모두
-  // 표 채점에서 뺀다(그 글은 재현율이 채점한다)
-  const multi = t => t.rows * t.cols > 1 && (!excludeSingleCol || t.cols > 1)
+  // 1열 표(1×1 글상자형 상자 포함)는 데이터 표가 아니라 레이아웃 틀이다 — 양쪽 모두 표 채점에서 뺀다(위 includeSingleCol)
+  const multi = t => t.cols > 1 || (includeSingleCol && t.rows > 1)
   const tbl = scoreTables(ref.tables.filter(multi), collectIrGrids(mdTables(md)).filter(multi))
   return {
     recall: total ? matched / total : 1,
