@@ -236,17 +236,19 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
           let uncovered = 0
           for (const r of imageRegions) {
             const area = (r.x2 - r.x1) * (r.y2 - r.y1)
-            if (area < pageArea * 0.05) continue // 작은 장식 이미지 무시
-            pagesWithLargeImage.add(i)
+            // 쪽 면적 2% 넘는 그림은 OCR 영역 후보(로고 글 "LAW LIBRARY", ODL 085), 5% 넘는 것만 "읽지 못한 그림" 경고 — 1% 로 내리면
+            // 아이콘이 잡음 글("0 0")로 들어와 제목 구조가 흐트러진다(ODL 200 실측)
+            if (area < pageArea * 0.02) continue // 작은 장식 이미지 무시
+            const large = area >= pageArea * 0.05
+            if (large) pagesWithLargeImage.add(i)
             const hasText = visible.some(it => {
               const cx = it.x + it.w / 2
               const cy = it.y + (it.h || it.fontSize) / 2
               return cx >= r.x1 && cx <= r.x2 && cy >= r.y1 && cy <= r.y2
             })
             if (!hasText) {
-              uncovered++
-              if (area >= pageArea * 0.03 &&
-                  page.rotate % 360 === 0 && viewX1 === 0 && viewY1 === 0) {
+              if (large) uncovered++
+              if (page.rotate % 360 === 0 && viewX1 === 0 && viewY1 === 0) {
                 const regions = uncoveredImageRegions.get(i) ?? []
                 regions.push(r)
                 uncoveredImageRegions.set(i, regions)
