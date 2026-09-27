@@ -118,12 +118,17 @@ async function ocrOnePage(
   if (renderScale < OCR_RENDER_SCALE) {
     warnings.push({ page: pageNo, code: "PARTIAL_PARSE", message: `OCR 래스터 픽셀 상한으로 렌더 해상도를 축소했습니다 (작은 글자 인식 결손 가능)` })
   }
+  // 그림 영역만 읽는 쪽은 두 배로 한 번 그려 영역 다시 읽기(closer)에 쓰고, 쪽 배율 래스터는 2×2 평균으로 줄여 만든다
+  // (pdfium 은 같은 쪽을 두 번 그리면 wasm 서명 오류가 난다)
+  const closer = regions && mode === "builtin" && renderScale * 2 <= Math.sqrt(MAX_OCR_PIXELS / Math.max(1, pdfW * pdfH))
   const rendered = await page.render({
-    scale: renderScale,
+    scale: closer ? renderScale * 2 : renderScale,
     render: async ({ data }) => data,
   })
-  const { data: bgra, width: rw, height: rh } = rendered
-  const rgba = bgraToRgba(bgra)
+  const hiRgba = closer ? bgraToRgba(rendered.data) : null
+  const { rgba, width: rw, height: rh } = hiRgba
+    ? halve(hiRgba, rendered.width, rendered.height)
+    : { rgba: bgraToRgba(rendered.data), width: rendered.width, height: rendered.height }
 
   if (mode === "builtin") {
     // 스캔 기울기 보정 — 인식과 괘선 감지가 같은(바로 선) 래스터를 본다. 클린 렌더는 무보정.
@@ -150,8 +155,12 @@ async function ocrOnePage(
         const cx = (it.x + it.w / 2) / scale, cy = pdfH - (it.y + it.h / 2) / scale
         return cx >= r.x1 && cx <= r.x2 && cy >= r.y1 && cy <= r.y2
       }
-      return regions.flatMap(r => {
-        const own = items.filter(it => inside(it, r))
+      const reads = hiRgba ? await closerReads(hiRgba, rw * 2, rh * 2, pdfH, scale * 2, regions, engine!) : []
+      return regions.flatMap((r, k) => {
+        let own = items.filter(it => inside(it, r))
+        // 그림 속 글은 작다(차트 눈금·범례 6~8pt) — 영역만 두 배로 다시 읽어 글자 수로 가중한 평균 신뢰도가 높은 쪽을 쓴다
+        const near = reads[k]
+        if (near?.length && meanConfidence(near) > meanConfidence(own)) own = near
         return own.length ? ocrItemsToBlocks(own, pageNo, pdfW, pdfH, scale, ruling && rulingToPdfLines(ruling, scale, pdfH), detectTables) : []
       })
     }
@@ -184,6 +193,42 @@ async function ocrOnePage(
     return []
   }
   return [{ type: "paragraph", text: text.trim(), pageNumber: pageNo }]
+}
+
+/** 2×2 평균 축소 (RGBA) */
+function halve(src: Uint8Array, w: number, h: number): { rgba: Uint8Array; width: number; height: number } {
+  const W = w >> 1, H = h >> 1
+  const out = new Uint8Array(W * H * 4)
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const a = ((2 * y) * w + 2 * x) * 4, b = a + w * 4, o = (y * W + x) * 4
+    for (let c = 0; c < 4; c++) out[o + c] = (src[a + c] + src[a + 4 + c] + src[b + c] + src[b + 4 + c] + 2) >> 2
+  }
+  return { rgba: out, width: W, height: H }
+}
+
+function meanConfidence(items: OcrItem[]): number {
+  let n = 0, sum = 0
+  for (const it of items) { const len = [...it.text].length; n += len; sum += it.confidence * len }
+  return n ? sum / n : 0
+}
+
+/** 그림 영역마다 두 배 래스터에서 잘라 다시 인식한 글줄 — 좌표는 쪽 배율 래스터 기준으로 되돌린다 */
+async function closerReads(
+  rgba: Uint8Array, rw: number, rh: number, pdfH: number, hi: number,
+  regions: Array<{ x1: number; y1: number; x2: number; y2: number }>,
+  engine: NonNullable<Awaited<ReturnType<typeof getOcrEngine>>>,
+): Promise<Array<OcrItem[] | null>> {
+  const out: Array<OcrItem[] | null> = []
+  for (const r of regions) {
+    const x0 = Math.max(0, Math.floor(r.x1 * hi)), y0 = Math.max(0, Math.floor((pdfH - r.y2) * hi))
+    const cw = Math.min(rw, Math.ceil(r.x2 * hi)) - x0, ch = Math.min(rh, Math.ceil((pdfH - r.y1) * hi)) - y0
+    if (cw < 16 || ch < 16) { out.push(null); continue }
+    const crop = new Uint8Array(cw * ch * 4)
+    for (let y = 0; y < ch; y++) crop.set(rgba.subarray(((y0 + y) * rw + x0) * 4, ((y0 + y) * rw + x0 + cw) * 4), y * cw * 4)
+    const items = await engine.recognizePage(crop, cw, ch)
+    out.push(items.map(it => ({ ...it, x: (it.x + x0) / 2, y: (it.y + y0) / 2, w: it.w / 2, h: it.h / 2 })))
+  }
+  return out
 }
 
 /**
