@@ -5,6 +5,7 @@
  */
 
 import { toPlainMarkdown } from "./plain-markdown.js"
+import { toHtmlTables } from "./html-tables.js"
 import { readFile } from "fs/promises"
 import { detectFormat, detectOle2Format, detectZipFormat, isHwpxFile, isOldHwpFile, isPdfFile, isZipFile } from "./detect.js"
 import { parseHwpxDocument } from "./hwpx/parser.js"
@@ -90,6 +91,10 @@ export async function parse(input: string | ArrayBuffer | Buffer, options?: Pars
   // plain: 그림 자리 표시·링크 URL·밑줄/굵게 표기를 걷은 글 위주 Markdown (블록 IR 은 그대로)
   if (out.success && opts?.plain) {
     out = { ...out, markdown: toPlainMarkdown(out.markdown), ...(out.pages ? { pages: out.pages.map(p => ({ ...p, markdown: toPlainMarkdown(p.markdown) })) } : {}) }
+  }
+  // htmlTables: 모든 표를 태그마다 한 줄씩 들여쓴 HTML 로 (파이프 표 포함)
+  if (out.success && opts?.htmlTables) {
+    out = { ...out, markdown: toHtmlTables(out.markdown), ...(out.pages ? { pages: out.pages.map(p => ({ ...p, markdown: toHtmlTables(p.markdown) })) } : {}) }
   }
   return out
 }
