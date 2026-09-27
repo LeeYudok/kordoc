@@ -86,6 +86,8 @@ Beyond plain text extraction, kordoc automates the **entire lifecycle of Korean 
 | ref. | kordoc `plain: true` (no image placeholders or link URLs) | 0.946 | 0.947 | 0.937 | 0.940 | 0.03 s |
 | ref. | kordoc `ocr: true` (text inside images too) | 0.960 | 0.960 | 0.979 | 0.949 | 0.46 s |
 | ref. | kordoc `ocr: true, plain: true` | 0.967 | 0.968 | 0.981 | 0.956 | 0.46 s |
+| ref. | kordoc `plain: true, htmlTables: true` | 0.949 | 0.954 | 0.940 | 0.943 | 0.03 s |
+| ref. | kordoc `ocr: true, plain: true, htmlTables: true` | 0.971 | 0.975 | 0.983 | 0.958 | 0.46 s |
 | 2 | opendataloader-hybrid | 0.907 | 0.934 | 0.928 | 0.821 | 0.46 s |
 | 3 | nutrient (commercial) | 0.885 | 0.925 | 0.708 | 0.819 | 0.01 s |
 | 4 | docling | 0.882 | 0.898 | 0.887 | 0.824 | 0.76 s |
@@ -101,7 +103,7 @@ Beyond plain text extraction, kordoc automates the **entire lifecycle of Korean 
 
 - The default is **first on all four columns** — no GPU, cloud API or LLM, just Node.js.
 - Other engines' scores are the benchmark repository's published results (Apple M4 32GB); kordoc was measured on the same PDFs and ground truth with the **unmodified evaluator** (Apple M4 24GB, 200 documents in one process, 8 s). Re-scoring the repository's opendataloader-hybrid predictions with the same evaluator gives 0.9066, matching its published score. Reproduce: `node bench/odl-bench.mjs <bench clone>`, then the benchmark's `src/evaluator.py`.
-- LM-Kit One (commercial; results-only PR #34, not merged) reports 0.948 without OCR and 0.963 with OCR. Most of the no-OCR gap is table markup: it writes table cells in the ground truth's HTML shape (`<td> text </td>`, header rows as `<td>`); normalised to the same markup, kordoc `plain` scores 0.951 vs 0.948. `plain: true` drops image placeholders, link URLs and underline/bold marks for indexing and RAG.
+- LM-Kit One (commercial; results-only PR #34, not merged) reports 0.948 without OCR and 0.963 with OCR. Most of the no-OCR gap is table markup: it writes table cells in the ground truth's HTML shape (`<td> text </td>`, header rows as `<td>`); normalised to the same markup, kordoc `plain` scores 0.951 vs 0.948, and with `htmlTables` (every table as indented HTML) kordoc leads both rows: 0.949 without OCR, 0.971 with OCR. `plain: true` drops image placeholders, link URLs and underline/bold marks for indexing and RAG.
 
 ### Korean government documents: scored against the original HWPX
 
