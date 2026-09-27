@@ -32,6 +32,7 @@ import { remapControlGlyphs, restoreNamedGlyphs } from "./glyph-names.js"
 import { occludedTextItems } from "./occluded-text.js"
 import { joinVerticalColumns } from "./vertical-text.js"
 import { restoreTrackedSpacing } from "./tracked-text.js"
+import { relocateEndnotes } from "./endnotes.js"
 import { demoteNonHeadingRoles } from "./heading-demote.js"
 import { computeMedianFontSizeFromFreq, detectHeadings, mergeStackedHeadingLines, detectTypographyHeadings, detectDocumentStyleHeadings, detectSiblingStyleHeadings, detectRepeatedPageLabels, detectPageLeadHeadings, refineDocumentStyleHeadings, detectMarkerHeadings, detectTableCaptions, detectKoreanListBlocks, removeHeaderFooterBlocks } from "./block-detect.js"
 import { sanitizeBlockControlChars, cleanPdfText, splitSingleCellTables, joinLatinCellWraps } from "./text-clean.js"
@@ -488,6 +489,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     sanitizeBlockControlChars(blocks)
     // 1×1 표(중첩 없음)는 줄마다 문단으로 — 셀 줄바꿈이 mergeKoreanLines 에 붙지 않게 (v4.12.3)
     let outBlocks = splitSingleCellTables(blocks)
+    // 문서 끝에 모인 미주(해설)를 본문 참조 자리 뒤로 — HWPX·HWP5 출력과 같은 순서
+    outBlocks = relocateEndnotes(outBlocks)
     // 쪽번호는 쪽 위·아래 가장자리 띠의 숫자 문단뿐이다 — 본문 한가운데 홀로 선 숫자(차트 축 눈금 "0"·"500", 장 번호 "2")는 글이다
     // removeHeaderFooter: false 면 쪽번호도 글로 남긴다(머리글·바닥글과 같은 쪽 가장자리 띠)
     if (options?.removeHeaderFooter !== false) outBlocks = outBlocks.filter(b => {
