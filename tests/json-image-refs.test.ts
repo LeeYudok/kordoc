@@ -124,3 +124,20 @@ test("#65: 파싱 성공 후 출력 단계가 실패해도 stdout 은 원인 코
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test("#94: -o 로 Markdown 을 쓰면 그림 링크에 images/ 앞머리가 붙는다 (그림은 images/ 에 저장)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "kordoc-md-output-"))
+  try {
+    const docx = join(dir, "imgdoc.docx")
+    await buildImageDocx(docx)
+    const outDir = join(dir, "out")
+    mkdirSync(outDir, { recursive: true })
+    const md = join(outDir, "문서.md")
+    execFileSync(process.execPath, ["--import", "tsx", CLI, docx, "-o", md, "--silent"], { stdio: ["ignore", "ignore", "ignore"], timeout: 30000 })
+    const text = readFileSync(md, "utf-8")
+    assert.ok(text.includes("](images/image_001.png)"), text)
+    assert.ok(existsSync(join(outDir, "images", "image_001.png")))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

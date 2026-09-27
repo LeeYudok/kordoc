@@ -114,9 +114,11 @@ program
         // --inline-images 를 줘도 인라인되지 않으므로, 이미지 저장/경로접두사를 생략하면 참조가
         // 깨지고(dangling) 바이트가 유실된다 → 실제 인라인된 경우에만 생략한다.
         const imagesInlined = opts.inlineImages && result.fileType === "hwp"
-        // --out-dir 시 이미지 참조 경로에 images/ 접두사 추가 (인라인 모드에선 이미지가 마크다운에 임베드되므로 건너뜀)
+        // 그림을 파일로 저장하는 실행(--out-dir 또는 단일 파일 --output, 아래 saveImages)이면 이미지 참조 경로에 images/ 접두사 추가
+        // (인라인 모드에선 이미지가 마크다운에 임베드되므로 건너뜀). 종전엔 --out-dir 만 봐서 -o 결과의 그림 링크가 전부 깨졌다(#94).
         // <img src> 는 병합/중첩 표 셀 경로(table/builder.ts) — 마크다운 문법과 함께 둘 다 바꿔야 참조가 안 깨진다
-        if (opts.outDir && result.images?.length && !imagesInlined) {
+        const savesImageFiles = Boolean(opts.outDir || (opts.output && files.length === 1))
+        if (savesImageFiles && result.images?.length && !imagesInlined) {
           markdown = markdown
             .replace(/!\[image\]\(image_/g, "![image](images/image_")
             .replace(/(<img\b[^>]*\bsrc=")image_/g, "$1images/image_")

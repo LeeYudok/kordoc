@@ -57,7 +57,9 @@ Copy-Item -LiteralPath $src -Destination $tmpFile -Force
 try {
   $hwp = New-Object -ComObject HWPFrame.HwpObject
   $hwp.RegisterModule('FilePathCheckerModule', 'FilePathCheckerModuleExample') | Out-Null
-  $hwp.Open($tmpFile, '', '') | Out-Null
+  # suspendpassword: 열기 암호가 걸린 문서는 암호 입력 창을 띄우지 않고 바로 실패 — 숨은 창이 입력을 기다리며 멈추던 것 (#93)
+  $opened = $hwp.Open($tmpFile, '', 'suspendpassword:TRUE;forceopen:TRUE;versionwarning:FALSE')
+  if (-not $opened) { throw 'Open 실패 (열기 암호가 걸린 문서일 수 있음)' }
   $pc = $hwp.PageCount
   $result = @{ pageCount = $pc; pages = @() }
   for ($p = 1; $p -le $pc; $p++) {

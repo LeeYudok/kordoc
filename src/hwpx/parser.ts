@@ -78,11 +78,14 @@ export async function parseHwpxDocument(buffer: ArrayBuffer, options?: ParseOpti
         await decryptHwpxInPlace(zip, manifestXml, options.password)
       } else {
         // 파일 경로가 options에 있으면 COM fallback 시도
+        // (DRM 문서용 — 열기 암호 문서는 COM 도 암호 없이 못 여니 실패하면 아래 암호 안내로 끝낸다, #93)
         if (isComFallbackAvailable() && options?.filePath) {
-          const { pages, pageCount, warnings } = extractTextViaCom(options.filePath)
-          if (pages.some(p => p && p.trim().length > 0)) {
-            return comResultToParseResult(pages, pageCount, warnings)
-          }
+          try {
+            const { pages, pageCount, warnings } = extractTextViaCom(options.filePath)
+            if (pages.some(p => p && p.trim().length > 0)) {
+              return comResultToParseResult(pages, pageCount, warnings)
+            }
+          } catch { /* COM 실패 — 암호 안내로 */ }
         }
         // 메시지에 "DRM"을 넣지 않는다 — classifyError가 DRM_PROTECTED(비밀번호로 못 여는
         // 문서보안)로 분류해, 정작 암호만 주면 열리는 문서를 호출자가 포기하게 만든다.
