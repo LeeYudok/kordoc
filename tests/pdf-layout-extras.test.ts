@@ -54,6 +54,24 @@ describe("glyph names", () => {
     assert.deepEqual(items.map(it => it.str), ["19", "", "FIG"])
   })
 
+  it("restores digits a ToUnicode map sends to U+FFFD from their glyph names (ODL 001 \"3\uFFFD4\" → \"314\")", () => {
+    const diffs: string[] = []
+    diffs[19] = "one.SP"
+    const items = [raw("3\uFFFD4")]
+    restoreNamedGlyphs(items, [OPS.setFont, OPS.showText], [["F1", 10], [[glyph(51, "3"), glyph(19, "\uFFFD"), glyph(52, "4")]]], () => diffs)
+    assert.equal(items[0].str, "314")
+  })
+
+  it("reads re-encoded TeX CM math fonts by their original symbols, even past a trailing gap space (ODL 029~031)", () => {
+    const diffs: string[] = []
+    diffs[31] = "thorn"; diffs[30] = "onequarter"; diffs[29] = "C0"; diffs[28] = "eth"; diffs[27] = "Thorn"
+    const items = [raw("\u00FE"), raw("\u00BC"), raw("\uFFFD"), raw("\u00F0\u00DE"), raw(" "), raw("=", "F2")]
+    restoreNamedGlyphs(items, [OPS.setFont, OPS.showText, OPS.setFont, OPS.showText],
+      [["F1", 10], [[glyph(31, "\u00FE"), glyph(30, "\u00BC"), glyph(29, "\uFFFD"), glyph(28, "\u00F0"), glyph(27, "\u00DE")]], ["F2", 10], [[glyph(61, "=")]]],
+      name => name === "F1" ? diffs : undefined, name => name === "F1" ? "EEKVNO+TeXCMMathsSymbols" : "EEKVNO+TeXCMMathsItalic")
+    assert.deepEqual(items.map(it => it.str), ["+", "=", "\u2212", "()", " ", "/"])
+  })
+
   it("leaves a font untouched when its glyphs cannot be aligned, and fonts without named glyphs alone", () => {
     const diffs: string[] = []
     diffs[30] = "h.smcp"

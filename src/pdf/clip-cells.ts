@@ -90,6 +90,16 @@ function clusterCoords(values: number[]): number[] {
   return out
 }
 
+/** 표 바깥 끝에 1pt 도 안 되는 칸은 없다 — 칸마다 사각형을 따로 그려 바깥 변이 0.3pt 남짓 어긋나 묶음이 둘로 갈린 것(ODL 119
+ * 102.4·102.7)은 하나로. 안쪽의 좁은 열은 한컴 원본 격자에도 있어(칸 폭이 조금씩 다른 행) 건드리지 않는다 */
+function dropSliverGaps(coords: number[]): number[] {
+  const out = [...coords]
+  if (out.length > 2 && out[1] - out[0] < 1) out.splice(0, 2, (out[0] + out[1]) / 2)
+  const n = out.length
+  if (n > 2 && out[n - 1] - out[n - 2] < 1) out.splice(n - 2, 2, (out[n - 2] + out[n - 1]) / 2)
+  return out
+}
+
 const nearestIndex = (coords: number[], v: number): number => {
   let best = 0
   for (let i = 1; i < coords.length; i++) if (Math.abs(coords[i] - v) < Math.abs(coords[best] - v)) best = i
@@ -369,7 +379,7 @@ export function buildClipCellGrids(
     }
     if (invisible / edges < CLIP_MIN_INVISIBLE) continue
 
-    const colXs = clusterCoords(members.flatMap(r => [r.x1, r.x2]))
+    const colXs = dropSliverGaps(clusterCoords(members.flatMap(r => [r.x1, r.x2])))
     const rowYs = clusterCoords(members.flatMap(r => [r.y1, r.y2])).reverse() // 위→아래 내림차순
     const numRows = rowYs.length - 1, numCols = colXs.length - 1
     if (numRows < 1 || numCols < 1) continue

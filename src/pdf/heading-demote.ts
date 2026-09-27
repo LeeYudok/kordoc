@@ -72,7 +72,11 @@ export function demoteNonHeadingRoles(blocks: IRBlock[], pageHeights: Map<number
       text.length > 60
     // A bare section number is the first part of the title that follows it.
     const next = blocks[i + 1]
-    if (/^\d+(?:\.\d+)*\.?$/.test(text) && next?.type === "heading" && next.text && next.pageNumber === block.pageNumber) {
+    // 제목 가운데 위에 더 큰 글자로 따로 선 장 번호("2" ⏎ "The Lost Homeland")는 따로 선 제목이다(ODL 021)
+    const nb = next?.bbox, bb = block.bbox
+    const chapterNumber = !!nb && !!bb && fsz >= (next?.style?.fontSize ?? 0) * 1.2 && Math.abs(bb.x - nb.x) > fsz &&
+      Math.abs((bb.x + bb.width / 2) - (nb.x + nb.width / 2)) < nb.width * 0.1
+    if (/^\d+(?:\.\d+)*\.?$/.test(text) && next?.type === "heading" && next.text && next.pageNumber === block.pageNumber && !chapterNumber) {
       next.text = `${block.text.trim()} ${next.text.trim()}`
       blocks.splice(i--, 1)
       continue
@@ -130,7 +134,7 @@ export function demoteNonHeadingRoles(blocks: IRBlock[], pageHeights: Map<number
     const [bodyFace, bodySize] = (bodyStyle.get(block.pageNumber ?? 0) ?? "").split(":")
     const byline = /Italic|Oblique/i.test(face) && !/Bold|Black|Heavy|Semibold/i.test(face) && !!bodyFace &&
       size <= Number(bodySize) + 0.5 && blocks[i - 1]?.type === "heading" && blocks[i - 1].pageNumber === block.pageNumber
-    if (tocEntry || proseStyle || kicker || byline || tiny || !/\p{L}/u.test(text) || /^[a-z]/.test(text) || CAPTION.test(text) || EQUATION_NUMBER.test(block.text) || DISPLAY_MATH.test(text) ||
+    if (tocEntry || proseStyle || kicker || byline || tiny || !/\p{L}/u.test(text) && !chapterNumber || /^[a-z]/.test(text) || CAPTION.test(text) || EQUATION_NUMBER.test(block.text) || DISPLAY_MATH.test(text) ||
         // 닫는 괄호가 여는 괄호보다 많으면 앞 줄에서 이어진 문장 조각이다 ("Fact-checking) and is used …") — "1)"·"가)" 앞머리 번호는 빼고 센다
         unbalancedClose(text.replace(/^\s*[\dA-Za-z가-힣ⅰ-ⅹ]{1,3}\)\s*/, "")) ||
         isRunningHead(block, page, pageHeights.get(block.pageNumber ?? 0))) {

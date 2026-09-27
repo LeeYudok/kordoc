@@ -141,3 +141,29 @@ describe("PDF one-cell table split", () => {
     assert.deepEqual(splitSingleCellTables(blocks).map(b => b.text), ["Figure 6.1.2: Survey phases", "80 45", "60"])
   })
 })
+
+describe("PDF staggered right-aligned lines", () => {
+  it("reads a heading and the unit line under its right end in turn, not as two columns (hwpx-02)", () => {
+    const item = (text: string, x: number, y: number, w: number, h: number): NormItem =>
+      ({ text, x, y, w, h, fontSize: h, fontName: "Body", isHidden: false })
+    const items = [
+      item("1. 분기별 동향", 85, 694, 102, 15), item("(단위 : 억불)", 360, 674, 150, 10),
+      item("□ 업종별 동향", 85, 620, 170, 15), item("(단위 : 억불)", 360, 601, 150, 10),
+      item("□ 국가별 동향", 85, 547, 170, 15), item("(단위 : 억불)", 360, 527, 150, 10),
+    ]
+    const order = xyCutOrder(items, 20).flat().map(i => i.y)
+    assert.deepEqual(order, [694, 674, 620, 601, 547, 527])
+  })
+
+  it("keeps a spaced-out label line whole instead of cutting between its syllables (issue1948)", () => {
+    const item = (text: string, x: number, y: number, w: number): NormItem =>
+      ({ text, x, y, w, h: 13, fontSize: 13, fontName: "Body", isHidden: false })
+    const items = [
+      item("가", 72.9, 453, 12.6), item(".", 85.5, 453, 4.1), item("일", 96.1, 453, 12.6), item("시", 134.6, 453, 12.6), item(":", 147.2, 453, 4.1), item("*****", 157.8, 453, 207),
+      item("나", 72.9, 425, 12.6), item(".", 85.5, 425, 4.1), item("대", 96.1, 425, 12.6), item("상", 134.6, 425, 12.6), item(":", 147.2, 425, 4.1), item("*****", 157.6, 425, 227),
+    ]
+    const groups = xyCutOrder(items, 20)
+    assert.ok(groups.every(g => new Set(g.map(i => i.y)).size === 1 || g.length === items.length))
+    assert.ok(groups.some(g => g.some(i => i.text === "일") && g.some(i => i.text === "시")))
+  })
+})

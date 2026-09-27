@@ -28,6 +28,10 @@ export function pushLineParagraphs(out: IRBlock[], yLines: NormItem[][], pageNum
     return { text: l.text, left: b.x, right: b.x + b.width, y: l.items.reduce((s, i) => s + i.y, 0) / l.items.length, fontSize: dominantStyle(l.items)?.fontSize ?? 0 }
   })
   const joins = bodyLineJoins(geo, lex)
+  // 큰 글자로 따로 선 장 번호("2")는 아래 제목 줄과 다른 문단이다 (ODL 021)
+  for (let i = 0; i + 1 < geo.length; i++) {
+    if (/^\d{1,2}$/.test(geo[i].text.trim()) && geo[i].fontSize >= geo[i + 1].fontSize * 1.2) joins[i] = "\n"
+  }
   if (hasNumberedStyledTitle(lines.map(line => line.items))) {
     joins[0] = "\n"
     joins[1] = "\n"

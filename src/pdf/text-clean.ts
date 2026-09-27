@@ -122,14 +122,14 @@ export function cleanPdfText(text: string, opts?: { keepLoneNumbers?: boolean })
       // 문서 마지막 단독 페이지 번호
       .replace(/\n\d{1,4}$/, "")
   }
+  // 단독 숫자 헤딩 제거 ("# 6\n재무과" → "\n재무과") — 파서 경로(keepLoneNumbers)는 글자 없는 제목을 이미 강등했고 남은 것은 장 번호다
+  if (!opts?.keepLoneNumbers) clean = clean.replace(/^#{1,6}\s*\d{1,4}\s*$/gm, "")
   return mergeKoreanLines(
     clean
       // "- 2 -" 스타일 페이지 번호 (독립 라인 및 목록 항목 형태 포함)
       .replace(/^[\s]*[-–—]\s*[-–—]?\d+[-–—]?[\s]*[-–—]?[\s]*$/gm, "")
       // "1 / 5" 스타일 페이지 번호
       .replace(/^\s*\d+\s*\/\s*\d+\s*$/gm, "")
-      // 단독 숫자 헤딩 제거 ("# 6\n재무과" → "\n재무과")
-      .replace(/^#{1,6}\s*\d{1,4}\s*$/gm, "")
       // 띄어 찍은 점 리더(". . . . .")는 목차 채움선 — 점만 잇는다 (글자 사이 공백은 조판이 넣은 간격일 뿐)
       .replace(/\.(?: \.){3,}/g, m => ".".repeat((m.length + 1) >> 1))
   )

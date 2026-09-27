@@ -58,6 +58,20 @@ const isRestorableCode = (code: number) => code < 0x20 || (code >= 0x80 && code 
 interface OpGlyph { originalCharCode?: number; unicode?: string }
 
 /**
+ * TeX CM 수식 글꼴을 다시 매긴 하위 글꼴(Springer 계열 조판, ODL 028~031) — 이름·코드가 가리키는 글자가 아니라 원래 기호다.
+ * Symbols 는 라틴-1 이름에 기호를 얹었고(thorn "+", onequarter "=", eth "(", Thorn ")", onehalf "[", C138 "]" — 정답 문맥 대조)
+ * "C숫자" 이름은 TeX cmsy 원래 코드(0 −, 1 ·, 2 ×, 6 ±, 24 ∼). Italic 은 cmmi 인코딩이라 0x3A 가 ".", 0x3D 가 "/".
+ */
+const TEX_CM_SYMBOL_NAMES: Record<string, string> = {
+  thorn: "+", onequarter: "=", eth: "(", Thorn: ")", onehalf: "[", C138: "]", C0: "−", C1: "·", C2: "×", C6: "±", C24: "∼",
+}
+const TEX_CM_ITALIC_CODES: Record<number, string> = { 58: ".", 61: "/" }
+const texCmGlyph = (face: string | undefined, code: number, name: string | undefined): string | undefined =>
+  !face ? undefined
+    : /TeXCMMathsSymbols/.test(face) ? (name ? TEX_CM_SYMBOL_NAMES[name] : undefined)
+      : /TeXCMMathsItalic/.test(face) ? TEX_CM_ITALIC_CODES[code] : undefined
+
+/**
  * 글리프 이름으로만 알 수 있는 글자를 pdfjs 텍스트 아이템에 되살린다 (normalizeItems 전, 제자리). 바뀐 아이템 수.
  *
  * pdfjs 텍스트 아이템에는 유니코드 글만 남아 글리프 이름이 사라진다. 두 경우가 그 이름을 봐야 풀린다:
@@ -73,11 +87,13 @@ interface OpGlyph { originalCharCode?: number; unicode?: string }
 export function restoreNamedGlyphs(
   items: PdfTextItem[], fnArray: ArrayLike<number>, argsArray: ArrayLike<unknown>,
   differencesOf: (loadedName: string) => ArrayLike<string | undefined> | undefined,
+  faceOf: (loadedName: string) => string | undefined = () => undefined,
 ): number {
   const targets = new Map<string, ArrayLike<string | undefined> | null>()
   for (const it of items) {
     if (!it.fontName || targets.has(it.fontName)) continue
     const diffs = differencesOf(it.fontName)
+    if (/TeXCMMaths(?:Symbols|Italic)/.test(faceOf(it.fontName) ?? "")) { targets.set(it.fontName, diffs ?? []); continue }
     let hit = false
     if (diffs) for (let c = 0; c < diffs.length && !hit; c++) {
       const name = diffs[c]
@@ -118,13 +134,17 @@ export function restoreNamedGlyphs(
     let gi = cursor.get(fontName) ?? 0, k = 0, out = ""
     while (k < s.length) {
       const g = glyphs[gi]
-      if (!g) { failed.add(fontName); break }
+      // 글리프가 다 떨어진 뒤 pdfjs 가 틈에 넣은 공백 아이템(" ")은 짝이 없어도 된다(ODL 031 수식 글꼴)
+      if (!g) { if (/^\s*$/.test(s.slice(k))) { out += s.slice(k); break } failed.add(fontName); break }
       const code = g.originalCharCode ?? -1
       const name = diffs[code]
       const raw = g.unicode ?? ""
       const exp = /^\p{Cf}$/u.test(raw) ? "" : normalizeUnicode(raw)
       // 되살릴 코드: 글꼴이 이름을 붙였는데 pdfjs 가 공백·빈 글·제어 문자로 돌려준 것
-      const named = name && isRestorableCode(code) && (exp === "" || /^[\s\u0000-\u001f\u0080-\u009f]$/.test(exp)) ? glyphNameText(name) : undefined
+      // ToUnicode 가 대체 문자(U+FFFD)로 매긴 코드도 이름으로 되살린다 — "one.SP"·"two.SP" 쪽번호·그림 번호 숫자(ODL 001·015)
+      const tex = texCmGlyph(faceOf(fontName), code, name)
+      if (tex !== undefined && (exp === "" || s.startsWith(exp, k))) { out += tex; k += exp.length; gi++; continue }
+      const named = name && isRestorableCode(code) && (exp === "" || /^[\s\u0000-\u001f\u0080-\u009f\ufffd]$/.test(exp)) ? glyphNameText(name) : undefined
       if (/^\s/.test(exp)) {
         // 공백 글리프는 다음 글자 앞 " " 로 나오거나 아무것도 안 남긴다. 아이템 첫머리에서 짝이 없으면 앞 아이템 끝에 그린 글자
         // (ODL 006 쪽번호 "19": "1" 아이템 뒤 9 가 아무것도 안 남기고 다음 줄 아이템이 이어진다)

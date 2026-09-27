@@ -29,6 +29,7 @@ import { trimTrailingEmptyTableCols } from "./table-trim.js"
 import { remapSymbolFontItems } from "./symbol-fonts.js"
 import { wrapEquationRuns } from "./equation-runs.js"
 import { remapControlGlyphs, restoreNamedGlyphs } from "./glyph-names.js"
+import { occludedTextItems } from "./occluded-text.js"
 import { demoteNonHeadingRoles } from "./heading-demote.js"
 import { computeMedianFontSizeFromFreq, detectHeadings, mergeStackedHeadingLines, detectTypographyHeadings, detectDocumentStyleHeadings, detectSiblingStyleHeadings, detectRepeatedPageLabels, detectPageLeadHeadings, refineDocumentStyleHeadings, detectMarkerHeadings, detectTableCaptions, detectKoreanListBlocks, removeHeaderFooterBlocks } from "./block-detect.js"
 import { sanitizeBlockControlChars, cleanPdfText, splitSingleCellTables, joinLatinCellWraps } from "./text-clean.js"
@@ -167,11 +168,15 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
           catch { return undefined }
         }
         const differencesOf = (loadedName: string) => (fontObj(loadedName) as { differences?: ArrayLike<string | undefined> } | null | undefined)?.differences
-        restoreNamedGlyphs(rawItems, rawOps.fnArray, rawOps.argsArray, differencesOf)
-        const items = normalizeItems(rawItems)
+        restoreNamedGlyphs(rawItems, rawOps.fnArray, rawOps.argsArray, differencesOf, n => fontObj(n)?.name)
+        // 뒤에 칠한 불투명 사각형에 가려진 글(쪽 배경 아래 깔린 머리글 등)은 보이지 않는다
+        const occluded = occludedTextItems(rawItems, rawOps.fnArray, rawOps.argsArray)
+        const items = normalizeItems(occluded.size ? rawItems.filter(it => !occluded.has(it)) : rawItems)
 
         // hidden text 필터링 + 경고 수집
-        const { visible, hiddenCount } = filterHiddenText(items, pageW, pageH, viewX1, viewY1)
+        const filtered = filterHiddenText(items, pageW, pageH, viewX1, viewY1)
+        const { visible } = filtered
+        const hiddenCount = filtered.hiddenCount + occluded.size
         if (hiddenCount > 0) {
           warnings.push({ page: i, message: `${hiddenCount}개 숨겨진 텍스트 요소 필터링됨`, code: "HIDDEN_TEXT_FILTERED" })
         }
@@ -475,7 +480,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     // 1×1 표(중첩 없음)는 줄마다 문단으로 — 셀 줄바꿈이 mergeKoreanLines 에 붙지 않게 (v4.12.3)
     let outBlocks = splitSingleCellTables(blocks)
     // 쪽번호는 쪽 위·아래 가장자리 띠의 숫자 문단뿐이다 — 본문 한가운데 홀로 선 숫자(차트 축 눈금 "0"·"500", 장 번호 "2")는 글이다
-    outBlocks = outBlocks.filter(b => {
+    // removeHeaderFooter: false 면 쪽번호도 글로 남긴다(머리글·바닥글과 같은 쪽 가장자리 띠)
+    if (options?.removeHeaderFooter !== false) outBlocks = outBlocks.filter(b => {
       if (b.type !== "paragraph" || !/^\s*\d{1,4}\s*$/.test(b.text ?? "")) return true
       const h = pageHeights.get(b.pageNumber ?? 0)
       if (!b.bbox || !h) return false

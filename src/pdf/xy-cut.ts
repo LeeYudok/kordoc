@@ -58,14 +58,15 @@ export function xyCutOrder(items: NormItem[], gapThreshold: number, depth = 0): 
   const vCut = findVerticalCutWithOutlierFilter(items, minGap)
 
   const hValid = hCut.gap >= minGap
-  const vValid = vCut.gap >= minGap || (vCut.gap >= PROSE_GUTTER_MIN_GAP && isProseGutter(items, vCut.position))
+  const vValid = (vCut.gap >= minGap || (vCut.gap >= PROSE_GUTTER_MIN_GAP && isProseGutter(items, vCut.position))) &&
+    !splitsSpacedLabel(items, vCut.position)
 
   // 축 선택: 기본 Y 우선 (한국 공문서는 단일 컬럼 위주 — 코퍼스 검증 결과 Y 우선이 안정적).
   // 단, 수직 갭이 수평 갭보다 명백히 크면(1.5×) 컬럼 분리로 보고 X 우선
   // → 2단 레이아웃에서 문단 간 수평 갭이 단 사이 수직 갭보다 먼저 잡혀 행 단위로
   //   인터리브되는 문제 방지 (XY-Cut++ 양방향 컷의 보수적 적용)
   let useHorizontal: boolean
-  if (hValid && vValid) useHorizontal = vCut.gap <= hCut.gap * 1.5
+  if (hValid && vValid) useHorizontal = vCut.gap <= hCut.gap * 1.5 || staggeredSides(items, vCut.position)
   else if (hValid) useHorizontal = true
   else if (vValid) useHorizontal = false
   else return splitEdgeSpannedColumns(items, gapThreshold, depth) ?? [items] // 분할 불가 → 리프 노드
@@ -85,6 +86,44 @@ export function xyCutOrder(items: NormItem[], gapThreshold: number, depth = 0): 
   }
 
   return [items]
+}
+
+/**
+ * 균등배분 이름표("가. 일       시: …")의 글자 사이 빈틈 — 양쪽이 걸친 줄마다 컷 바로 옆이 홀로 선 한글 한 글자씩이면
+ * 단 경계가 아니라 한 낱말 안이다(issue1948). 두 단 본문은 컷 옆이 낱말·문장 조각이다.
+ */
+function splitsSpacedLabel(items: NormItem[], cutX: number): boolean {
+  const lone = (i: NormItem) => /^[가-힣]$/.test(i.text.trim())
+  const sameRow = (a: NormItem, b: NormItem) => Math.min(a.y, b.y) > Math.max(a.y - a.h, b.y - b.h)
+  const left = items.filter(i => i.x + i.w / 2 < cutX)
+  const right = items.filter(i => i.x + i.w / 2 >= cutX)
+  let spaced = 0
+  for (const r of right) {
+    if (right.some(o => o !== r && o.x < r.x && sameRow(o, r))) continue
+    const row = left.filter(l => sameRow(l, r))
+    if (row.length === 0) continue
+    const l = row.reduce((a, b) => (b.x + b.w > a.x + a.w ? b : a))
+    if (!lone(l) || !lone(r)) return false
+    spaced++
+  }
+  return spaced > 0
+}
+
+/**
+ * 세로 컷 양쪽이 같은 줄을 한 번도 나누지 않고 위아래로 번갈아(좌·우·좌·우) 놓이면 두 단이 아니라
+ * 한 단 안의 들쭉날쭉한 줄이다 — 제목 줄마다 아래 오른쪽 끝에 붙인 "(단위 : …)" 줄(hwpx-02).
+ * 두 단 본문은 양쪽 줄이 같은 높이에 나란히 놓인다.
+ */
+function staggeredSides(items: NormItem[], cutX: number): boolean {
+  const left = items.filter(i => i.x + i.w / 2 < cutX)
+  const right = items.filter(i => i.x + i.w / 2 >= cutX)
+  if (left.length * right.length > 200_000) return false
+  const shareRow = (a: NormItem, b: NormItem) => Math.min(a.y, b.y) > Math.max(a.y - a.h, b.y - b.h)
+  if (left.some(a => right.some(b => shareRow(a, b)))) return false
+  const sides = [...items].sort((a, b) => b.y - a.y).map(i => i.x + i.w / 2 < cutX)
+  let switches = 0
+  for (let k = 1; k < sides.length; k++) if (sides[k] !== sides[k - 1]) switches++
+  return switches >= 3
 }
 
 /**

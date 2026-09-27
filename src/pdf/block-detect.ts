@@ -37,12 +37,13 @@ export function computeMedianFontSizeFromFreq(freq: Map<number, number>): number
  * 조건: 짧은 텍스트 (200자 미만), 숫자만으로 구성되지 않음
  */
 export function detectHeadings(blocks: IRBlock[], medianFontSize: number): void {
-  for (const block of blocks) {
+  for (let bi = 0; bi < blocks.length; bi++) {
+    const block = blocks[bi]
     if (block.type !== "paragraph" || !block.text || !block.style?.fontSize) continue
     const text = block.text.trim()
     if (text.length === 0 || text.length > 200) continue
-    // 숫자만이면 헤딩 아님
-    if (/^\d+$/.test(text)) continue
+    // 숫자만이면 헤딩 아님 — 본문 2.5배 넘는 한두 자리 숫자가 바로 아래 큰 제목 위에 선 장 번호는 제목(ODL 021 "2" / "The Lost Homeland")
+    if (/^\d+$/.test(text) && !isChapterNumber(block, blocks[bi + 1], medianFontSize)) continue
 
     const ratio = block.style.fontSize / medianFontSize
     let level = 0
@@ -59,6 +60,17 @@ export function detectHeadings(blocks: IRBlock[], medianFontSize: number): void 
       block.text = collapseEvenSpacing(text, false)
     }
   }
+}
+
+function isChapterNumber(block: IRBlock, next: IRBlock | undefined, medianFontSize: number): boolean {
+  const size = block.style?.fontSize ?? 0
+  const nextSize = next?.style?.fontSize ?? 0
+  const text = next?.text?.trim() ?? ""
+  const a = block.bbox, b = next?.bbox
+  return /^\d{1,2}$/.test(block.text?.trim() ?? "") && size >= medianFontSize * 2.5 &&
+    !!next && (next.type === "paragraph" || next.type === "heading") && next.pageNumber === block.pageNumber &&
+    nextSize >= medianFontSize * HEADING_RATIO_H1 && text.length > 0 && text.length <= 80 && !/^[\d\s.]+$/.test(text) &&
+    !!a && !!b && a.y > b.y && a.y - (b.y + b.height) <= size * 2
 }
 
 /** A display title can be emitted as one heading block per visual line. Keep
@@ -78,7 +90,8 @@ export function mergeStackedHeadingLines(blocks: IRBlock[], medianFontSize: numb
       ab.width >= bb.width * 0.95 && (a.text?.trim().split(/\s+/).length ?? 0) >= 3
     // 가운데 맞춘 표시 제목은 줄마다 크기를 달리해도(33pt·24pt) 거의 붙어 있으면 한 제목이다
     const displayStack = centered && gap <= Math.min(af, bf) * 0.3 && Math.max(af, bf) <= Math.min(af, bf) * 1.45
-    if (a.type !== "heading" || b.type !== "heading" || !a.text || !b.text ||
+    // 장 번호("2")는 아래 제목과 다른 제목이다(isChapterNumber)
+    if (a.type !== "heading" || b.type !== "heading" || !a.text || !b.text || /^\d+$/.test(a.text.trim()) ||
         !ab || !bb || ab.page !== bb.page ||
         !(sameAnchor && af >= medianFontSize * 2 && bf >= medianFontSize * 2) && !wrapped &&
           !(centered && af >= medianFontSize * 1.25 && bf >= medianFontSize * 1.25) ||
