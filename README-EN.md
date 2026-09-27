@@ -138,6 +138,10 @@ HwpForge focuses on generation and editing; its Markdown uses pipe tables only, 
 
 ---
 
+## What's New in v4.15.7
+
+Nested tables and PDF text recovery went wider. HWP5 tables now come out the same shape as the same document's HWPX (only page-spanning body boxes are flattened), and 3- to 8-level nested tables keep every level in HWPX, HWP5 and PDF. HWP/HWPX → Markdown tables match 3,111/3,111 (HWP) and 9,122/9,123 (HWPX) with single-column frames excluded. PDF gains occluded-text removal, vertical text boxes, letter-spaced Latin, TeX math font symbols, chapter-number headings and per-line number lists in cells: ODL 200 default 0.937, `ocr: true` 0.960. New `plain` (text-first Markdown without image placeholders, link URLs or emphasis marks) and `htmlTables` (every table as indented HTML) options reach 0.949 without OCR and 0.971 with OCR. Issues #91–#95 are fixed (sparse XLSX, field placeholders, encrypted HWPX hang on Windows, `-o` image links, non-ASCII `generate --image-dir` names).
+
 ## What's New in v4.15.6
 
 PDF structure recovery went up another step: the public ODL 200-document overall rose from 0.905513 (4.15.5) to **0.934509** (reading order 0.938 · tables 0.931 · headings 0.926). `ocr: true` now also reads text inside charts and logos region by region (0.952); in the default path, pages that need OCR get a warning telling you to re-parse with `ocr: true` / `--ocr`.
@@ -176,6 +180,8 @@ A full reading-quality pass: a wider corpus (1,351 rhwp samples and 200 policy-b
 - **💲 A literal `$` no longer turns into math**: in Hangul documents (HWPX, HWP, HWP3) a literal `$` is emitted as `\$` and `$…$` is reserved for equations, so text like "echo $HOME $PATH" is no longer rendered as math. A backslash before punctuation ("C:\.Pls") is no longer lost either.
 - **📝 Unfilled click-here guide text is dropped**: HWPX guide text that Hangul only shows greyed out on screen and never prints is left out of the markdown (it stays in the block text). Filling a click-here field now sets its modified flag.
 - **🖼️ Skip images** (`images: false` / `--no-images`): image bytes are left out of the result. Image placeholders (`![image](…)`) and the text stay the same, so image positions are still known. PDFs skip PNG encoding. Measured on an image-heavy PDF: JSON output 200MB → 9.5MB, 30% less CPU time.
+- **🧹 Text-first output** (`plain: true` / `--plain`): drops image placeholders, link URLs and underline/bold marks, keeping headings, lists, tables and text. For indexing and RAG when image files are not saved.
+- **🧾 HTML tables** (`htmlTables: true` / `--html-tables`): every table, pipe tables included, as HTML with one tag per indented line (header row `<th>`). For consumers that only handle HTML tables.
 - **🚀 Persistent parse worker** (`kordoc parse-worker`): the process stays up and answers each stdin request line with one JSON line, so bulk indexing no longer starts a new node per file. Each response carries memory usage (`rss`) so the host can decide when to recycle the worker.
 
 ## What's New in v4.14.2
@@ -588,6 +594,7 @@ From the CLI: `kordoc render approval.hwpx -o approval.svg` (`--reflow`, `--high
 
 ```typescript
 const result = await parse(buffer, { images: false }) // no image bytes (placeholders remain)
+const plain = await parse(buffer, { plain: true, htmlTables: true }) // text-first + every table as indented HTML
 ```
 
 From the CLI: `kordoc doc.pdf --format json --no-images`. For bulk conversion keep `kordoc parse-worker`
