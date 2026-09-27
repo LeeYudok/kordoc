@@ -31,6 +31,7 @@ import { wrapEquationRuns } from "./equation-runs.js"
 import { remapControlGlyphs, restoreNamedGlyphs } from "./glyph-names.js"
 import { occludedTextItems } from "./occluded-text.js"
 import { joinVerticalColumns } from "./vertical-text.js"
+import { restoreTrackedSpacing } from "./tracked-text.js"
 import { demoteNonHeadingRoles } from "./heading-demote.js"
 import { computeMedianFontSizeFromFreq, detectHeadings, mergeStackedHeadingLines, detectTypographyHeadings, detectDocumentStyleHeadings, detectSiblingStyleHeadings, detectRepeatedPageLabels, detectPageLeadHeadings, refineDocumentStyleHeadings, detectMarkerHeadings, detectTableCaptions, detectKoreanListBlocks, removeHeaderFooterBlocks } from "./block-detect.js"
 import { sanitizeBlockControlChars, cleanPdfText, splitSingleCellTables, joinLatinCellWraps } from "./text-clean.js"
@@ -170,6 +171,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
         }
         const differencesOf = (loadedName: string) => (fontObj(loadedName) as { differences?: ArrayLike<string | undefined> } | null | undefined)?.differences
         restoreNamedGlyphs(rawItems, rawOps.fnArray, rawOps.argsArray, differencesOf, n => fontObj(n)?.name)
+        // 자간 벌린 글("E M A I L") — 글리프 흐름의 진짜 공백으로 낱말 경계를 되살린다
+        restoreTrackedSpacing(rawItems, rawOps.fnArray, rawOps.argsArray)
         // 뒤에 칠한 불투명 사각형에 가려진 글(쪽 배경 아래 깔린 머리글 등)은 보이지 않는다
         const occluded = occludedTextItems(rawItems, rawOps.fnArray, rawOps.argsArray)
         const items = normalizeItems(occluded.size ? rawItems.filter(it => !occluded.has(it)) : rawItems)
