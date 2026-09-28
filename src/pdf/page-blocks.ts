@@ -26,6 +26,7 @@ import { mergeSliverColumns } from "./table-trim.js"
 import { headerLineAbove } from "./grid-header-line.js"
 import { CLIP_TABLES, CONT_PARTS, EMPTY_PARTS, FILLER_CELLS, TABLE_COLXS, recordCellLines } from "./table-meta.js"
 import { WrapLexicon } from "./line-wrap.js"
+import { isPageFrameGrid } from "./page-frame.js"
 import { closeOpenTableEnds } from "./open-table-ends.js"
 import { extendHeaderBoxRows } from "./header-box-rows.js"
 import { detectRuledBandTables, type RuledTable } from "./ruled-band-tables.js"
@@ -33,7 +34,7 @@ import { detectTextBoxTables } from "./text-box-table.js"
 import { bridgeSkippedRowVerticals } from "./vertical-bridge.js"
 import { splitSidebarTitleRegion, splitTrailingColumnRegion, panelBlocks } from "./local-regions.js"
 import { pushLineParagraphs } from "./paragraph-lines.js"
-import { isChartTable, isFormulaTable, isTableOfContents, tocBlock } from "./table-roles.js"
+import { isChartTable, isExamLayoutTable, isFormulaTable, isTableOfContents, tocBlock } from "./table-roles.js"
 import { splitTwoColumnProse, figureColumnBands, topTableBand, tieredHeaderTable, stackedTableBands, threeColumnCards, threeColumnInfographic } from "./page-regions.js"
 
 /** 쪽 사이로 넘기는 칸 이어짐 상태 — 앞 쪽 번호와 그 쪽 클립 사실 (다음 쪽 첫 클립이 앞 쪽 마지막 칸의 이어짐인지 가른다, clip-cells) */
@@ -432,6 +433,7 @@ function extractBlocksWithGrids(
     // repeated-row candidate is checked again after text is mapped to cells.
     if (!grid.cells && !holdsNested && numGridCols === 1 && numGridRows >= 2 &&
         (numGridRows < 5 || gridW > pageWidth * 0.7)) continue
+    if (!holdsNested && isPageFrameGrid(grid, extractCells(grid, horizontals, verticals), pageWidth, pageHeight, items)) continue
     // 그리드 영역 내 텍스트 아이템 수집
     const tableItems: NormItem[] = []
     const pad = 3
@@ -892,6 +894,8 @@ function clusterTableBlock(cr: ClusterTableResult, source: NormItem[], pageNum: 
   if (!ruled && isTableOfContents(cr.table)) return tocBlock(cr.table, pageNum, cr.bbox, dominantStyle(source))
   if (isChartTable(cr.table)) return chartBlock(source, pageNum, cr.bbox)
   if (isFormulaTable(cr.table)) return chartBlock(source, pageNum, cr.bbox)
+  // 시험지 선택지·수식 배치는 줄 글 — 줄 경계는 남긴다("① $1$ ② $2$ ③ $3$" / "④ $4$ ⑤ $5$")
+  if (isExamLayoutTable(cr.table)) return { ...chartBlock(source, pageNum, cr.bbox), text: groupByY(source).map(line => mergeLineSimple(line).trim()).filter(Boolean).join("\n") }
   return { type: "table", table: cr.table, pageNumber: pageNum, bbox: cr.bbox }
 }
 

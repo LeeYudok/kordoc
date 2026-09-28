@@ -37,7 +37,7 @@ async function makeNoted(): Promise<{ original: Uint8Array; markdown: string }> 
 describe("patchHwpx — 각주 참조 부호가 있는 문단", () => {
   it("파서 출력: 본문에 부호 \"1)\" 가 끼워진다 (hp:t 에는 없다)", async () => {
     const { original, markdown } = await makeNoted()
-    assert.ok(markdown.includes("플라스틱 액체1)와 같은 원료를 쓴다 (주: 플라스틱 액체란)"), markdown)
+    assert.ok(markdown.includes("플라스틱 액체1)와 같은 원료를 쓴다 (주: 1) 플라스틱 액체란)"), markdown)
     assert.ok(!tTexts(await sectionXml(original)).some(t => t.includes("1)")))
   })
 
@@ -69,7 +69,7 @@ describe("patchHwpx — 각주 참조 부호가 있는 문단", () => {
 
   it("주석 글 수정은 미지원 사유로 보고하고 본문만 적용, 주석 XML 은 그대로", async () => {
     const { original, markdown } = await makeNoted()
-    const edited = markdown.replace("(주: 플라스틱 액체란)", "(주: 바뀐 주석)").replace("같은 원료를", "같은 재료를")
+    const edited = markdown.replace("(주: 1) 플라스틱 액체란)", "(주: 1) 바뀐 주석)").replace("같은 원료를", "같은 재료를")
     const res = await patchHwpx(original, edited)
     assert.ok(res.success && res.applied === 1)
     assert.ok(res.skipped.some(s => s.reason.includes("각주 텍스트 수정은 미지원")), JSON.stringify(res.skipped))

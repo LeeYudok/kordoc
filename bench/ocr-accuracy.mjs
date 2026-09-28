@@ -65,6 +65,8 @@ if (!existsSync(pdfDir) || !["det.onnx", "rec_korean.onnx", "rec_korean.yml"].ev
   console.warn(`⚠️  [ocr-accuracy] 코퍼스(${pdfDir}) 또는 OCR 모델(${modelDir}) 없음 — SKIP (모델: kordoc check-ocr-models)`)
   process.exit(0)
 }
+/** 문서별 표본 쪽 — v4.15.7 선정(텍스트층 품질 신호·200자)을 고정. 새 문서는 동적으로 고른다 */
+const PINNED = JSON.parse(readFileSync(join(root, "ocr-pages.json"), "utf8"))
 let files = readdirSync(pdfDir).filter(f => f.endsWith(".pdf")).sort()
 if (docFilter) files = files.filter(f => f.includes(docFilter))
 if (Number.isFinite(limit)) files = files.slice(0, limit)
@@ -82,7 +84,9 @@ for (const f of files) {
   const probe = await parse(buf())
   if (!probe.success || !probe.pageQuality?.length) { rows.push({ doc: f, skip: "parse/quality 없음" }); continue }
 
-  const cand = probe.pageQuality
+  // 표본 쪽은 고정 목록(ocr-pages.json)이 있으면 그것 — 파서 출력 글자 수로 고르면 파서가 바뀔 때 표본이 흔들린다
+  // (목차 리더 점을 글에서 빼자 목차 쪽이 200자 아래로 내려가 조직도 그림 쪽이 대신 뽑혔다 — 2026-09-28 채점 기준 변경)
+  const cand = PINNED[f] && !Number.isFinite(limit) && pagesPerDoc === 2 ? PINNED[f] : probe.pageQuality
     .filter(q => !q.needsOcr && q.textChars >= MIN_PAGE_CHARS)
     .slice(0, pagesPerDoc).map(q => q.page)
   if (!cand.length) { rows.push({ doc: f, skip: "클린 텍스트층 페이지 없음" }); continue }

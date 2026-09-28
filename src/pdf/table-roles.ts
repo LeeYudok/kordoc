@@ -124,3 +124,13 @@ export function isFormulaTable(table: IRTable): boolean {
   const math = texts.filter(text => /^[a-z]{1,2}$/.test(text) || /[=∂∑∫∣Γ∇√∞]/.test(text)).length
   return math >= texts.length * 0.6
 }
+
+/** 시험지 선택지·수식 배치 — 수식 글꼴 글(`$…$`)과 선택지 부호가 줄마다 벌어져 무괘선 표 후보가 된다(수능 모의고사 "① $1$ ② $2$ ③ $3$",
+ *  해설 "문4） … ③ | $g(x)=…$"). HWPX 원본엔 표가 없다. 선택지 부호(①~⑤)나 문항 표시("문N）")가 있고, 채운 칸의 60% 이상이
+ *  수식·선택지 부호·기호 조각("′")일 때만 — 선택지 부호 없는 수식 값 표("$x$ | $f(x)$")는 표로 둔다 */
+export function isExamLayoutTable(table: IRTable): boolean {
+  const texts = table.cells.flat().map(cell => cell.text.trim()).filter(Boolean)
+  if (texts.length < 3 || !texts.some(text => /[①-⑤]|문\d+）/.test(text))) return false
+  const layout = texts.filter(text => /\$|[①-⑤]|문\d+）/.test(text) || !/[\p{L}\p{N}]/u.test(text)).length
+  return layout >= texts.length * 0.6
+}

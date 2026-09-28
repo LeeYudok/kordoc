@@ -1,6 +1,7 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 import { cellTextToString, type TextItem } from "../src/pdf/line-detector.js"
+import { WrapLexicon } from "../src/pdf/line-wrap.js"
 
 /** 헬퍼: 텍스트 아이템 생성 */
 function ti(text: string, x: number, y: number, w = 30, fontSize = 12): TextItem {
@@ -10,6 +11,21 @@ function ti(text: string, x: number, y: number, w = 30, fontSize = 12): TextItem
 describe("cellTextToString", () => {
   it("빈 배열 → 빈 문자열", () => {
     assert.equal(cellTextToString([]), "")
+  })
+
+  it("두 음절 배분 정렬 칸은 붙인다 (\"중  동\" → \"중동\") — 보통 띄어쓰기 간격의 두 낱말은 그대로", () => {
+    // 한컴 배분 정렬: 두 음절 사이가 글자폭의 2배 넘게 벌어진다 (건설업조사 보도자료 지역별 표 "중 동"·"유 럽")
+    const lex = new WrapLexicon()
+    lex.addLine("올해 중동에서 수주가 늘었다")
+    const box = { box: { x1: 68, x2: 128 }, lex }
+    assert.equal(cellTextToString([ti("중", 72.84, 175, 12), ti("동", 111.24, 175, 12)], box), "중동")
+    assert.equal(cellTextToString([ti("그", 72, 175, 12), ti("외", 87, 175, 12)], box), "그 외")
+    // 공백을 친 채 배분한 좁은 칸 "과 장" (간격 1.0배) — 원문에 공백이 있다
+    assert.equal(cellTextToString([ti("과", 348.8, 175, 12), ti("장", 372.8, 175, 12)], { box: { x1: 345, x2: 388 }, lex }), "과 장")
+    // 본문에 한 어절로 안 나오는 "성명"(서식 이름표 "성  명") — 그대로
+    assert.equal(cellTextToString([ti("성", 106.9, 175, 12.7), ti("명", 154.5, 175, 12.7)], { box: { x1: 103, x2: 171 }, lex }), "성 명")
+    // 넓은 칸 가운데 공백을 쳐서 벌린 "내  용" — 칸 폭을 채우지 않는다
+    assert.equal(cellTextToString([ti("내", 130, 175, 12), ti("용", 160, 175, 12)], { box: { x1: 60, x2: 240 }, lex }), "내 용")
   })
 
   it("단일 아이템 → 그대로 반환", () => {

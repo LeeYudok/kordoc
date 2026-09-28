@@ -24,6 +24,17 @@ describe("PDF region and title boundaries", () => {
     assert.equal(mergeOcrImageRegions(blocks, 1, [{ x1: 70, y1: 420, x2: 500, y2: 570 }], [table]), 0)
   })
 
+  it("keeps OCR text of a screenshot whose cluster table has no header labels as row paragraphs", () => {
+    // 화면 캡처(ODL 072 유튜브 채널) — OCR 글줄이 머리 행 없는 표로 묶여도 버리지 않고 행마다 문단으로 넣는다
+    const table: IRBlock = { type: "table", pageNumber: 1, bbox: { page: 1, x: 80, y: 425, width: 400, height: 130 },
+      table: { rows: 4, cols: 3, cells: [[{ text: "Komnas HAM" }, { text: "" }, { text: "SUBSCRIBE" }],
+        [{ text: "1:23:19" }, { text: "36:36" }, { text: "0:46" }], [{ text: "Podcast" }, { text: "" }, { text: "Festival HAM" }], [{ text: "+-W\n-M" }, { text: "" }, { text: "" }]] } }
+    const blocks: IRBlock[] = []
+    // 차트 범례 기호 조각("+-W", "-M")만 든 행은 글이 아니다
+    assert.equal(mergeOcrImageRegions(blocks, 1, [{ x1: 70, y1: 420, x2: 500, y2: 570 }], [table]), 3)
+    assert.deepEqual(blocks.map(b => [b.type, b.text]), [["paragraph", "Komnas HAM SUBSCRIBE"], ["paragraph", "1:23:19 36:36 0:46"], ["paragraph", "Podcast Festival HAM"]])
+  })
+
   it("uses document prose style to restore a short section title amid other headings", () => {
     const b = (text: string, face: string, y: number, height = 12): IRBlock => ({ type: "paragraph", text, pageNumber: 1,
       bbox: { page: 1, x: 70, y, width: 230, height }, style: { fontName: face, fontSize: 12 } })

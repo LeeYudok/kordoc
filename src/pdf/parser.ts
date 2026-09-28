@@ -15,7 +15,7 @@ import { KordocError } from "../utils.js"
 import { parsePageRange, hasRequestedPagesAfter } from "../page-range.js"
 import { blocksToPages } from "../page-markdown.js"
 import { blocksToMarkdown, escapeLiteralDollar } from "../table/builder.js"
-import { extractImageRegions } from "./line-detector.js"
+import { extractImageRegions, extractLines } from "./line-detector.js"
 import { mergeOcrImageRegions, type ImageRegion } from "./ocr-region-merge.js"
 import { createPdfImageState, extractPageImages, injectPageImageBlocks } from "./image-extract.js"
 import { computePageQuality, summarizeDocumentQuality, type PageQuality } from "./quality.js"
@@ -33,6 +33,9 @@ import { occludedTextItems } from "./occluded-text.js"
 import { joinVerticalColumns } from "./vertical-text.js"
 import { restoreTrackedSpacing } from "./tracked-text.js"
 import { relocateEndnotes } from "./endnotes.js"
+import { dropTabLeaderDots } from "./tab-leaders.js"
+import { orderTwoUpPage } from "./two-up.js"
+import { superscriptNoteMarks, inlineFootnotes, footnoteSeparators, type PageNotes } from "./footnotes.js"
 import { demoteNonHeadingRoles } from "./heading-demote.js"
 import { computeMedianFontSizeFromFreq, detectHeadings, mergeStackedHeadingLines, detectTypographyHeadings, detectDocumentStyleHeadings, detectSiblingStyleHeadings, detectRepeatedPageLabels, detectPageLeadHeadings, refineDocumentStyleHeadings, detectMarkerHeadings, detectTableCaptions, detectKoreanListBlocks, removeHeaderFooterBlocks } from "./block-detect.js"
 import { sanitizeBlockControlChars, cleanPdfText, splitSingleCellTables, joinLatinCellWraps } from "./text-clean.js"
@@ -149,6 +152,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     const vectorPageOps = new Map<number, { fnArray: number[]; argsArray: unknown[][] }>()
     // 줄 꺾임 이음의 문서 어휘 증거 — 쪽을 처리할 때마다 그 쪽 줄 글이 더해진다 (line-wrap.ts)
     const wrapLexicon = new WrapLexicon()
+    // 쪽마다 본문 위첨자 각주 참조 표시("권고사항⁶⁾") — 쪽 아래 각주를 참조 문단으로 옮길 때 쓴다 (footnotes.ts)
+    const noteMarks = new Map<number, PageNotes>()
 
     let parsedPages = 0
     for (let i = 1; i <= effectivePageCount; i++) {
@@ -181,14 +186,17 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
         // hidden text 필터링 + 경고 수집
         const filtered = filterHiddenText(items, pageW, pageH, viewX1, viewY1)
         // 세로쓰기 글상자(한 자씩 쌓은 기둥이 오른쪽→왼쪽)는 기둥마다 한 줄로
-        const visible = joinVerticalColumns(filtered.visible)
+        const joined = joinVerticalColumns(filtered.visible)
+        // 탭 채움 리더(가운뎃점)는 글이 아니다 — 목차 줄이 "제목 ···· 3" 로 남던 것. 글꼴 크기 빈도(제목 판정의 본문 크기)는 빼기 전
+        // 아이템으로 센다 — 목차 긴 문서에서 리더 점 수천 개가 빠지면 중앙값이 흔들려 제목 판정이 통째로 바뀐다(강원 정보화 계획 402 → 233)
+        const visible = dropTabLeaderDots(joined)
         const hiddenCount = filtered.hiddenCount + occluded.size
         if (hiddenCount > 0) {
           warnings.push({ page: i, message: `${hiddenCount}개 숨겨진 텍스트 요소 필터링됨`, code: "HIDDEN_TEXT_FILTERED" })
         }
 
         // 폰트 크기 빈도 수집
-        for (const item of visible) {
+        for (const item of joined) {
           if (item.fontSize > 0) fontSizeFreq.set(item.fontSize, (fontSizeFreq.get(item.fontSize) || 0) + 1)
         }
 
@@ -265,9 +273,12 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
         }
 
         // 본문 글 밖 여백에 세로로 돌려 찍은 글(arXiv 도장)은 가로 줄 흐름에 섞이면 옆 본문 줄에 붙는다 — 따로 떼어 쪽 첫 문단으로
+        const marks = superscriptNoteMarks(visible)
+        if (marks.length) noteMarks.set(i, { marks, seps: footnoteSeparators(extractLines(opList.fnArray, opList.argsArray).horizontals, pageW, pageH) })
         const stamp = marginStamp(visible)
         const flow = stamp.length ? visible.filter(it => !stamp.includes(it)) : visible
-        const pageBlocks = extractPageBlocksWithLines(flow, i, opList, pageW, pageH, undefined, options?.tables !== false, carry, wrapLexicon)
+        // 가로 쪽 두 쪽 모아찍기는 왼쪽 쪽 → 오른쪽 쪽
+        const pageBlocks = orderTwoUpPage(extractPageBlocksWithLines(flow, i, opList, pageW, pageH, undefined, options?.tables !== false, carry, wrapLexicon), pageW, pageH)
         if (stamp.length) pageBlocks.unshift({ type: "paragraph", text: [...stamp].sort((a, b) => a.y - b.y).map(it => it.text).join(" "), pageNumber: i })
         for (const b of pageBlocks) blocks.push(b)
 
@@ -490,6 +501,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     // 1×1 표(중첩 없음)는 줄마다 문단으로 — 셀 줄바꿈이 mergeKoreanLines 에 붙지 않게 (v4.12.3)
     let outBlocks = splitSingleCellTables(blocks)
     // 문서 끝에 모인 미주(해설)를 본문 참조 자리 뒤로 — HWPX·HWP5 출력과 같은 순서
+    // 쪽 아래 각주를 참조 문단 끝 " (주: …)" 로 — HWPX·HWP5 출력과 같은 자리
+    outBlocks = inlineFootnotes(outBlocks, noteMarks)
     outBlocks = relocateEndnotes(outBlocks)
     // 쪽번호는 쪽 위·아래 가장자리 띠의 숫자 문단뿐이다 — 본문 한가운데 홀로 선 숫자(차트 축 눈금 "0"·"500", 장 번호 "2")는 글이다
     // removeHeaderFooter: false 면 쪽번호도 글로 남긴다(머리글·바닥글과 같은 쪽 가장자리 띠)

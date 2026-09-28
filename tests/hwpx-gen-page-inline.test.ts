@@ -120,6 +120,22 @@ describe("각주 개체 (v4.5.0)", () => {
     if (r.success) assert.ok(r.markdown.includes("각주 내용"), "각주 왕복")
   })
 
+  it("각주 subList 첫 문단 머리에 autoNum(FOOTNOTE) 번호 제어 — 한컴이 쪽 아래 각주 앞 번호를 그린다", async () => {
+    // 제보: 생성 문서의 각주 본문에 번호가 없었다. 한컴 실파일은 첫 문단 첫 run 에 autoNum 제어 + " 본문"
+    const buf = await markdownToHwpx("가[^a] 나[^b]\n\n[^a]: 첫째\n[^b]: 둘째")
+    const sec = await sectionOf(buf)
+    const notes = [...sec.matchAll(/<hp:footNote [^>]*>[\s\S]*?<\/hp:footNote>/g)].map(m => m[0])
+    assert.equal(notes.length, 2)
+    notes.forEach((note, k) => {
+      const first = /<hp:subList [^>]*><hp:p [^>]*><hp:run [^>]*><hp:ctrl><hp:autoNum num="(\d+)" numType="FOOTNOTE"><hp:autoNumFormat type="DIGIT" [^>]*suffixChar="\)"[^>]*\/><\/hp:autoNum><\/hp:ctrl><hp:t> <\/hp:t>/.exec(note)
+      assert.ok(first, `각주 ${k + 1} 첫 문단 머리 autoNum`)
+      assert.equal(first![1], String(k + 1))
+    })
+    const r = await parse(buf)
+    // 파서는 한컴 실파일과 같게 번호째 읽는다 — 한 문단 각주 여럿은 "; " 로
+    assert.ok(r.success && r.markdown.includes("(주: 1) 첫째; 2) 둘째)"), r.success ? r.markdown : "")
+  })
+
   it("정의 없는 마커는 리터럴 보존, 번호는 등장 순서", async () => {
     const buf = await markdownToHwpx("a[^1] b[^2] c[^없음]\n\n[^1]: 첫째\n[^2]: 둘째")
     const sec = await sectionOf(buf)

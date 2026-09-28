@@ -7,7 +7,9 @@
 //   recall    : HWPX 줄 유닛(공백 뺀 4자 이상)이 PDF 출력에 있는 비율 — score.mjs HWP5 쌍 트랙과 같은 정렬(alignUnits, 부분 매칭 3자 조각)
 //   precision : PDF 줄 유닛이 HWPX 출력에 있는 비율 — HWPX 본문에 없는 글(남은 머리말·쪽 표시·그림 속 글)이 섞이면 깎인다
 //   order     : 온전히 매칭된 HWPX 유닛의 PDF 출력 위치 시퀀스 LIS / 그 유닛 수 — 읽기 순서(2단·표 칸 순회)
+//               같은 글이 여러 번 나오는 유닛은 등장 자리 중 순서가 맞는 곳을 고른다(선택지 LIS, 2026-09-28 채점 기준 변경 — orderLis)
 //   spaceF1   : 어절(공백 단위 토큰) multiset F1 — 글자는 같아도 띄어쓰기가 틀리면 깎인다("2 0 , 7 7 5", 줄 이음 공백 누락)
+// 양쪽 평문에서 줄 머리 목록 표지("- ")는 걷는다 — 마크업이다(2026-09-28 채점 기준 변경)
 // 양쪽 정규화는 같다(mdToPlain → normText). 머리말·꼬리말은 HWPX 파서가 1회만 내고(본문 앞뒤) PDF 파서는 반복을 지우는 정책 차라
 // 양쪽 유닛·어절에서 같이 뺀다(참조 추출기 specials.headers/footers). 각주는 HWPX 가 문단 줄 안 "(주: …)", PDF 는 쪽 아래라
 // 재현율·정밀도는 조각 매칭이 흡수하고 순서만 조금 깎는다.
@@ -27,7 +29,7 @@ import { parse } from "../dist/index.js"
 import { extractRef } from "./ref/hwpx-ref.mjs"
 import JSZip from "jszip"
 import { normKey, normText, mdToPlain } from "./lib/normalize.mjs"
-import { alignUnits, lisLength } from "./lib/align.mjs"
+import { alignUnits } from "./lib/align.mjs"
 
 const execFileP = promisify(execFile)
 const root = fileURLToPath(new URL(".", import.meta.url))
@@ -38,7 +40,8 @@ const gateMode = args.includes("--gate")
 // recall 0.99359·precision 0.96072·order 0.97652·spaceF1 0.97069 바로 아래. 모수 하한은 pdf-table-gt 와 같은 여유 비율
 // v4.15.0: 751쌍 실측 .99446/.96933/.97672/.97799. 기존 세트 지표 무후퇴 확인 후 상향.
 // 새 세트의 정답지 부족 1쌍 제외 효과와 파서의 띄어쓰기 개선 효과는 별도로 보고한다.
-const GATES = { recall: 0.994, precision: 0.969, order: 0.9767, spaceF1: 0.9779, parseErrors: 0, minPairs: 751 }
+// v4.15.8(2026-09-28, 채점 기준 변경 뒤): 751쌍 실측 .99605/.99473/.98985/.98436 바로 아래로 상향
+const GATES = { recall: 0.9958, precision: 0.9945, order: 0.9896, spaceF1: 0.9841, parseErrors: 0, minPairs: 751 }
 const flagValue = (k, d) => (args.find(a => a.startsWith(`--${k}=`)) ?? "").split("=")[1] || d
 const docFilter = flagValue("doc", null)
 const SETS = flagValue("sets", "pairs,korea-kr,korea-kr-pairs,korea-kr-pairs2,rhwp,lo-pairs").split(",").filter(Boolean)
@@ -120,13 +123,65 @@ function coverage(units, targetKey) {
   const { perUnit } = alignUnits(units, targetKey)
   let matched = 0, total = 0
   const whole = [] // 온전히 매칭된 유닛의 위치 (문서 순서)
+  const wholeText = [] // 그 유닛의 글 — 같은 글이 여러 번 나오면 순서 채점이 등장 자리를 고른다 (orderLis)
   const misses = []
   for (const r of perUnit) {
     matched += r.matched; total += r.total
-    if (r.total && r.matched === r.total && r.pos >= 0) whole.push(r.pos)
+    if (r.total && r.matched === r.total && r.pos >= 0) { whole.push(r.pos); wholeText.push(units[perUnit.indexOf(r)].text) }
     else if (r.total && r.matched < r.total && r.missSnippet) misses.push(r.missSnippet)
   }
-  return { matched, total, whole, misses }
+  return { matched, total, whole, wholeText, misses }
+}
+
+/**
+ * 순서 LIS — 온전히 매칭된 유닛이 PDF 출력에서 문서 순서대로 놓인 최장 부분열. 같은 글이 출력에 여러 번 나오는 유닛(쪽마다 되풀이되는
+ * 서식 칸 "해당없음"·"예외기준 1. …")은 정렬기가 고른 한 자리가 아니라 등장 자리 가운데 순서가 가장 길게 맞는 곳으로 본다 — 같은 글은
+ * 구별할 수 없어, 정렬기의 임의 배정이 순서가 멀쩡한 출력을 깎았다(규제영향분석서 80168: 표 순서가 HWPX 와 같은데 order 0.956).
+ * 한 유닛은 한 자리만 쓴다(후보를 내림차순으로 넣는 선택지 LIS, 엄격 증가). 2026-09-28 채점 기준 변경
+ */
+function orderLis(rec, key, floating) {
+  const tails = []
+  let n = 0
+  rec.whole.forEach((pos, k) => {
+    const text = rec.wholeText[k]
+    if (floating.has(text)) return
+    n++
+    const cands = []
+    for (let at = key.indexOf(text); at >= 0 && cands.length < 200; at = key.indexOf(text, at + 1)) cands.push(at)
+    if (!cands.length) cands.push(pos)
+    for (const x of cands.sort((a, b) => b - a)) {
+      let lo = 0, hi = tails.length
+      while (lo < hi) { const m = (lo + hi) >> 1; if (tails[m] < x) lo = m + 1; else hi = m }
+      tails[lo] = x
+    }
+  })
+  return { lis: tails.length, n }
+}
+
+/**
+ * 떠 있는 글상자 글(normKey) — DOCX w:txbxContent 문단, HWPX 글자처럼 취급하지 않는(treatAsChar="0") 그리기 개체의 hp:drawText 문단.
+ * 쪽 위에 자리만 잡힌 개체라 본문 흐름 속 순서가 원본에 없다 — 정답의 순서는 작성 순서다(KS 표준안 개념도: 아래 상자부터 거꾸로,
+ * 서로 다른 빈 문단에 앵커돼 위치도 문단 기준 상대값). 순서 채점에서만 빼고 재현율·정밀도·어절에는 그대로 둔다 (2026-09-28 채점 기준 변경)
+ */
+async function floatingTexts(bytes, gtExt) {
+  const out = new Set()
+  const zip = await JSZip.loadAsync(bytes)
+  const addParas = (xml, pSplit, tRe) => {
+    for (const para of xml.split(pSplit)) { const k = normKey([...para.matchAll(tRe)].map(m => m[1]).join("")); if (k) out.add(k) }
+  }
+  if (gtExt === ".docx") {
+    const xml = await zip.file("word/document.xml")?.async("string")
+    for (const m of xml?.matchAll(/<w:txbxContent\b[\s\S]*?<\/w:txbxContent>/g) ?? []) addParas(m[0], /<\/w:p>/, /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)
+    return out
+  }
+  for (const name of Object.keys(zip.files).filter(n => /^Contents\/section\d+\.xml$/.test(n))) {
+    const xml = await zip.file(name).async("string")
+    for (const m of xml.matchAll(/<hp:(rect|ellipse|polygon|arc|curve)\b[\s\S]*?<\/hp:\1>/g)) {
+      if (!/<hp:pos\b[^>]*treatAsChar="0"/.test(m[0])) continue
+      for (const d of m[0].matchAll(/<hp:drawText\b[\s\S]*?<\/hp:drawText>/g)) addParas(d[0], /<\/hp:p>/, /<hp:t(?:\s[^>]*)?>([^<]*)<\/hp:t>/g)
+    }
+  }
+  return out
 }
 
 const t0 = performance.now()
@@ -146,8 +201,11 @@ for (const { set, base, rel, gtExt } of pairs) {
     const pdf = await parse(await readFile(base + ".pdf"), { filename: basename(base) + ".pdf" })
     if (!hwpx.success) throw new Error(`hwpx 파싱 실패: ${hwpx.error}`)
     if (!pdf.success) throw new Error(`pdf 파싱 실패: ${pdf.error}`)
-    const hwpxPlain = mdToPlain(hwpx.markdown).text
-    const pdfPlain = mdToPlain(pdf.markdown).text
+    // 줄 머리 목록 표지("- ")는 마크업이다(제목 "#" 처럼) — 같은 항목을 PDF 는 목록 블록("- 가. …"), HWPX 는 문단("가. …")으로
+    // 낼 때 표지 글자만 한쪽 가짜 글이 됐다(2025 행정업무운영 편람 652자). 양쪽 다 kordoc 출력이라 둘 다 걷는다 (2026-09-28 채점 기준 변경)
+    const plainOf = md => mdToPlain(md).text.replace(/^[ \t]*[-*+][ \t]+/gm, "")
+    const hwpxPlain = plainOf(hwpx.markdown)
+    const pdfPlain = plainOf(pdf.markdown)
 
     const refHangul = hangulCount(hwpxPlain)
     const layer = await pdftotextCounts(base + ".pdf")
@@ -199,7 +257,9 @@ for (const { set, base, rel, gtExt } of pairs) {
     const pdfKey = keyOf(pdfPlain)
     const rec = coverage(hwpxUnits, pdfKey)
     const prec = coverage(pdfUnits, hwpxKey)
-    const lis = rec.whole.length ? lisLength(rec.whole) : 0
+    let floating = new Set()
+    try { floating = await floatingTexts(hwpxBytes, gtExt) } catch { /* 깨진 ZIP — 순서 채점 제외 없이 */ }
+    const { lis, n: orderN } = orderLis(rec, pdfKey, floating)
     const words = bagOverlap(wordBag(hwpxPlain, chrome), wordBag(pdfPlain, chrome))
 
     Object.assign(row, {
@@ -207,7 +267,7 @@ for (const { set, base, rel, gtExt } of pairs) {
       refChars: rec.total,
       recall: round(rec.total ? rec.matched / rec.total : 1),
       precision: round(prec.total ? prec.matched / prec.total : 1),
-      order: round(rec.whole.length ? lis / rec.whole.length : 1),
+      order: round(orderN ? lis / orderN : 1),
       spaceF1: round(words.na + words.nb ? (2 * words.inter) / (words.na + words.nb) : 1),
     })
     if (verbose) { row.recallMiss = rec.misses.slice(0, 5); row.precisionMiss = prec.misses.slice(0, 5) }
@@ -215,7 +275,7 @@ for (const { set, base, rel, gtExt } of pairs) {
       a.pairs++
       a.recallM += rec.matched; a.recallT += rec.total
       a.precM += prec.matched; a.precT += prec.total
-      a.orderLis += lis; a.orderN += rec.whole.length
+      a.orderLis += lis; a.orderN += orderN
       a.wInter += words.inter; a.wRef += words.na; a.wOut += words.nb
     }
   } catch (err) {

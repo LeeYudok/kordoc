@@ -467,7 +467,9 @@ function hyperlinkBeginXml(fid: number, href: string): string {
     `</hp:parameters></hp:fieldBegin></hp:ctrl>`
 }
 
-/** footNote ctrl — rhwp render_note_sublist 형상 (suffixChar 41=')' 상시 방출 계약) */
+/** footNote ctrl — rhwp render_note_sublist 형상 (suffixChar 41=')' 상시 방출 계약). subList 첫 문단 머리엔 한컴 실파일처럼
+ *  autoNum(numType=FOOTNOTE) 제어 + 공백 — 이게 없으면 한컴이 쪽 아래 각주 본문 앞 번호("1)")를 그리지 않는다(제보). 번호 모양은
+ *  secPr footNotePr(gen-section: DIGIT, ")")와 같게 */
 function footnoteXml(note: string, mapCharId?: (id: number) => number): string {
   const d = inlineDoc!
   const n = ++d.noteSeq
@@ -480,7 +482,8 @@ function footnoteXml(note: string, mapCharId?: (id: number) => number): string {
   }
   return `<hp:ctrl><hp:footNote number="${n}" suffixChar="41" instId="${FOOTNOTE_INST_BASE + n}">` +
     `<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="TOP" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">` +
-    `<hp:p paraPrIDRef="0" styleIDRef="0">${body}</hp:p>` +
+    `<hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="${mapCharId ? mapCharId(CHAR_NORMAL) : CHAR_NORMAL}"><hp:ctrl><hp:autoNum num="${n}" numType="FOOTNOTE">` +
+    `<hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar=")" supscript="0"/></hp:autoNum></hp:ctrl><hp:t> </hp:t></hp:run>${body}</hp:p>` +
     `</hp:subList></hp:footNote></hp:ctrl>`
 }
 

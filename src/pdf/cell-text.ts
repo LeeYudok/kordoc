@@ -155,6 +155,16 @@ export function cellTextToString(items: TextItem[], wrap?: { box: { x1: number; 
   const textLines = merged.map(line => {
     const s = sortLineByX(line)
     if (s.length === 1) return s[0].text
+    // 두 음절 배분 정렬 칸("중  동"·"유  럽") — 세 글자 이상 균등배분(detectEvenSpacedItems)과 같은 조판인데 두 글자라 빠졌다.
+    // 음절 사이가 글자 크기의 1.5배 이상이고 두 음절이 칸 폭을 꽉 채우며(배분 정렬은 첫 글자를 칸 왼쪽, 끝 글자를 오른쪽 여백에
+    // 붙인다) 붙인 꼴이 같은 문서 줄 안에서 한 어절로 나오거나 두 음절이 어절 안에서만 이웃할 때만(line-wrap 문서 어휘 증거).
+    // 원문에 공백을 친 채 벌린 칸은 그림이 같아 기하로 못 가른다: 좁은 칸 "과 장"(보도자료 연락처)은 간격 1.0배 안팎이라 문턱에서,
+    // 서식 이름표 "성  명"은 본문에 한 어절로 잘 안 나와 어휘에서 걸러진다. 본문에도 나오는 낱말을 크게 벌린 이름표("경  력"·"은  행")는
+    // 못 가른다(hwpx↔pdf 751쌍: 건설업조사·해외직접투자 보도자료 등 나아짐, 2문서 1~4어절 나빠짐)
+    if (s.length === 2 && /^[가-힣]$/.test(s[0].text) && /^[가-힣]$/.test(s[1].text) && !!wrap?.lex &&
+        (wrap.lex.isWord(s[0].text + s[1].text) || wrap.lex.evidence(s[0].text, s[1].text) === "") &&
+        s[1].x - (s[0].x + s[0].w) >= Math.max(s[0].fontSize, s[1].fontSize) * 1.5 &&
+        s[1].x + s[1].w - s[0].x >= (wrap.box.x2 - wrap.box.x1) - Math.max(s[0].fontSize, s[1].fontSize) * 2) return s[0].text + s[1].text
 
     // 균등배분 구간 감지 (좌표 기반)
     const evenSpaced = detectEvenSpacedItems(s)

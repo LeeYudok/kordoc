@@ -15,7 +15,7 @@ export function mergeOcrImageRegions(
       const overlapH = Math.max(0, Math.min(b.y + b.height, region.y2) - Math.max(b.y, region.y1))
       return overlapW * overlapH >= b.width * b.height * 0.8
     })
-    const selected = candidates.filter(b => {
+    const accepted = candidates.filter(b => {
       // 그림 속 글(차트 축·범례·로고 글) — 텍스트층이 없는 그림 영역의 OCR 문단
       if (b.type === "paragraph") return (b.text?.match(/[\p{L}\p{N}]/gu)?.length ?? 0) >= 2
       const t = b.table
@@ -28,6 +28,9 @@ export function mergeOcrImageRegions(
       return t.rows >= 2 && t.cols >= 2 && headerLabels >= t.cols * 0.75 &&
         t.cells.slice(1).some(row => row.filter(c => c.text.trim()).length >= 2)
     })
+    // 표 모양이 아닌 OCR 표(머리 행 없는 화면 캡처 글줄 — ODL 072 유튜브 채널)는 버리지 않고 행마다 문단으로 — 그림 속 문단과 같은 대우
+    const selected = candidates.flatMap(b => accepted.includes(b) ? [b] : b.type === "table" && b.table ? rowParagraphs(b)
+      .filter(p => /[\p{L}\p{N}]{2}/u.test(p.text ?? "")) : [])
     for (const block of selected) {
       const b = block.bbox!
       const hasOriginal = blocks.some(existing => {
@@ -52,4 +55,14 @@ export function mergeOcrImageRegions(
     }
   }
   return added
+}
+
+/** OCR 표 → 행마다 문단(빈 칸 뺀 칸 글을 공백으로), 행 높이만큼 나눈 상자 */
+function rowParagraphs(block: IRBlock): IRBlock[] {
+  const t = block.table!, b = block.bbox!
+  const h = b.height / t.rows
+  return t.cells.map((row, r) => ({
+    type: "paragraph" as const, pageNumber: block.pageNumber, text: row.map(c => c.text.trim()).filter(Boolean).join(" "),
+    bbox: { ...b, y: b.y + h * (t.rows - 1 - r), height: h },
+  }))
 }

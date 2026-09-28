@@ -494,8 +494,11 @@ export function blocksToMarkdown(blocks: IRBlock[]): string {
       if (!listText) continue
       // 텍스트가 이미 번호로 시작하면 그대로 출력 (원래 번호 보존)
       const alreadyNumbered = block.listType === "ordered" && /^\d+\.\s/.test(listText)
-      const prefix = alreadyNumbered ? "" : block.listType === "ordered" ? "1. " : "- "
-      lines.push(`${prefix}${escapeGfm(listText)}`)
+      // 글이 이미 "- " 부호로 시작하는 비번호 항목(PDF 목록 감지는 부호째 둔다)에 "- " 를 또 붙이지 않는다
+      const alreadyBulleted = block.listType !== "ordered" && /^-\s/.test(listText)
+      const prefix = alreadyNumbered || alreadyBulleted ? "" : block.listType === "ordered" ? "1. " : "- "
+      // 각주는 문단과 같은 " (주: …)" — 목록 경로가 footnoteText 를 버려 각주 글이 사라졌다
+      lines.push(`${prefix}${escapeGfm(listText + (block.footnoteText ? ` (주: ${block.footnoteText})` : ""))}`)
       if (block.children) {
         for (const child of block.children) {
           const childPrefix = child.listType === "ordered" ? "1." : "-"

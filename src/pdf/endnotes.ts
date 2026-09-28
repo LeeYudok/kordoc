@@ -17,41 +17,60 @@ function blockText(b: IRBlock): string {
 
 export function relocateEndnotes(blocks: IRBlock[]): IRBlock[] {
   const texts = blocks.map(blockText)
-  const heads: Array<{ idx: number; ref: number; shape: string }> = []
+  /** end 앞 블록에서 mark 가 나오는 블록 번호(한 블록에 두 번이면 두 번) — cap 개까지만 */
+  const occurrences = (mark: string, end: number, cap: number): number[] => {
+    const out: number[] = []
+    for (let j = 0; j < end && out.length < cap; j++) {
+      for (let at = texts[j].indexOf(mark); at >= 0 && out.length < cap; at = texts[j].indexOf(mark, at + mark.length)) out.push(j)
+    }
+    return out
+  }
+  const cands: Array<{ idx: number; mark: string; shape: string }> = []
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i]
     if (b.type !== "paragraph" && b.type !== "list" && b.type !== "heading") continue
     const m = NOTE_MARK.exec(texts[i])
-    if (!m) continue
-    const mark = m[1]
-    let ref = -1, count = 0
-    for (let j = 0; j < i && count < 2; j++) {
-      let from = 0
-      while (count < 2) {
-        const at = texts[j].indexOf(mark, from)
-        if (at < 0) break
-        count++; ref = j; from = at + mark.length
-      }
-    }
-    if (count === 1) heads.push({ idx: i, ref, shape: mark.replace(/\d+/g, "#") })
+    if (m) cands.push({ idx: i, mark: m[1], shape: m[1].replace(/\d+/g, "#") })
+  }
+  const heads: Array<{ idx: number; ref: number; shape: string }> = []
+  for (const c of cands) {
+    const refs = occurrences(c.mark, c.idx, 2)
+    if (refs.length === 1) heads.push({ idx: c.idx, ref: refs[0], shape: c.shape })
   }
   // 미주 머리는 한 가지 번호 꼴("문#）")이다 — 미주 안 소항목("ⅰ)"·"(나)")이 앞 미주 글과 짝지어져 구간을 끊지 않게 가장 흔한 꼴만
   const shapes = new Map<string, number>()
   for (const h of heads) shapes.set(h.shape, (shapes.get(h.shape) ?? 0) + 1)
   const main = [...shapes].sort((a, b) => b[1] - a[1])[0]?.[0]
-  const mainHeads = heads.filter(h => h.shape === main && /#/.test(h.shape))
+  if (!main || !/#/.test(main)) return blocks
   // 문서 끝 쪽으로 이어진 짝 — 참조가 본문 순서대로 늘어나는 마지막 연속 구간
-  let run: typeof heads = []
-  for (const h of mainHeads) {
-    if (run.length && (h.ref < run[run.length - 1].ref || h.ref >= run[0].idx)) run = []
-    run.push(h)
+  const lastRun = (hs: typeof heads): typeof heads => {
+    let run: typeof heads = []
+    for (const h of hs) {
+      if (run.length && (h.ref < run[run.length - 1].ref || h.ref >= run[0].idx)) run = []
+      run.push(h)
+    }
+    return run
   }
+  const firstRun = lastRun(heads.filter(h => h.shape === main))
+  if (firstRun.length < 3) return blocks
+  // 선택과목마다 번호가 다시 시작하는 미주("문23）" 이 앞쪽 과목마다 한 번씩) — 미주 구간 앞쪽에 k번 나오는 표시는
+  // 구간 안 같은 표시 머리 k개와 차례로 짝짓는다. 개수가 다르면 그 표시는 머리로 보지 않는다
+  const tailByMark = new Map<string, number[]>()
+  for (const c of cands) if (c.idx >= firstRun[0].idx && c.shape === main) tailByMark.set(c.mark, [...(tailByMark.get(c.mark) ?? []), c.idx])
+  const paired: typeof heads = []
+  for (const [mark, idxs] of tailByMark) {
+    const refs = occurrences(mark, firstRun[0].idx, idxs.length + 1)
+    if (refs.length === idxs.length) idxs.forEach((idx, k) => paired.push({ idx, ref: refs[k], shape: main }))
+  }
+  const run = lastRun(paired.sort((a, b) => a.idx - b.idx))
   if (run.length < 3) return blocks
+  // 미주 묶음은 번호가 1부터 거의 빈틈없이 이어진다(선택과목마다 앞 번호로 되돌아가는 것 허용, 머리가 본문 줄에 섞여 빠진 몇 개 허용)
+  // — 절마다 다시 시작하는 목록의 뒤 토막("(7)(8)(9)", RFP)·마지막 쪽 아래 각주("5)~9)")는 1에서 시작하지 않는다
+  const nums = run.map(h => Number(/\d+/.exec(texts[h.idx])![0]))
+  if (nums[0] !== 1 || new Set(nums).size < Math.max(...nums) * 0.8) return blocks
   const start = run[0].idx
   // 구간 안에 짝 없는 머리가 있으면(다른 번호 체계) 손대지 않는다 — 앞 미주에 이어 붙은 본문 문단은 괜찮다
   const groups = run.map((h, k) => ({ ref: h.ref, blocks: blocks.slice(h.idx, k + 1 < run.length ? run[k + 1].idx : blocks.length) }))
-  const tail = blocks.slice(start)
-  if (groups.reduce((n, g) => n + g.blocks.length, 0) !== tail.length) return blocks
   const byRef = new Map<number, IRBlock[]>()
   for (const g of groups) byRef.set(g.ref, [...(byRef.get(g.ref) ?? []), ...g.blocks])
   const out: IRBlock[] = []
