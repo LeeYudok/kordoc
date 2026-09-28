@@ -7,9 +7,10 @@
 //   recall    : HWPX 줄 유닛(공백 뺀 4자 이상)이 PDF 출력에 있는 비율 — score.mjs HWP5 쌍 트랙과 같은 정렬(alignUnits, 부분 매칭 3자 조각)
 //   precision : PDF 줄 유닛이 HWPX 출력에 있는 비율 — HWPX 본문에 없는 글(남은 머리말·쪽 표시·그림 속 글)이 섞이면 깎인다
 //   order     : 온전히 매칭된 HWPX 유닛의 PDF 출력 위치 시퀀스 LIS / 그 유닛 수 — 읽기 순서(2단·표 칸 순회)
-//               같은 글이 여러 번 나오는 유닛은 등장 자리 중 순서가 맞는 곳을 고른다(선택지 LIS, 2026-09-28 채점 기준 변경 — orderLis)
+//               같은 글이 여러 번 나오는 유닛은 등장 자리 중 순서가 맞는 곳을 고른다(선택지 LIS, 2026-09-28 채점 기준 변경 — orderLis).
+//               글자·숫자 없는 유닛(마스킹·줄)은 순서 모수에서 뺀다(score.mjs 와 같은 정책, 같은 날 변경)
 //   spaceF1   : 어절(공백 단위 토큰) multiset F1 — 글자는 같아도 띄어쓰기가 틀리면 깎인다("2 0 , 7 7 5", 줄 이음 공백 누락)
-// 양쪽 평문에서 줄 머리 목록 표지("- ")는 걷는다 — 마크업이다(2026-09-28 채점 기준 변경)
+// 양쪽 평문에서 줄 머리 목록 표지("- ")와 각주 감싸개 "(주: …)" 괄호는 걷는다 — 마크업이다(2026-09-28 채점 기준 변경)
 // 양쪽 정규화는 같다(mdToPlain → normText). 머리말·꼬리말은 HWPX 파서가 1회만 내고(본문 앞뒤) PDF 파서는 반복을 지우는 정책 차라
 // 양쪽 유닛·어절에서 같이 뺀다(참조 추출기 specials.headers/footers). 각주는 HWPX 가 문단 줄 안 "(주: …)", PDF 는 쪽 아래라
 // 재현율·정밀도는 조각 매칭이 흡수하고 순서만 조금 깎는다.
@@ -40,8 +41,8 @@ const gateMode = args.includes("--gate")
 // recall 0.99359·precision 0.96072·order 0.97652·spaceF1 0.97069 바로 아래. 모수 하한은 pdf-table-gt 와 같은 여유 비율
 // v4.15.0: 751쌍 실측 .99446/.96933/.97672/.97799. 기존 세트 지표 무후퇴 확인 후 상향.
 // 새 세트의 정답지 부족 1쌍 제외 효과와 파서의 띄어쓰기 개선 효과는 별도로 보고한다.
-// v4.15.8(2026-09-28, 채점 기준 변경 뒤): 751쌍 실측 .99605/.99473/.98985/.98436 바로 아래로 상향
-const GATES = { recall: 0.9958, precision: 0.9945, order: 0.9896, spaceF1: 0.9841, parseErrors: 0, minPairs: 751 }
+// 2026-09-28(채점 기준 변경 뒤): 751쌍 실측 .99699/.99471/.99094/.98556 바로 아래로 상향
+const GATES = { recall: 0.9967, precision: 0.9945, order: 0.9907, spaceF1: 0.9853, parseErrors: 0, minPairs: 751 }
 const flagValue = (k, d) => (args.find(a => a.startsWith(`--${k}=`)) ?? "").split("=")[1] || d
 const docFilter = flagValue("doc", null)
 const SETS = flagValue("sets", "pairs,korea-kr,korea-kr-pairs,korea-kr-pairs2,rhwp,lo-pairs").split(",").filter(Boolean)
@@ -134,6 +135,26 @@ function coverage(units, targetKey) {
 }
 
 /**
+ * 각주 감싸개 걷기 — kordoc 은 각주를 참조 문단 끝에 " (주: …)" 로 끼운다(HWPX·HWP5·PDF 공통 마크업). 감싸개 괄호는 원문 글이 아니라
+ * 첫·끝 어절에 붙어 한쪽만 각주를 끼운 문서(PDF 가 각주를 질문 아래에 찍은 SO-SUEOP: "있다.)" 대 "있다.")의 어절을 깎았다.
+ * "(주: " 와 짝이 맞는 ")" 만 지우고 각주 글은 남긴다 (2026-09-28 채점 기준 변경)
+ */
+function unwrapNotes(md) {
+  // 감싸개는 문단·칸 끝에 붙는다 — 같은 줄에서 다음 감싸개·칸 경계 앞의 마지막 ")" 가 닫는 괄호("(주: 1) 글 (괄호) 끝.)" 의 번호 ")" 는 아님)
+  let out = "", i = 0
+  for (let at = md.indexOf("(주: "); at >= 0; at = md.indexOf("(주: ", i)) {
+    out += md.slice(i, at) + " "
+    const rest = md.slice(at + 4)
+    const bound = rest.search(/\(주: |\n| \||<br|<\/t[dh]>/)
+    const seg = bound < 0 ? rest : rest.slice(0, bound)
+    const close = seg.lastIndexOf(")")
+    out += close < 0 ? seg : seg.slice(0, close) + " " + seg.slice(close + 1)
+    i = at + 4 + seg.length
+  }
+  return out + md.slice(i)
+}
+
+/**
  * 순서 LIS — 온전히 매칭된 유닛이 PDF 출력에서 문서 순서대로 놓인 최장 부분열. 같은 글이 출력에 여러 번 나오는 유닛(쪽마다 되풀이되는
  * 서식 칸 "해당없음"·"예외기준 1. …")은 정렬기가 고른 한 자리가 아니라 등장 자리 가운데 순서가 가장 길게 맞는 곳으로 본다 — 같은 글은
  * 구별할 수 없어, 정렬기의 임의 배정이 순서가 멀쩡한 출력을 깎았다(규제영향분석서 80168: 표 순서가 HWPX 와 같은데 order 0.956).
@@ -144,7 +165,8 @@ function orderLis(rec, key, floating) {
   let n = 0
   rec.whole.forEach((pos, k) => {
     const text = rec.wholeText[k]
-    if (floating.has(text)) return
+    // 글자·숫자 없는 유닛(마스킹 "*****"·줄 "-----")은 순서 모수에서 뺀다 — score.mjs HWPX 트랙 순서 채점과 같은 정책
+    if (floating.has(text) || !/[\p{L}\p{N}]/u.test(text)) return
     n++
     const cands = []
     for (let at = key.indexOf(text); at >= 0 && cands.length < 200; at = key.indexOf(text, at + 1)) cands.push(at)
@@ -203,7 +225,7 @@ for (const { set, base, rel, gtExt } of pairs) {
     if (!pdf.success) throw new Error(`pdf 파싱 실패: ${pdf.error}`)
     // 줄 머리 목록 표지("- ")는 마크업이다(제목 "#" 처럼) — 같은 항목을 PDF 는 목록 블록("- 가. …"), HWPX 는 문단("가. …")으로
     // 낼 때 표지 글자만 한쪽 가짜 글이 됐다(2025 행정업무운영 편람 652자). 양쪽 다 kordoc 출력이라 둘 다 걷는다 (2026-09-28 채점 기준 변경)
-    const plainOf = md => mdToPlain(md).text.replace(/^[ \t]*[-*+][ \t]+/gm, "")
+    const plainOf = md => mdToPlain(unwrapNotes(md)).text.replace(/^[ \t]*[-*+][ \t]+/gm, "")
     const hwpxPlain = plainOf(hwpx.markdown)
     const pdfPlain = plainOf(pdf.markdown)
 

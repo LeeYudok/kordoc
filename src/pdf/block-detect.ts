@@ -897,9 +897,13 @@ export function removeHeaderFooterBlocks(
     // (1) 텍스트 반복 패턴
     const patternCount = new Map<string, number>()
     const patternPages = new Map<string, Set<number>>()
+    const patternNumbers = new Map<string, Set<string>>()
     for (const e of entries) {
       const norm = e.text.replace(/\d+/g, "#")
       patternCount.set(norm, (patternCount.get(norm) || 0) + 1)
+      const nums = patternNumbers.get(norm) || new Set<string>()
+      nums.add((e.text.match(/\d+/g) ?? []).join(","))
+      patternNumbers.set(norm, nums)
       const pages = patternPages.get(norm) || new Set<number>()
       pages.add(e.page)
       patternPages.set(norm, pages)
@@ -907,7 +911,13 @@ export function removeHeaderFooterBlocks(
     const repeatedPatterns = new Set<string>()
     for (const [p, count] of patternCount) {
       // 서로 다른 페이지에서 MIN_REPEAT번 이상 등장
-      if (count >= MIN_REPEAT && (patternPages.get(p)?.size ?? 0) >= MIN_REPEAT) {
+      // 첫~끝 등장 쪽 구간의 40% 이상 쪽에 나와야 러닝 헤더다(홀짝 머리말 포함) — 서식마다 첫 쪽에 찍힌 절 제목은 드문드문 되풀이된다
+      // (규제영향분석서 "Ⅰ. 규제의 필요성": 156쪽 중 10쪽, 약 15쪽 간격 — 원본 서식 제목을 머리글로 지웠다)
+      const pages = [...(patternPages.get(p) ?? [])]
+      const span = pages.length ? Math.max(...pages) - Math.min(...pages) + 1 : 0
+      // 숫자가 등장마다 바뀌면(쪽 번호) 드문드문해도 러닝 머리·바닥글이다 — 일부 쪽에선 표에 흡수돼 따로 선 등장이 성기다(hwp3-sample11)
+      const pageNumbered = (patternNumbers.get(p)?.size ?? 0) > 1
+      if (count >= MIN_REPEAT && pages.length >= MIN_REPEAT && (pages.length >= span * 0.4 || pageNumbered)) {
         repeatedPatterns.add(p)
       }
     }
