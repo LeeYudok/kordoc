@@ -2,7 +2,10 @@
 
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
+import { createServer } from "node:http"
+import type { AddressInfo } from "node:net"
 import type { WatchOptions } from "../src/types.js"
+import { postWebhookToAddress } from "../src/watch.js"
 
 describe("WatchOptions 타입", () => {
   it("필수 필드만으로 유효", () => {
@@ -24,5 +27,28 @@ describe("WatchOptions 타입", () => {
     assert.equal(opts.format, "json")
     assert.equal(opts.pages, "1-3")
     assert.equal(opts.silent, true)
+  })
+})
+
+describe("webhook DNS pinning", () => {
+  it("검증된 IP에 연결하면서 원래 Host를 유지한다", async () => {
+    let receivedHost = ""
+    let receivedBody = ""
+    const server = createServer((req, res) => {
+      receivedHost = req.headers.host ?? ""
+      req.setEncoding("utf-8")
+      req.on("data", chunk => { receivedBody += chunk })
+      req.on("end", () => { res.end("ok") })
+    })
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve))
+    const port = (server.address() as AddressInfo).port
+    try {
+      // .invalid cannot resolve normally: success proves the HTTP request used the supplied address.
+      await postWebhookToAddress(new URL(`http://rebind.example.invalid:${port}/hook`), { address: "127.0.0.1", family: 4 }, '{"ok":true}')
+      assert.equal(receivedHost, `rebind.example.invalid:${port}`)
+      assert.equal(receivedBody, '{"ok":true}')
+    } finally {
+      server.close()
+    }
   })
 })

@@ -3,7 +3,7 @@
 
 import { describe, it, afterEach } from "node:test"
 import assert from "node:assert/strict"
-import { mkdtempSync, mkdirSync, writeFileSync, realpathSync, symlinkSync } from "node:fs"
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, symlinkSync, renameSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -14,6 +14,7 @@ import {
   isWithinRoot,
 } from "../src/shared/offline.js"
 import { PARSE_EXTENSIONS, safePath, safeOutputPath } from "../src/mcp.js"
+import { writeOutputFile } from "../src/mcp/shared.js"
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "kordoc-root-")))
 const inside = join(root, "doc.pdf")
@@ -135,5 +136,27 @@ describe("KORDOC_ROOT — 파일 접근 루트 제한", () => {
       // 루트 안의 없는 하위 경로는 그대로 허용 (저장 시 생성)
       assert.equal(safeOutputPath(join(root, "sub", "new", "out5.hwpx"), exts), join(root, "sub", "new", "out5.hwpx"))
     })
+  })
+
+  it("검사 뒤 출력 파일이 링크로 바뀌어도 외부 파일을 덮어쓰지 않는다", async () => {
+    process.env.KORDOC_ROOT = root
+    const victim = join(sibling, "late-victim.hwpx")
+    const output = join(root, "late-output.hwpx")
+    writeFileSync(victim, "original")
+    const checked = safeOutputPath(output, new Set([".hwpx"]))
+    symlinkSync(victim, output)
+    await assert.rejects(writeOutputFile(checked, "overwritten"), /ELOOP|심볼릭 링크/)
+    assert.equal(readFileSync(victim, "utf-8"), "original")
+  })
+
+  it("검사 뒤 부모 디렉토리가 외부 링크로 바뀌어도 밖에 쓰지 않는다", async () => {
+    process.env.KORDOC_ROOT = root
+    const parent = join(root, "late-parent")
+    mkdirSync(parent)
+    const checked = safeOutputPath(join(parent, "output.hwpx"), new Set([".hwpx"]))
+    renameSync(parent, join(root, "old-parent"))
+    symlinkSync(sibling, parent)
+    await assert.rejects(writeOutputFile(checked, "overwritten"), /KORDOC_ROOT/)
+    assert.equal(existsSync(join(sibling, "output.hwpx")), false)
   })
 })

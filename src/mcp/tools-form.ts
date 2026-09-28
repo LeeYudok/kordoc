@@ -1,12 +1,12 @@
 /** kordoc MCP 도구 — 서식·편집 — parse_form·fill_form·place_seal·patch_document·redact_document */
 
 import { z } from "zod"
-import { readFile, writeFile, mkdir, stat, realpath } from "fs/promises"
+import { readFile, mkdir, stat, realpath } from "fs/promises"
 import { extname, dirname } from "path"
 import { parse, detectFormat, detectZipFormat, detectOle2Format, blocksToMarkdown, extractFormFields, fillFormFields, markdownToHwpx, fillHwpx, patchHwpx, patchHwp, BUILTIN_TEMPLATES, resolveBuiltinTemplate, readBuiltinTemplate } from "../index.js"
 import { fillWithUniqueGuard, type FillInput } from "../form/match.js"
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
-import { IMAGE_EXTENSIONS, safePath, safeOutputPath, describeError, capResponseText, readValidatedFile } from "./shared.js"
+import { IMAGE_EXTENSIONS, safePath, safeOutputPath, writeOutputFile, describeError, capResponseText, readValidatedFile } from "./shared.js"
 
 /** fields + formats 를 FillInput 맵으로 결합 (formats의 라벨은 fields와 동일 표기 기준) */
 export function buildFillInputs(fields: Record<string, string>, formats?: Record<string, string>): Record<string, FillInput> {
@@ -147,7 +147,7 @@ export function registerFormTools(server: McpServer): void {
 
           if (outPath) {
             await mkdir(dirname(outPath), { recursive: true })
-            await writeFile(outPath, Buffer.from(hwpxResult.buffer))
+            await writeOutputFile(outPath, Buffer.from(hwpxResult.buffer))
             return {
               content: [{ type: "text", text: `[${summary}]\n\n채워진 필드:\n${filledList}\n\nHWPX 파일 저장 (원본 서식 유지): ${outPath}` }],
             }
@@ -197,7 +197,7 @@ export function registerFormTools(server: McpServer): void {
           const hwpxBuffer = await markdownToHwpx(markdown)
           if (outPath) {
             await mkdir(dirname(outPath), { recursive: true })
-            await writeFile(outPath, Buffer.from(hwpxBuffer))
+            await writeOutputFile(outPath, Buffer.from(hwpxBuffer))
             return {
               content: [{ type: "text", text: `[${summary}]\n\nHWPX 파일 저장: ${outPath}` }],
             }
@@ -210,7 +210,7 @@ export function registerFormTools(server: McpServer): void {
         // markdown
         if (outPath) {
           await mkdir(dirname(outPath), { recursive: true })
-          await writeFile(outPath, markdown, "utf-8")
+          await writeOutputFile(outPath, markdown, "utf-8")
           return {
             content: [{ type: "text", text: `[${summary}]\n\n마크다운 파일 저장: ${outPath}\n\n${previewMd}` }],
           }
@@ -268,7 +268,7 @@ export function registerFormTools(server: McpServer): void {
           sizeMm: size_mm, mode, dxMm: dx_mm, dyMm: dy_mm,
         }])
         await mkdir(dirname(outPath), { recursive: true })
-        await writeFile(outPath, Buffer.from(result.buffer))
+        await writeOutputFile(outPath, Buffer.from(result.buffer))
         const p0 = result.placed[0]
         const warnLines = (p0.warnings ?? []).map(w => `\n⚠️ ${w}`).join("")
         return {
@@ -326,7 +326,7 @@ export function registerFormTools(server: McpServer): void {
         }
 
         await mkdir(dirname(out), { recursive: true })
-        await writeFile(out, Buffer.from(result.data))
+        await writeOutputFile(out, Buffer.from(result.data))
 
         const v = result.verification?.stats
         const lossless = v ? (v.modified === 0 && v.added === 0 && v.removed === 0) : undefined
@@ -404,10 +404,10 @@ export function registerFormTools(server: McpServer): void {
         if (!dry_run && save) {
           await mkdir(dirname(outPath!), { recursive: true })
           if (r.data) {
-            await writeFile(outPath!, Buffer.from(r.data))
+            await writeOutputFile(outPath!, Buffer.from(r.data))
             lines.push(`저장: ${outPath} (원본 서식 보존)`)
           } else {
-            await writeFile(outPath!, r.markdown, "utf-8")
+            await writeOutputFile(outPath!, r.markdown, "utf-8")
             lines.push(`저장: ${outPath} (${r.format} 원본은 수정하지 않음 — 마스킹된 마크다운)`)
           }
         } else if (!dry_run) {

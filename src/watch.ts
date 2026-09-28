@@ -2,6 +2,8 @@
 
 import { watch, readFileSync, writeFileSync, mkdirSync, statSync, existsSync, realpathSync } from "fs"
 import { lookup } from "dns/promises"
+import { request as httpRequest } from "node:http"
+import { request as httpsRequest } from "node:https"
 import { basename, dirname, resolve, extname, sep } from "path"
 import { parse, detectFormat } from "./index.js"
 import { toArrayBuffer } from "./utils.js"
@@ -282,17 +284,39 @@ async function sendWebhook(url: string | undefined, payload: Record<string, unkn
     assertNetworkAllowed("webhook 전송", "폐쇄망에서 알림이 필요하면 --output 결과 파일을 감시하는 내부 작업으로 대체하세요")
     validateWebhookUrl(url)
     // DNS 해석 후 사설 IP 재검증 — 문자열 검사만으로는 내부망 도메인을 못 거른다
-    const hostname = new URL(url).hostname.replace(/^\[|\]$/g, "")
+    const parsed = new URL(url)
+    const hostname = parsed.hostname.replace(/^\[|\]$/g, "")
     const addrs = await lookup(hostname, { all: true, verbatim: true })
     const bad = addrs.find((a) => isPrivateIp(a.address))
     if (bad) throw new Error(`webhook 대상이 내부 네트워크로 해석됩니다: ${hostname} → ${bad.address}`)
-    await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...payload, timestamp: new Date().toISOString() }),
-      redirect: "error",
-    })
+    // Use the vetted address for the connection; fetch(url) would resolve the hostname a second time.
+    const address = addrs[0]
+    if (!address) throw new Error(`webhook DNS 결과가 없습니다: ${hostname}`)
+    const body = JSON.stringify({ ...payload, timestamp: new Date().toISOString() })
+    await postWebhookToAddress(parsed, address, body)
   } catch (err) {
     process.stderr.write(`[kordoc watch] webhook 전송 실패: ${err instanceof Error ? err.message : String(err)}\n`)
   }
+}
+
+/** @internal Connect to the already vetted DNS address while retaining the URL's Host header and TLS name. */
+export async function postWebhookToAddress(parsed: URL, address: { address: string; family: number }, body: string): Promise<void> {
+  const request = parsed.protocol === "https:" ? httpsRequest : httpRequest
+  await new Promise<void>((resolve, reject) => {
+    const req = request(parsed, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+      lookup: (_host, options, callback) => {
+        if (options.all) callback(null, [address])
+        else callback(null, address.address, address.family)
+      },
+    }, (res) => {
+      res.resume()
+      res.on("end", resolve)
+      res.on("error", reject)
+    })
+    req.setTimeout(10_000, () => req.destroy(new Error("webhook 연결 시간 초과")))
+    req.on("error", reject)
+    req.end(body)
+  })
 }

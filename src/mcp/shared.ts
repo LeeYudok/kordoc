@@ -1,8 +1,8 @@
 /** kordoc MCP 공용 — 경로·확장자 검증, 파일 읽기, 오류 문구, 응답 상한 (도구 모듈 공유) */
 
-import { realpathSync, openSync, readSync, closeSync, lstatSync } from "fs"
-import { readFile, stat, realpath } from "fs/promises"
-import { resolve, isAbsolute, extname, dirname, basename } from "path"
+import { realpathSync, openSync, readSync, closeSync, lstatSync, constants } from "fs"
+import { readFile, stat, realpath, open } from "fs/promises"
+import { resolve, isAbsolute, extname, dirname, basename, join } from "path"
 import { detectFormat } from "../index.js"
 import { toArrayBuffer, sanitizeError, classifyError, KordocError } from "../utils.js"
 import { assertWithinRoot } from "../shared/offline.js"
@@ -68,6 +68,19 @@ export function safeOutputPath(outputPath: string, allowedExts: ReadonlySet<stri
   }
   assertWithinRoot(real)
   return real
+}
+
+/** Recheck the output directory after asynchronous processing, then open the leaf without following a late symlink. */
+export async function writeOutputFile(filePath: string, data: string | Uint8Array, encoding?: BufferEncoding): Promise<void> {
+  const parent = await realpath(dirname(filePath))
+  assertWithinRoot(parent)
+  const target = join(parent, basename(filePath))
+  const handle = await open(target, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o666)
+  try {
+    await handle.writeFile(data, encoding ? { encoding } : undefined)
+  } finally {
+    await handle.close()
+  }
 }
 
 /**

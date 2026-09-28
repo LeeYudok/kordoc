@@ -1,10 +1,10 @@
 /** kordoc MCP 도구 — 렌더 — render_document·crop_regions·extract_tables */
 
 import { z } from "zod"
-import { writeFile, mkdir } from "fs/promises"
+import { mkdir } from "fs/promises"
 import { dirname, join } from "path"
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
-import { MAX_FILE_SIZE, safeOutputPath, describeError, readValidatedFile } from "./shared.js"
+import { MAX_FILE_SIZE, safeOutputPath, writeOutputFile, describeError, readValidatedFile } from "./shared.js"
 
 export function registerRenderTools(server: McpServer): void {
   // ─── 도구: render_document ───────────────────────────
@@ -42,7 +42,7 @@ export function registerRenderTools(server: McpServer): void {
           ]
           if (format === "svg") {
             await mkdir(dirname(outPath!), { recursive: true })
-            await writeFile(outPath!, result.svg, "utf-8")
+            await writeOutputFile(outPath!, result.svg, "utf-8")
             summary.push(`저장: ${outPath}`)
             return { content: [{ type: "text", text: summary.join("\n") }] }
           }
@@ -50,7 +50,7 @@ export function registerRenderTools(server: McpServer): void {
           const raster = await rasterizeSvg(result.svg, result.width, result.height, max_width_px ? { maxWidthPx: max_width_px } : undefined)
           if (outPath) {
             await mkdir(dirname(outPath), { recursive: true })
-            await writeFile(outPath, raster.png)
+            await writeOutputFile(outPath, raster.png)
             summary.push(`저장: ${outPath}`)
           }
           summary.push(`이미지 ${raster.widthPx}x${raster.heightPx}px — 잘림·겹침·빈칸·페이지 넘침이 보이면 원인 텍스트를 수정해 다시 생성/패치하세요.`)
@@ -73,7 +73,7 @@ export function registerRenderTools(server: McpServer): void {
           await mkdir(dirname(outPath), { recursive: true })
           for (const a of assets) {
             const p = a.page === undefined || assets.length === 1 ? outPath : suffixed(outPath, a.page)
-            await writeFile(p, a.data as Buffer | string)
+            await writeOutputFile(p, a.data as Buffer | string)
             summary.push(`저장: ${p}`)
           }
         }
@@ -122,10 +122,10 @@ export function registerRenderTools(server: McpServer): void {
         const manifest = []
         for (const r of regions) {
           const name = `${r.region.id.replace("-", "_")}_page_${String(r.page).padStart(3, "0")}.${ext}`
-          await writeFile(join(dir, name), r.data)
+          await writeOutputFile(join(dir, name), r.data)
           manifest.push({ file: name, id: r.region.id, type: r.region.type, sourceId: r.region.sourceId, parentId: r.region.parentId, page: r.page, bbox: r.bbox, widthPx: r.widthPx, heightPx: r.heightPx })
         }
-        await writeFile(join(dir, "regions.json"), JSON.stringify(manifest, null, 2))
+        await writeOutputFile(join(dir, "regions.json"), JSON.stringify(manifest, null, 2))
         return { content: [{ type: "text", text: `crop ${regions.length}건 → ${dir}\n` + manifest.map(m => `${m.file}  p${m.page} (${m.bbox.x},${m.bbox.y} ${m.bbox.width}×${m.bbox.height}pt)${m.sourceId ? ` src=${m.sourceId}` : ""}`).join("\n") }] }
       } catch (err) {
         return { content: [{ type: "text", text: `crop 실패: ${describeError(err)}` }], isError: true }
@@ -163,7 +163,7 @@ export function registerRenderTools(server: McpServer): void {
           const crops = []
           for (const c of t.crops) {
             const name = `${t.id.replace(/[^\w.-]/g, "_")}_page_${String(c.page).padStart(3, "0")}.${ext}`
-            if (dir) await writeFile(join(dir, name), c.data)
+            if (dir) await writeOutputFile(join(dir, name), c.data)
             if (images.length < 8) images.push({ type: "image", data: c.data.toString("base64"), mimeType: c.mimeType })
             crops.push({ file: dir ? name : undefined, page: c.page, bbox: c.bbox })
           }
@@ -174,7 +174,7 @@ export function registerRenderTools(server: McpServer): void {
           })
         }
         const json = JSON.stringify(report, null, 2)
-        if (dir) await writeFile(join(dir, "tables.json"), json + "\n")
+        if (dir) await writeOutputFile(join(dir, "tables.json"), json + "\n")
         const kinds = report.reduce<Record<string, number>>((m, r) => { m[r.classification.kind] = (m[r.classification.kind] ?? 0) + 1; return m }, {})
         const head = `표 ${report.length}개 (${Object.entries(kinds).map(([k, v]) => `${k} ${v}`).join(", ") || "없음"}) crop ${report.reduce((n, r) => n + r.crops.length, 0)}건${dir ? ` → ${dir}` : ""}${images.length < report.reduce((n, r) => n + r.crops.length, 0) ? " (응답에는 8장까지)" : ""}`
         return { content: [...images, { type: "text", text: `${head}\n${json}` }] }
