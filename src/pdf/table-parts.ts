@@ -182,7 +182,7 @@ const SHORT_LINE_GAP = 1.5
 /** 쪽 경계에 걸친 세로 병합 칸 — 글 줄 수 상한, 끝줄 기준선이 앞 조각 밑변 위 글자 크기의 이 배수 안 */
 const STRADDLE_MAX_LINES = 3
 const STRADDLE_BOTTOM = 1.2
-const STRADDLE_BOTTOM_ONE_ROW = 0.5
+const STRADDLE_BOTTOM_ONE_ROW = 0.55
 /** 칸 조각 이어짐 증거로 보는 빈 자리 열의 최소 폭 (pt) — 클립 격자의 셀 최소 폭과 같다 */
 const CARRIED_MIN_COL_W = 4
 /** 끝난 이름표 — 한 줄 칸 오른쪽에 남은 자리가 글자 크기의 이 배수 이상 (숫자 머리 "4." 한 어절이 들어간다) */

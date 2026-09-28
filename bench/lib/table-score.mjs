@@ -346,7 +346,12 @@ export function scoreTables(refTables, irGrids) {
     }
 
     const refSet = new Map(ref.cells.map(a => [tupleKey(a), a]))
-    const irSet = ir ? new Map(ir.anchors.map(a => [tupleKey(a), a])) : new Map()
+    // 정답 격자 구멍 — 어느 칸도 덮지 않는 자리(행마다 칸 수가 다른 HWPX 표). PDF 는 그 자리를 빈 칸으로 채울 수밖에 없어,
+    // 구멍만 덮는 빈 칸은 구조 비교에서 뺀다 (2026-09-28 채점 기준 변경)
+    const covered = new Set()
+    for (const a of ref.cells) for (let r = a.r; r < a.r + a.rs; r++) for (let c = a.c; c < a.c + a.cs; c++) covered.add(`${r},${c}`)
+    const inHole = a => { for (let r = a.r; r < a.r + a.rs; r++) for (let c = a.c; c < a.c + a.cs; c++) if (covered.has(`${r},${c}`)) return false; return true }
+    const irSet = ir ? new Map(ir.anchors.filter(a => !(normKey(a.text ?? "") === "" && inHole(a))).map(a => [tupleKey(a), a])) : new Map()
     let inter = 0
     for (const k of refSet.keys()) if (irSet.has(k)) inter++
     const f1 = (2 * inter) / Math.max(1, refSet.size + irSet.size)
