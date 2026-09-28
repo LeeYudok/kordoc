@@ -78,6 +78,20 @@ describe("renderHtml — 기본", () => {
     const html = renderHtml(md)
     assert.ok(html.includes('colspan="2"'))
   })
+
+  it("원문 HTML 스크립트와 이벤트 속성은 글로 표시하고 CSP를 넣는다", () => {
+    const html = renderHtml('<script>globalThis.__unsafe = 1</script>\n\n<img src=x onerror="globalThis.__unsafe=2">')
+    assert.ok(html.includes("&lt;script&gt;"), html)
+    assert.ok(html.includes("&lt;img src=x onerror="), html)
+    assert.ok(!/<script\b|<img[^>]+onerror/i.test(html), html)
+    assert.ok(html.includes('Content-Security-Policy'), html)
+  })
+
+  it("병합 표 태그와 이미 이스케이프한 셀 글자를 유지한다", () => {
+    const html = renderHtml('<table><tr><th colspan="2">A &amp; B &lt;script&gt;</th></tr></table>')
+    assert.ok(html.includes('<th colspan="2">A &amp; B &lt;script&gt;</th>'), html)
+    assert.ok(!html.includes('&amp;lt;script'), html)
+  })
 })
 
 // Chromium 이 있을 때만 (render-document.test.ts 와 같은 조건) — 페이지 잠금은 실제 브라우저로만 확인된다
@@ -102,6 +116,31 @@ describe("markdownToPdf — 인쇄 페이지 잠금 (JS 끔·data:/about: 밖 �
       assert.deepEqual(hits, [], "로컬 서버가 받은 요청 없음")
     } finally {
       srv.close()
+    }
+  })
+})
+
+describe("renderHtml — 외부 브라우저에서 안전한 HTML", { skip: !HAS_CHROMIUM }, () => {
+  it("기본 JS 설정으로 열어도 원문 스크립트가 실행되지 않는다", async () => {
+    const hits: string[] = []
+    const server = createServer((req, res) => { hits.push(req.url ?? ""); res.end() })
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve))
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+    const puppeteer = await import("puppeteer-core")
+    const browser = await puppeteer.default.launch({
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH ?? findChromiumPath()!,
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    })
+    try {
+      const page = await browser.newPage()
+      await page.setContent(renderHtml(`<script>globalThis.__unsafe = 1; fetch('${base}/script')</script>\n\n![remote](${base}/image)`))
+      assert.equal(await page.evaluate(() => (globalThis as typeof globalThis & { __unsafe?: number }).__unsafe), undefined)
+      await new Promise(resolve => setTimeout(resolve, 100))
+      assert.deepEqual(hits, [])
+    } finally {
+      await browser.close()
+      server.close()
     }
   })
 })

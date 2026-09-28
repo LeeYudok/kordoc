@@ -1,14 +1,14 @@
 /** kordoc MCP 도구 — 생성 — extract_profile·generate_document */
 
 import { z } from "zod"
-import { readFile, writeFile, mkdir, realpath } from "fs/promises"
+import { readFile, mkdir, realpath } from "fs/promises"
 import { resolve, dirname, join } from "path"
 import { markdownToHwpx, unknownFontWarnings, usesGaejosikMunche, PRESET_ALIAS, incompatibleGongmunWarnings, gongmunLintWarnings, muncheLintWarnings } from "../index.js"
 import type { GongmunOptions } from "../index.js"
 import { buildGongmunOptions, BODY_FONTS, H2_MARKERS, BULLET2_CHARS, FONT_ROLE_KEYS, SIZE_KEYS, DOC_HEAD_KEYS, DOC_FOOT_KEYS, DOC_INFO_KEYS, NOTICE_HEAD_KEYS, PRESS_CONTACT_KEYS, BODY_PT_RANGE, LINE_SPACING_RANGE, SIZE_PT_RANGE, APPROVAL_MAX, LEVEL_STYLE_KEYS } from "../hwpx/gongmun-surface.js"
 import { assertWithinRoot } from "../shared/offline.js"
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
-import { PROFILE_EXTENSIONS, safePath, safeOutputPath, describeError, readValidatedFile } from "./shared.js"
+import { PROFILE_EXTENSIONS, safePath, safeOutputPath, writeOutputFile, describeError, readValidatedFile } from "./shared.js"
 
 export function registerGenerateTools(server: McpServer): void {
   // ─── 도구: extract_profile ───────────────────────────
@@ -27,7 +27,7 @@ export function registerGenerateTools(server: McpServer): void {
         const { hwpxToProfile } = await import("../index.js")
         const profile = await hwpxToProfile(buffer)
         await mkdir(dirname(out), { recursive: true })
-        await writeFile(out, JSON.stringify(profile, null, 2))
+        await writeOutputFile(out, JSON.stringify(profile, null, 2))
         return {
           content: [{ type: "text", text: `서식 프로필 추출 완료: 표 ${profile.tables.length}개 → ${out}\n(generate_document의 profile_path로 사용)` }],
         }
@@ -149,7 +149,7 @@ export function registerGenerateTools(server: McpServer): void {
           }
           : undefined)
         await mkdir(dirname(out), { recursive: true })
-        await writeFile(out, Buffer.from(buf))
+        await writeOutputFile(out, Buffer.from(buf))
 
         const mode = gongmun ? `공문서:${gongmun.preset}` : "범용"
         const tableCount = (markdown.match(/^\s*\|.*\|\s*$/gm) || []).length > 0

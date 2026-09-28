@@ -95,6 +95,15 @@ const md = new MarkdownIt({
   breaks: false,
 })
 
+// Markdown can come from documents. Keep only the small HTML vocabulary emitted by
+// blocksToMarkdown for merged/nested tables and underlining; render other raw tags as text.
+const SAFE_RAW_TAG = /^(?:<\/?(?:table|thead|tbody|tfoot|tr|th|td|u)>|<br\s*\/?>|<(?:th|td)(?: (?:colspan|rowspan)="[1-9]\d*"){1,2}>|<img src="(?:images\/)?image_\d+\.(?:png|jpe?g|gif|webp|bmp)" alt="image">)$/i
+function sanitizeRawHtml(raw: string): string {
+  return raw.replace(/<[^>]*>|</g, tag => SAFE_RAW_TAG.test(tag) ? tag : escapeHtml(tag))
+}
+md.renderer.rules.html_block = (tokens, idx) => sanitizeRawHtml(tokens[idx].content)
+md.renderer.rules.html_inline = (tokens, idx) => sanitizeRawHtml(tokens[idx].content)
+
 /**
  * Markdown 또는 IRBlock[] → HTML 문자열.
  * 외부 PDF 엔진(weasyprint, wkhtmltopdf 등)과 결합 가능.
@@ -128,6 +137,7 @@ export function renderHtml(
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; font-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <style>${css}${watermarkCss}</style>
 </head>
 <body>
