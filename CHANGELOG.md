@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 채점 기준 변경 (2026-09-28)
+
+- **OCR 정확도(`bench/ocr-accuracy.mjs`) v2 표 펼치기**: 값 칸 둘 이상이 여러 줄로 나란히 쌓인 표 행은 칸 글을 줄 번호별로 펼친다(첫 줄끼리, 둘째 줄끼리). 텍스트층 파서는 한컴 칸 클립(보이지 않는 칸 경계)으로 예산서의 "02 민간경상사업보조 / ○사회적기업 …" 을 두 행으로 가르는데, 픽셀만 보는 OCR 은 한 행의 두 줄 칸으로 읽어 행 우선 펼침이 두 행 글을 칸마다 섞었다(글자 재현율·정밀도 0.99대인데 CER 0.18~0.24). 글이 꺾인 칸만 여러 줄인 행은 종전대로(칸 전체를 줄 번호로 펼치면 서식 문서가 나빠져 기각). 같은 출력에서 CER 0.0821 → 0.0693(부천 예산서 0.180 → 0.055·괴산 2013 0.212 → 0.015·web068 0.223 → 0.135, 나빠진 문서 없음). v1(strict)과 글자 재현율·정밀도는 그대로.
+
 ## [4.16.0] - 2026-09-28
 
 PDF 글·표 복원을 채점 기준 정비와 함께 한 단계 더 올리고, 텍스트층 없는 쪽은 OCR 모델이 캐시에 있으면 자동으로 읽는다. PDF 글 정답(744쌍, 새 채점기 기준 v4.15.7 → 4.16.0): recall 0.99619 → 0.99814 · precision 0.98867 → 0.99527 · order 0.98787 → 0.99124 · 어절 F1 0.98466 → 0.98713 (5문서 혼합 변화 — 아래 항목에 문서명). 한국 PDF 표 정답 708쌍 2,632표 exact 96.69%·매칭 99.51%. ODL 200 기본 0.937 → 0.940(모델 캐시 있을 때), `ocr+plain+htmlTables` 0.9711 → 0.9728. DOCX 번호 매기기 실제 라벨, 쪽 아래 각주·문서 끝 미주를 참조 자리로, 보도자료 연락처 표 6열. 이슈 #97~#99 와 보안 보강 PR #100(@LimePencil)·미주 목차 오인 PR #96(@LimePencil)을 반영한다.

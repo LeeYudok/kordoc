@@ -22,6 +22,9 @@
  * v2 에서 뺀다 — 코퍼스 GT 에 219개(≈2.8천 자)가 PDF 경로 양쪽에 똑같이 들어가 분모를
  * 부풀리고, 이미지 입력 경로(ocr-robust)엔 아예 없어 한쪽 누락으로 잡혔다.
  */
+/** 값 줄 — 숫자·부호·단위 표지(국·시·균·도 재원 표시 포함)만 */
+const VALUE_LINE = /^[\d,.\-△▲+%()원천억만국시도균\s]+$/
+
 export function blockTexts(blocks, { v1 = false } = {}) {
   const out = []
   const walk = (list) => {
@@ -29,9 +32,16 @@ export function blockTexts(blocks, { v1 = false } = {}) {
       if (b.type === "table" && b.table) {
         if (!v1 && b.table.caption) out.push(b.table.caption)
         const { rows, cols, cells } = b.table
-        for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-          const cell = cells[r]?.[c]
-          if (cell?.text) out.push(cell.text)
+        for (let r = 0; r < rows; r++) {
+          const lines = []
+          for (let c = 0; c < cols; c++) lines.push((cells[r]?.[c]?.text ?? "").split("\n").filter(l => l.trim()))
+          // v2: 값 칸 둘 이상이 여러 줄로 나란히 쌓인 행은 칸 글을 줄 번호별로 펼친다(첫 줄끼리, 둘째 줄끼리 …). 보이지 않는 칸
+          // 경계(한컴 클립)로 갈린 행들을 픽셀만 보는 OCR 은 한 행의 여러 줄 칸으로 읽어, 행 우선 펼침이 두 행 글을 칸마다 섞었다
+          // (예산서 "526,657 / 395,010" 값 열). 글이 꺾인 칸만 여러 줄인 행은 그대로 행 우선 (2026-09-28)
+          const stacked = !v1 && lines.filter(l => l.length >= 2 && l.every(x => VALUE_LINE.test(x.trim()))).length >= 2
+          if (!stacked) { for (let c = 0; c < cols; c++) { const cell = cells[r]?.[c]; if (cell?.text) out.push(cell.text) } continue }
+          const depth = Math.max(0, ...lines.map(l => l.length))
+          for (let k = 0; k < depth; k++) for (const l of lines) if (l[k]) out.push(l[k])
         }
       } else if (b.text && (v1 || b.type !== "image")) out.push(b.text)
       if (!v1 && b.children?.length) walk(b.children)
