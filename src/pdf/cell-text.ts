@@ -10,6 +10,10 @@
 
 import type { ExtractedCell, TextItem } from "./line-types.js"
 import { sortLineByX, isCjkLatinAutospace } from "./text-line.js"
+
+/** 시도·전국 이름표 — 두 음절 배분 칸을 문서 어휘 증거 없이도 붙이는 닫힌 목록. "전 체"·"구 분" 같은 표 머리글은 원고에서 띄어 쓰기도
+ *  해서(해외직접투자 보도자료 정답 "전 체") 넣지 않는다 */
+const REGION_LABELS = new Set(["서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주", "전국"])
 import { type WrapLexicon, cellLineWraps, cellLineFills, startsNewItem, wrapJoiner } from "./line-wrap.js"
 
 /** 셀 경계 내부 판별 여유 (텍스트 매핑용) */
@@ -161,8 +165,9 @@ export function cellTextToString(items: TextItem[], wrap?: { box: { x1: number; 
     // 원문에 공백을 친 채 벌린 칸은 그림이 같아 기하로 못 가른다: 좁은 칸 "과 장"(보도자료 연락처)은 간격 1.0배 안팎이라 문턱에서,
     // 서식 이름표 "성  명"은 본문에 한 어절로 잘 안 나와 어휘에서 걸러진다. 본문에도 나오는 낱말을 크게 벌린 이름표("경  력"·"은  행")는
     // 못 가른다(hwpx↔pdf 751쌍: 건설업조사·해외직접투자 보도자료 등 나아짐, 2문서 1~4어절 나빠짐)
+    // 통계표 지역 이름표(시도·전국)는 본문에 한 어절로 안 나와도 붙인다 — 띄어 쓰는 일이 없는 닫힌 목록(건설업조사 보도자료 "서  울" 102곳)
     if (s.length === 2 && /^[가-힣]$/.test(s[0].text) && /^[가-힣]$/.test(s[1].text) && !!wrap?.lex &&
-        (wrap.lex.isWord(s[0].text + s[1].text) || wrap.lex.evidence(s[0].text, s[1].text) === "") &&
+        (wrap.lex.isWord(s[0].text + s[1].text) || wrap.lex.evidence(s[0].text, s[1].text) === "" || REGION_LABELS.has(s[0].text + s[1].text)) &&
         s[1].x - (s[0].x + s[0].w) >= Math.max(s[0].fontSize, s[1].fontSize) * 1.5 &&
         s[1].x + s[1].w - s[0].x >= (wrap.box.x2 - wrap.box.x1) - Math.max(s[0].fontSize, s[1].fontSize) * 2) return s[0].text + s[1].text
 
