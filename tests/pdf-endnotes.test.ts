@@ -89,4 +89,10 @@ describe("relocateEndnotes", () => {
       "셋째 문장3)입니다", "3) 셋째 주석",
     ])
   })
+  it("keeps paragraph-start numbers in the uniqueness count (hwpx/pr-1674)", () => {
+    // 번호가 절 머리("1) 개요")와 본문 참조("…현황1)") 두 곳에 나오면 어느 쪽이 참조인지 모른다 — 옮기지 않는다
+    const blocks = [p("1) 개요"), p("추진 현황1) 정리"), p("2) 배경"), p("설명2) 이어짐"), p("3) 계획"), p("일정3) 확정"),
+      p("1) 첫 주석"), p("2) 둘째 주석"), p("3) 셋째 주석")]
+    assert.deepEqual(texts(relocateEndnotes(blocks)), texts(blocks))
+  })
 })

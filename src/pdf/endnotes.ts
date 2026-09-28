@@ -33,11 +33,9 @@ export function relocateEndnotes(blocks: IRBlock[]): IRBlock[] {
     const out: number[] = []
     for (let j = 0; j < end && out.length < cap; j++) {
       for (let at = texts[j].indexOf(mark); at >= 0 && out.length < cap; at = texts[j].indexOf(mark, at + mark.length)) {
-        if (isContentsReference(texts[j], at)) continue
-        // 숫자만 있는 번호는 본문 글에 붙은 참조일 때만 인정한다. 문단 첫머리의
-        // 1)·(1)은 대개 목록/절 제목이며 같은 번호의 뒤쪽 제목을 미주로 오인한다.
-        if (!mark.startsWith("문") && !texts[j].slice(0, at).trim()) continue
-        out.push(j)
+        // 목차 줄·문단 첫머리 번호(숫자 표시)도 등장으로 센다 — 유일성 보호는 그대로 두고, 유일한 등장이 이런 자리면 참조가 아니다(-1)
+        const notRef = isContentsReference(texts[j], at) || (!mark.startsWith("문") && !texts[j].slice(0, at).trim())
+        out.push(notRef ? -1 : j)
       }
     }
     return out
@@ -52,7 +50,7 @@ export function relocateEndnotes(blocks: IRBlock[]): IRBlock[] {
   const heads: Array<{ idx: number; ref: number; shape: string }> = []
   for (const c of cands) {
     const refs = occurrences(c.mark, c.idx, 2)
-    if (refs.length === 1) heads.push({ idx: c.idx, ref: refs[0], shape: c.shape })
+    if (refs.length === 1 && refs[0] >= 0) heads.push({ idx: c.idx, ref: refs[0], shape: c.shape })
   }
   // 미주 머리는 한 가지 번호 꼴("문#）")이다 — 미주 안 소항목("ⅰ)"·"(나)")이 앞 미주 글과 짝지어져 구간을 끊지 않게 가장 흔한 꼴만
   const shapes = new Map<string, number>()
@@ -77,7 +75,7 @@ export function relocateEndnotes(blocks: IRBlock[]): IRBlock[] {
   const paired: typeof heads = []
   for (const [mark, idxs] of tailByMark) {
     const refs = occurrences(mark, firstRun[0].idx, idxs.length + 1)
-    if (refs.length === idxs.length) idxs.forEach((idx, k) => paired.push({ idx, ref: refs[k], shape: main }))
+    if (refs.length === idxs.length && refs.every(r => r >= 0)) idxs.forEach((idx, k) => paired.push({ idx, ref: refs[k], shape: main }))
   }
   const run = lastRun(paired.sort((a, b) => a.idx - b.idx))
   if (run.length < 3) return blocks
