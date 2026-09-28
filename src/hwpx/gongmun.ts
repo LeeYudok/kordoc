@@ -16,7 +16,7 @@ import { hangulOrdinal, circledNumber, circledHangul } from "../shared/numbering
 
 // ─── 옵션 타입 ──────────────────────────────────────
 
-export type GongmunPreset = "official" | "report" | "plan" | "notice" | "minutes" | "gaejosik" | "press" | "ministry"
+export type GongmunPreset = "official" | "report" | "plan" | "notice" | "minutes" | "gaejosik" | "press" | "ministry" | "bangchim"
 export type GongmunNumbering = "standard" | "report" | "gaejosik"
 export type GongmunFont = "myeongjo" | "gothic"
 
@@ -31,6 +31,7 @@ export type GongmunPresetInput =
   | "개조식" | "개조식보고서" | "정부보고서" | "정부표준개조식보고서"
   | "보도자료"
   | "업무보고" | "부처업무보고" | "중앙부처보고서"
+  | "서울방침" | "방침서" | "방침"
 
 /** 항목부호 단계 하나의 타이포 — 셋 다 선택(미지정=본문 계열 유지) */
 export interface GongmunLevelStyle {
@@ -106,10 +107,11 @@ export interface GongmunOptions {
   bodyTitleBox?: boolean
   /**
    * h2 장 제목 표기 (v5): 'band'=로마자 채움 칸 + 제목 띠 표(보고서·계획서 기본 — 계획서 장르 실측 37~39%) /
-   * 'roman'=Ⅰ. Ⅱ. 텍스트 / 'number'=1. 2. (통지 기본) / 'box'=장 없이 □ 대항목으로 / 'none'=번호 없음.
+   * 'roman'=Ⅰ. Ⅱ. 텍스트 / 'number'=1. 2. (통지 기본) / 'box'=장 없이 □ 대항목으로 / 'none'=번호 없음 /
+   * 'square'=[Ⅰ] 테두리 번호 상자 + 위아래 괘선 제목(서울 방침서 기본).
    * 기안문 본문의 h2는 항상 법정 1. 항목.
    */
-  h2Marker?: "band" | "roman" | "box" | "number" | "none"
+  h2Marker?: "band" | "roman" | "box" | "number" | "none" | "square"
   /**
    * 띠 제목(h2Marker 'band') 번호칸 채움색 `#RRGGBB` — 기본 #003366(서울 plan 띠 표 실측 최다).
    * 교육청형 밝은 띠는 `bandColor: "#DFE6F7", bandTextColor: "#000000"`.
@@ -191,7 +193,7 @@ export interface ResolvedGongmun {
   /** 본문 첫 페이지 제목 박스(개조식, 실측 GT3 표④) — 표지 있을 때 기본 켜짐 */
   bodyTitleBox: boolean
   /** h2 장 제목 표기 — 보고서·계획서 'roman', 통지·공고 'number' (v5) */
-  h2Marker: "band" | "roman" | "box" | "number" | "none"
+  h2Marker: "band" | "roman" | "box" | "number" | "none" | "square"
   /** 띠 제목 번호칸 채움색·글자색 (#RRGGBB, 대문자 정규화) */
   bandColor: string
   bandTextColor: string
@@ -250,6 +252,8 @@ const PRESET_DEFAULTS: Record<
   press: { bodyPt: 14, lineSpacing: 160, numbering: "report" },
   // 중앙부처 업무보고 — 실측(재경부 2차 업무보고): 함초롬바탕 15pt, 줄피치 21.7pt(≈145%), □→ㅇ→-→*(각주)
   ministry: { bodyPt: 15, lineSpacing: 145, numbering: "report" },
+  // 서울 방침서 — 실측(시장방침 「청년취업사관학교 2.0」 추진계획 외 4건): □ HY견고딕 17 · ㅇ 한컴돋움 15b · - 휴먼명조 14, 줄간격 200%
+  bangchim: { bodyPt: 15, lineSpacing: 200, numbering: "report" },
 }
 
 /** 프리셋 별칭(한글/영문) → 내부 preset 키. CLI·라이브러리 공용 */
@@ -262,6 +266,7 @@ export const PRESET_ALIAS: Record<string, GongmunPreset> = {
   gaejosik: "gaejosik", 개조식: "gaejosik", 개조식보고서: "gaejosik", 정부보고서: "gaejosik", 정부표준개조식보고서: "gaejosik",
   press: "press", 보도자료: "press",
   ministry: "ministry", 업무보고: "ministry", 부처업무보고: "ministry", 중앙부처보고서: "ministry",
+  bangchim: "bangchim", 서울방침: "bangchim", 방침서: "bangchim", 방침: "bangchim",
 }
 
 /** 프리셋 입력(영문 키 또는 한글 별칭)을 내부 GongmunPreset로 정규화. 미상은 'official' */
@@ -277,7 +282,7 @@ export function normalizeGongmunPreset(preset?: string): GongmunPreset {
  * (전자결재·일반 공문 관행).
  */
 export function usesReportFonts(preset: GongmunPreset): boolean {
-  return preset === "gaejosik" || preset === "report" || preset === "plan"
+  return preset === "gaejosik" || preset === "report" || preset === "plan" || preset === "bangchim"
 }
 
 /** 3단계 부호로 *(참고)를 쓰는 프리셋인지 — 실측: 추진계획안·보도자료 공통 □→ㅇ→* 계층.
@@ -418,7 +423,7 @@ export function resolveGongmun(opts: GongmunOptions): ResolvedGongmun {
     bodyHeight: Math.round(bodyPt * 100),
     lineSpacing: opts.lineSpacing ?? d.lineSpacing,
     numbering: opts.numbering ?? d.numbering,
-    margins: opts.margins ?? (ministry ? MINISTRY_MARGINS : preset === "report" || preset === "plan" ? SEOUL_REPORT_MARGINS : reportFamily ? GAEJOSIK_MARGINS : OFFICIAL_MARGINS),
+    margins: opts.margins ?? (ministry ? MINISTRY_MARGINS : preset === "report" || preset === "plan" || preset === "bangchim" ? SEOUL_REPORT_MARGINS : reportFamily ? GAEJOSIK_MARGINS : OFFICIAL_MARGINS),
     centerTitle: opts.centerTitle ?? true,
     autoFitMinRatio,
     // 보도자료는 머리박스가 1페이지 최상단을 차지하는 서식이라 표지·목차와 양립 불가 —
@@ -434,11 +439,11 @@ export function resolveGongmun(opts: GongmunOptions): ResolvedGongmun {
     sizes: opts.sizes ?? {},
     levels: resolveLevels(opts.levels, Math.round(bodyPt * 100)),
     // 쪽번호 — 보고서 계열 관행(실측: 2_보고서 양식·추진계획·공고문 전부 하단 중앙)
-    pageNumbers: opts.pageNumbers ?? (gaejosik || ministry || preset === "report" || preset === "plan"),
+    pageNumbers: opts.pageNumbers ?? (gaejosik || ministry || preset === "report" || preset === "plan" || preset === "bangchim"),
     // 머리말·꼬리말 — 실측: 보고서 계열 15mm(GT3·t2·춘천·브라더), 공고·보도 10mm,
     // 기안문 0(실결재 41/60건 h0/f0)
     headerFooter: ministry ? MINISTRY_HEADER_FOOTER
-      : preset === "report" || preset === "plan" ? SEOUL_REPORT_HEADER_FOOTER
+      : preset === "report" || preset === "plan" || preset === "bangchim" ? SEOUL_REPORT_HEADER_FOOTER
       : usesReportFonts(preset) ? GAEJOSIK_HEADER_FOOTER
       : preset === "notice" || preset === "press" ? 2835 : 0,
     // "끝." — 기안문 규정(본문 끝 2타+"끝."). 그 외는 opt-in
@@ -448,7 +453,7 @@ export function resolveGongmun(opts: GongmunOptions): ResolvedGongmun {
     bodyTitleBox: opts.bodyTitleBox ?? (gaejosik && coverOn),
     // h2 말머리 — 실측: 보고서 양식 □ 대항목(QA-2), 공고문 아라비아("1. 사업개요", 바이오헬스 실측)
     // v5 라운드 3: 보고서·계획서 기본 band(띠 표) — 서울 plan 7/19·교육청 7/18 실측, 실무자 요청
-    h2Marker: opts.h2Marker ?? (preset === "report" || preset === "plan" ? "band" : preset === "notice" ? "number" : "none"),
+    h2Marker: opts.h2Marker ?? (preset === "report" || preset === "plan" ? "band" : preset === "bangchim" ? "square" : preset === "notice" ? "number" : "none"),
     // 띠 제목 색 — 실측 최다 #003366/흰 글자(계획서 띠 표 14개). 교육청형 밝은 띠는 옵션으로
     bandColor: hexColorOption("bandColor", opts.bandColor) ?? "#003366",
     bandTextColor: hexColorOption("bandTextColor", opts.bandTextColor) ?? "#FFFFFF",

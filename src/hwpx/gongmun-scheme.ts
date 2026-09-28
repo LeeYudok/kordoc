@@ -35,6 +35,8 @@ export interface LevelStyle {
   keepWithNext?: boolean
   /** 앞에 빈 줄 한 줄(실결재 □ 74%) */
   blankBefore?: boolean
+  /** 문단 정렬 — 미지정이면 양쪽 */
+  align?: "LEFT" | "JUSTIFY"
 }
 
 export interface TableStyleSpec {
@@ -177,6 +179,49 @@ export function ministryScheme(bodyPt = 15, lineSp = 145): Scheme {
   }
 }
 
+/**
+ * 서울 방침서 스킴 — 시장방침 편집형 계획서 정답지 5건(정보소통광장, bench/corpus-gen/seoul-bangchim) 실측, 정본
+ * 「청년취업사관학교 2.0」 추진계획(서울특별시장 제81호) 역할별 최빈값:
+ *   □ HY견고딕 17 보통 · 양쪽 200% / ㅇ 한컴돋움 15 굵게 · 왼쪽 200% / - 휴먼명조 14 · 양쪽 200% /
+ *   ▸ 한컴돋움 13 · 왼쪽 180% / ※ 한컴돋움 13 · 왼쪽 200% / 서술 문단 HY견고딕 16 굵게.
+ * 글꼴·크기·굵기는 5건 모두 95~100% 같고, 줄간격·정렬은 쪽 맞춤 손조정으로 문서 안에서도 30~60% 만 최빈값이다.
+ */
+export const BANGCHIM_FRAME: FrameSpec = {
+  font: "한컴돋움",
+  titleFont: "HY헤드라인M", titlePt: 26,
+  contactFont: "휴먼명조", contactPt: 12,
+  summaryFont: "한컴돋움", summaryPt: 15, summaryFill: "#DFE6F7",
+}
+
+export function seoulBangchimScheme(bodyPt = 15, lineSp = 200): Scheme {
+  const d = bodyPt - 15
+  const lv = (font: string, pt: number, bold: boolean, leadTa: number, extra: Partial<LevelStyle> = {}): LevelStyle =>
+    ({ font, pt: pt + d, bold, leadTa, ...extra })
+  return {
+    kind: "gaejosik",
+    lineSp,
+    body: lv("HY견고딕", 16, true, 0),
+    levels: [
+      lv("HY견고딕", 17, false, 0, { oneLine: true, keepWithNext: true, blankBefore: true }),
+      lv("한컴돋움", 15, true, 1, { align: "LEFT" }),
+      lv("휴먼명조", 14, false, 3),
+      lv("한컴돋움", 13, false, 4, { align: "LEFT", lineSp: 180 }),
+      lv("한컴돋움", 13, false, 5, { align: "LEFT", lineSp: 180 }),
+      lv("한컴돋움", 13, false, 6, { align: "LEFT", lineSp: 180 }),
+      lv("한컴돋움", 13, false, 7, { align: "LEFT", lineSp: 180 }),
+      lv("한컴돋움", 13, false, 8, { align: "LEFT", lineSp: 180 }),
+    ],
+    ref: lv("한컴돋움", 13, false, 0, { align: "LEFT" }),
+    sub: lv("한컴돋움", 13, false, 2),
+    attach: lv("한컴돋움", 15, true, 0),
+    chapter: lv("HY견고딕", 20, false, 0, { oneLine: true, keepWithNext: true }),
+    marker: (depth) => (depth === 0 ? "□" : depth === 1 ? "ㅇ" : depth === 2 ? "-" : "▸"),
+    table: { ...SEOUL_TABLE, pt: SEOUL_TABLE.pt + d },
+    frame: BANGCHIM_FRAME,
+    blankBetweenTop: false,
+  }
+}
+
 /** 서울 실측 법정형(기안문 본문) 스킴 — 전 단계 본문 글꼴·크기 동일, 2타 계단 */
 export function seoulLegalScheme(bodyFont = "굴림체", bodyPt = 12, lineSp = 160): Scheme {
   const lv = (leadTa: number, extra: Partial<LevelStyle> = {}): LevelStyle => ({ font: bodyFont, pt: bodyPt, bold: false, leadTa, ...extra })
@@ -229,6 +274,9 @@ export function levelGeometry(style: LevelStyle, marker: string): { left: number
 
 /** 스킴 선택 — 옵션·프리셋·본문 부호 자동감지 */
 export function pickScheme(g: ResolvedGongmun, bodyHasBoxMarkers: boolean): Scheme {
+  if (g.preset === "bangchim") {
+    return applySchemeOverrides(seoulBangchimScheme(g.bodyPtExplicit ? g.bodyHeight / 100 : 15, g.lineSpacingExplicit ? g.lineSpacing : 200), g)
+  }
   if (g.preset === "ministry") {
     return applySchemeOverrides(ministryScheme(g.bodyPtExplicit ? g.bodyHeight / 100 : 15, g.lineSpacingExplicit ? g.lineSpacing : 145), g)
   }

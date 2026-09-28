@@ -40,9 +40,12 @@ const LEGAL_RE = /^(\d{1,2}\.|[가-힣]\.|\d{1,2}\)|[가-힣]\)|\(\d{1,2}\)|\([�
  * 부호를 그대로 남기는 선두 글리프 — 중앙부처 업무보고 실측: 9대 과제 ❶~❿(U+2776~)·➊~➓(U+278A~) 0단계,
  * ⇒ 결론 0단계, ↳ 부연 1단계. 스킴 marker 로 바꾸지 않고 depth 만 강제한다(keepMarkers 옵션).
  */
-const KEEP_MARKERS: Record<string, number> = { "⇒": 0, "↳": 1, "☞": 0 }
-const KEEP_RE = /^([❶-❿➊-➓⇒↳☞])\s*/u
+const KEEP_MARKERS: Record<string, number> = { "⇒": 0, "↳": 1, "☞": 0, "▸": 3 }
+/** ▸ — 서울 방침서 4단계(- 아래 사례·수치 나열, 한컴돋움 13) */
+const KEEP_RE = /^([❶-❿➊-➓⇒↳☞▸])\s*/u
 const BOX_RE = /^([□■❑❏ㅁ○ㅇ◦●❍◎\-–―—ㅡ‣▪▫ㆍ·•∙])\s+/u
+/** 부호에 여는 부호가 바로 붙은 항목("ㅇ『2024 …』에 따르면", "ㅇ「법」") — 자모 ㅇ 뒤에 낫표·괄호·따옴표가 오면 낱말일 수 없다 */
+const BOX_TIGHT_RE = /^([□■ㅇ○])(?=[「『‘“(（[【])/u
 /** ※·＊ 선두, 또는 '* ' (별표 뒤 공백). `**굵게**:` 로 시작하는 항목의 `**` 는 참고 부호가 아니다 */
 const REF_RE = /^(※|＊|\*(?=\s))\s*/u
 const BUNIM_RE = /^붙\s*임(?:\s|:|$)/
@@ -80,14 +83,15 @@ export function legalMarkerDepth(marker: string): number {
 
 /** 선두 명시 부호 해석 — {kind, depth, marker, rest}. keep = ❶⇒↳ 등 글리프 보존 부호(keepMarkers 옵션일 때만) */
 export function parseLeadingMarker(text: string, keepMarkers = false): { kind: "box" | "legal" | "ref" | "keep" | null; depth: number; marker: string; rest: string } {
-  const t = text.replace(/^[\s　]+/, "")
+  // 굵게가 부호를 감싼 줄("**ㅇ 전문가 자문회의** (4회)") — 부호를 굵게 밖으로 꺼낸다(항목 굵기는 스킴이 정한다)
+  const t = text.replace(/^[\s　]+/, "").replace(/^\*\*([□■ㅇ○◦●❍◎▸※-])\s*(?=\S)/u, "$1 **")
   const ref = REF_RE.exec(t)
   if (ref) return { kind: "ref", depth: 0, marker: ref[1], rest: t.slice(ref[0].length).trim() }
   if (keepMarkers) {
     const keep = KEEP_RE.exec(t)
     if (keep) return { kind: "keep", depth: KEEP_MARKERS[keep[1]] ?? 0, marker: keep[1], rest: t.slice(keep[0].length).trim() }
   }
-  const box = BOX_RE.exec(t)
+  const box = BOX_RE.exec(t) ?? BOX_TIGHT_RE.exec(t)
   if (box) return { kind: "box", depth: BOX_MARKERS[box[1]] ?? 3, marker: box[1], rest: t.slice(box[0].length).trim() }
   const legal = LEGAL_RE.exec(t)
   if (legal) return { kind: "legal", depth: legalMarkerDepth(legal[1]), marker: legal[1], rest: t.slice(legal[0].length).trim() }
@@ -107,6 +111,9 @@ export interface OutlineOptions {
   headingFrames?: boolean
   /** ❶➊⇒↳ 선두 글리프를 보존한 항목으로 (업무보고형) */
   keepMarkers?: boolean
+  /** 부호 없는 마크다운 리스트를 직전 명시 부호 항목의 한 단계 아래로 ("ㅇ …" 뒤 "- …" → -) — 서울 방침서.
+   *  업무보고(headingFrames)는 이 동작을 늘 켠다 */
+  listUnderMarker?: boolean
 }
 
 export interface Outline {
@@ -179,7 +186,7 @@ export function buildOutline(blocks: MdBlock[], opts: OutlineOptions): Outline {
         if (lm.kind === "keep") { pushItem(lm.depth, lm.rest, undefined, false, lm.marker); break }
         if (lm.kind === "legal" && opts.gaejosik) { pushItem(Math.max(lastItemDepth, 0), lm.rest, lm.marker); break }
         let base = headingDepth >= 0 ? headingDepth + 1 : 0
-        if (opts.headingFrames) {
+        if (opts.headingFrames || opts.listUnderMarker) {
           if (listBase < 0) listBase = lastExplicitDepth + 1
           base = listBase
         }
@@ -187,7 +194,8 @@ export function buildOutline(blocks: MdBlock[], opts: OutlineOptions): Outline {
         break
       }
       case "paragraph": {
-        const text = stripLawCodes((b.text ?? "").trim())
+        // 줄 전체를 굵게로 감싼 붙임("**붙임 운영기준 1부.  끝.**") — 붙임 서식이 굵기를 정한다
+        const text = stripLawCodes((b.text ?? "").trim()).replace(/^\*\*(붙\s*임[^*]*)\*\*$/, "$1")
         if (!text) break
         if (BUNIM_RE.test(text) || (nodes.length && nodes[nodes.length - 1].kind === "attach" && /^\s/.test(b.text ?? ""))) {
           nodes.push({ kind: "attach", text: b.text ?? "" }); break

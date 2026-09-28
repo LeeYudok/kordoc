@@ -15,7 +15,7 @@ export function registerGenerateCommands(program: Command): void {
     .alias("gen")
     .description("마크다운 → 공문서 HWPX 생성 — kordoc generate 보고서.md -o 보고서.hwpx --preset 보고서 (markdown에 '-' 지정 시 stdin)")
     .option("-o, --output <path>", "출력 HWPX 경로 (기본: <입력>.hwpx)")
-    .option("--preset <name>", "공문서 프리셋: 기안문(official)·보고서(report)·계획서(plan)·통지(notice)·회의록(minutes)·개조식(gaejosik — 표지·목차·장헤더 자동)·업무보고(ministry — 중앙부처 업무보고: 장 띠·절 숫자칸·소제목 박스·① 항목 띠·성과 요약박스·별첨 띠)·보도자료(press)", "기안문")
+    .option("--preset <name>", "공문서 프리셋: 기안문(official)·보고서(report)·계획서(plan)·통지(notice)·회의록(minutes)·개조식(gaejosik — 표지·목차·장헤더 자동)·업무보고(ministry — 중앙부처 업무보고: 장 띠·절 숫자칸·소제목 박스·① 항목 띠·성과 요약박스·별첨 띠)·서울방침(bangchim — 서울시 방침서: 제목표·파랑 부제·요약박스·[Ⅰ] 장 상자·절 띠·❶ 과제)·보도자료(press)", "기안문")
     .option("--font <type>", "본문 글꼴: myeongjo(함초롬바탕) 또는 gothic(맑은 고딕)")
     .option("--pt <size>", "본문 글자 크기(pt)")
     .option("--line-spacing <percent>", "본문 줄간격(%)")
@@ -81,7 +81,7 @@ export function registerGenerateCommands(program: Command): void {
         if (!opts.plain) {
           const preset = PRESET_ALIAS[String(opts.preset).trim()]
           if (!preset) {
-            process.stderr.write(`[kordoc] 알 수 없는 프리셋: ${opts.preset} (기안문/보고서/계획서/통지/회의록/개조식/업무보고/보도자료)\n`)
+            process.stderr.write(`[kordoc] 알 수 없는 프리셋: ${opts.preset} (기안문/보고서/계획서/통지/회의록/개조식/업무보고/서울방침/보도자료)\n`)
             process.exit(1)
           }
           const enumCheck = <T extends readonly string[]>(flag: string, value: unknown, allowed: T): (typeof allowed)[number] | undefined => {

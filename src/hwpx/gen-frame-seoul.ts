@@ -13,7 +13,7 @@
 
 import { tc, para } from "./gen-gongmun-extra.js"
 import { TableBfRegistry } from "./gen-table-bf.js"
-import { escapeXml } from "./gen-ids.js"
+import { escapeXml, type BorderSide } from "./gen-ids.js"
 import { StyleRegistry } from "./style-registry.js"
 import { fitOneLine, fitParagraph } from "./fit-line.js"
 import { simulateWrap, measureTextWidth, faceClassForGen } from "./text-metrics.js"
@@ -293,6 +293,92 @@ export function buildChapterBand(roman: string, title: string, ctx: FrameCtx, sp
     + tc({ bf: gapBf, row: 0, col: 1, w: gap, h, paras: para("", center, cNum), vAlign: "CENTER" })
     + tc({ bf: titleBf, row: 0, col: 2, w: titleW, h, paras: para(title, left, cTitle), name: "__kordoc_h2", vAlign: "CENTER" })
   return { xml: host(ftbl([row], w, h, 3, { bottomGap: 1000 }), reg.para({ align: "LEFT", lineSp: 100, before, keepWithNext: true }), cTitle), overflow: fit.overflow }
+}
+
+// ─── 서울 방침서 골격 (bangchim) ───────────────────
+// 정본 「청년취업사관학교 2.0」 추진계획(시장방침 제81호) 실측 — 제목표 2×1 w48758(제목칸 상 0.4·하 0.15mm / 담당칸 상 0.15·하 0.4mm),
+// 제목 HY헤드라인M 26 굵게 가운데 100% + 부제 HY헤드라인M 18 굵게 파랑(#0000FF), 담당 휴먼명조 12 균등배분(왼쪽 300) 160%.
+// 요약박스 1×1 w48758 셀 여백 566, 0.4mm #DFE6F7, 한컴돋움 15 굵게 균등배분(왼쪽 500) 140%.
+// 장 상자 1×3 h3014: [번호 3223 — 0.5mm 네 변, HY견명조 19 굵게] [간격 1414 — 왼쪽 0.5mm] [제목 — 위아래 0.5mm, HY견고딕 20, 폭 = 글폭 + 여유]
+
+const MM05: BorderSide = ["0.5 mm", "#000000"]
+const BANGCHIM_BLUE = "#0000FF"
+
+export function buildBangchimTitleTable(title: string, subtitle: string | null, contact: string | null, ctx: FrameCtx): { xml: string; overflow: boolean } {
+  const { reg, bf, frame } = ctx
+  const w = ctx.W - 566
+  const fit = fitOneLine(title, frame.titleFont, frame.titlePt, w - 2 * 141 - 400, 20)
+  const cTitle = reg.char({ font: frame.titleFont, pt: fit.pt, bold: true, ratio: fit.ratio, spacing: fit.spacing })
+  const center = reg.para({ align: "CENTER", lineSp: 100 })
+  let paras = para(title, center, cTitle)
+  let h = Math.round(fit.pt * 100) + 1400
+  if (subtitle) {
+    paras += para(subtitle, center, reg.char({ font: frame.titleFont, pt: 18, bold: true, color: BANGCHIM_BLUE }))
+    h += 1800
+  }
+  const rows = [tc({ bf: bf.get({ t: "thick", b: contact ? "mid" : "thick", l: "none", r: "none" }), row: 0, col: 0, w, h, paras, name: "__kordoc_h1" })]
+  if (contact) {
+    const p = reg.para({ align: "DISTRIBUTE", lineSp: 160, left: 300 })
+    rows.push(tc({ bf: bf.get({ t: "mid", b: "thick", l: "none", r: "none" }), row: 1, col: 0, w, h: 1482, paras: para(contact, p, reg.char({ font: frame.contactFont, pt: frame.contactPt })) }))
+    h += 1482
+  }
+  return { xml: host(ftbl(rows, w, h, 1, { bottomGap: 600 }), reg.para({ align: "CENTER", lineSp: 100 }), cTitle), overflow: fit.overflow }
+}
+
+export function buildBangchimSummary(text: string, ctx: FrameCtx): { xml: string; lines: number } {
+  const { reg, bf, frame } = ctx
+  const w = ctx.W - 566
+  const pad = 566, left = 500
+  const avail = w - 2 * pad - left
+  const p = reg.para({ align: "DISTRIBUTE", lineSp: 140, left })
+  const c = reg.char({ font: frame.summaryFont, pt: frame.summaryPt, bold: true })
+  const bodies = text.split("\n").map((l) => l.trim().replace(/^[□■○ㅇ◦●\-–ㆍ·•]\s*/u, "")).filter(Boolean)
+  let lines = 0
+  for (const b of bodies) lines += simulateWrap(b, avail, avail, frame.summaryPt * 100, 100, "keep", { faceClass: faceClassForGen(frame.summaryFont) }).lines
+  const h = lines * Math.round(frame.summaryPt * 100 * 1.4) + 2 * pad
+  const row = tc({ bf: bf.get({ t: "thick", b: "thick", l: "thick", r: "thick", fill: frame.summaryFill }), row: 0, col: 0, w, h, paras: bodies.map((b) => para(b, p, c)).join(""), name: "__kordoc_summary" })
+    .replace('<hp:cellMargin left="141" right="141" top="141" bottom="141"/>', `<hp:cellMargin left="${pad}" right="${pad}" top="${pad}" bottom="${pad}"/>`)
+  return { xml: host(ftbl([row], w, h, 1, { bottomGap: 600 }), reg.para({ align: "CENTER", lineSp: 100 }), c), lines }
+}
+
+export function buildSquareChapter(roman: string, title: string, ctx: FrameCtx, st: { font: string; pt: number }, before: number): { xml: string; overflow: boolean } {
+  const { reg, bf } = ctx
+  const numW = 3223, gapW = 1414, h = 3014
+  const maxTitle = ctx.W - numW - gapW
+  const fit = fitOneLine(title, st.font, st.pt, maxTitle - 1200, st.pt - 3)
+  const textW = measureTextWidth(title, Math.round(fit.pt * 100), fit.ratio, { faceClass: faceClassForGen(st.font), spacingPct: fit.spacing })
+  const titleW = Math.min(maxTitle, Math.max(14000, Math.round(textW) + 1200))
+  const cNum = reg.char({ font: "HY견명조", pt: 19, bold: true })
+  const cTitle = reg.char({ font: st.font, pt: fit.pt, ratio: fit.ratio, spacing: fit.spacing })
+  const center = reg.para({ align: "CENTER", lineSp: 150, left: 300 })
+  const row = tc({ bf: bf.get({ t: MM05, b: MM05, l: MM05, r: MM05 }), row: 0, col: 0, w: numW, h, paras: para(roman, center, cNum) })
+    + tc({ bf: bf.get({ t: "none", b: "none", l: MM05, r: "none" }), row: 0, col: 1, w: gapW, h, paras: para("", reg.para({ align: "JUSTIFY", lineSp: 160 }), cTitle) })
+    + tc({ bf: bf.get({ t: MM05, b: MM05, l: "none", r: "none" }), row: 0, col: 2, w: titleW, h, paras: para(title, center, cTitle), name: "__kordoc_h2" })
+  const w = numW + gapW + titleW
+  return { xml: host(ftbl([row], w, h, 3, { bottomGap: 600 }), reg.para({ align: "LEFT", lineSp: 100, before, keepWithNext: true }), cTitle), overflow: fit.overflow }
+}
+
+/** 절 띠(h3) — [숫자칸 3400 #437FC1 아래 0.1mm #CCCCCC, HY견고딕 16 흰 글자] [간격 565] [제목칸 #E5E5E5, HY견고딕 17] h2551 */
+export function buildBangchimSectionBand(n: number, title: string, ctx: FrameCtx, before: number): { xml: string; overflow: boolean } {
+  const { reg, bf } = ctx
+  const w = ctx.W - 720, numW = 3400, gapW = 565, h = 2551
+  const titleW = w - numW - gapW
+  const fit = fitOneLine(title, "HY견고딕", 17, titleW - 700, 14)
+  const cNum = reg.char({ font: "HY견고딕", pt: 16, color: "#FFFFFF" })
+  const cTitle = reg.char({ font: "HY견고딕", pt: fit.pt, ratio: fit.ratio, spacing: fit.spacing })
+  const row = tc({ bf: bf.get({ t: "none", b: ["0.1 mm", "#CCCCCC"], l: "none", r: "none", fill: "#437FC1" }), row: 0, col: 0, w: numW, h, paras: para(String(n), reg.para({ align: "CENTER", lineSp: 160 }), cNum) })
+    + tc({ bf: bf.get({ t: "none", b: "none", l: "none", r: "none" }), row: 0, col: 1, w: gapW, h, paras: para("", reg.para({ align: "CENTER", lineSp: 160 }), cNum) })
+    + tc({ bf: bf.get({ t: "none", b: "none", l: "none", r: "none", fill: "#E5E5E5" }), row: 0, col: 2, w: titleW, h, paras: para(` ${title}`, reg.para({ align: "JUSTIFY", lineSp: 190 }), cTitle), name: "__kordoc_h3" })
+  return { xml: host(ftbl([row], w, h, 3, { bottomGap: 600 }), reg.para({ align: "LEFT", lineSp: 100, before, keepWithNext: true }), cTitle), overflow: fit.overflow }
+}
+
+/** 과제 소제목(h4) — 원문자(❶, 원본은 한컴 PUA 원문자) 굵게 + 제목, HY견고딕 16 양쪽 200%. 번호는 장 안에서 이어진다 */
+export function buildBangchimSubhead(n: number, title: string, ctx: FrameCtx, before: number): string {
+  const { reg } = ctx
+  const mark = n >= 1 && n <= 10 ? String.fromCodePoint(0x2775 + n) : `${n}.`
+  const p = reg.para({ align: "JUSTIFY", lineSp: 200, before, keepWithNext: true })
+  return `<hp:p paraPrIDRef="${p}" styleIDRef="0"><hp:run charPrIDRef="${reg.char({ font: "HY견고딕", pt: 16, bold: true })}"><hp:t>${escapeXml(mark)} </hp:t></hp:run>`
+    + `<hp:run charPrIDRef="${reg.char({ font: "HY견고딕", pt: 16 })}"><hp:t>${escapeXml(title)}</hp:t></hp:run></hp:p>`
 }
 
 // ─── 요약 박스 ─────────────────────────────────────

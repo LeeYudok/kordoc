@@ -267,7 +267,7 @@ const hwpx = await markdownToHwpx("# 제목\n\n본문\n\n| 이름 | 직급 |\n| 
 await markdownToHwpx("피타고라스\n\n$$a^2 + b^2 = c^2$$")
 
 // 공문서 모드 — 항목부호 8단계 + 내어쓰기 + 공식 여백/명조 자동
-// preset: official | report | plan | notice | minutes | gaejosik | press | ministry(업무보고)
+// preset: official | report | plan | notice | minutes | gaejosik | press | ministry(업무보고) | bangchim(서울방침)
 await markdownToHwpx("1. 추진배경\n  - 세부 항목\n2. 추진계획", { gongmun: { preset: "보고서" } })
 
 // 정부 표준 개조식 보고서 — 표지·목차(장식 배너)·로마숫자 장헤더·본문 제목박스·쪽번호("- 1 -", 표지·목차 제외)
