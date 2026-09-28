@@ -366,6 +366,154 @@ export function bracketFeatures(gray: Uint8Array, w: number, h: number, ink: Ink
   return { top, bottom, taper, ch, charH }
 }
 
+/**
+ * 로마 숫자 세로 획 수 — 사전에 Ⅰ~Ⅲ 가 있어도 모델은 한 글리프 Ⅲ 을 "II"·"I" 로, Ⅱ 를 "I" 로 줄여 읽는다(코퍼스 장 제목·목차).
+ * 앞뒤 글자의 CTC 자리(prevX·nextX, 박스 로컬) 사이에 중심이 든 키 큰 성분(글자 높이 60% 이상)의 가운데 절반 줄에서 잉크 토막을 센다 —
+ * CTC 자리는 글리프 한쪽에 치우치기도 해 가운데 금이 아니라 이웃 글자 자리에서 글자 높이 0.35배 떨어진 곳까지 본다.
+ * 세리프 Ⅲ 은 위아래 가로대로 이어진 한 성분이어도 가운데 줄은 세 토막이다. 줄의 70% 이상이 같은 수이고 토막이 가늘 때(세로 획)만 낸다
+ */
+export function romanStems(gray: Uint8Array, w: number, h: number, ink: InkStats, prevX: number, nextX: number): number | null {
+  const { comps, label } = components(gray, w, h, ink)
+  let charH = 0
+  for (const c of comps) charH = Math.max(charH, c.y1 - c.y0)
+  if (charH < 10) return null
+  const x0 = prevX + charH * 0.35, x1 = nextX - charH * 0.35
+  const sel = comps.filter(c => c.y1 - c.y0 >= charH * 0.6 && (c.x0 + c.x1) / 2 >= x0 && (c.x0 + c.x1) / 2 < x1)
+  if (!sel.length) return null
+  const ids = new Set(sel.map(c => c.id))
+  const ux0 = Math.min(...sel.map(c => c.x0)), ux1 = Math.max(...sel.map(c => c.x1))
+  const uy0 = Math.min(...sel.map(c => c.y0)), uy1 = Math.max(...sel.map(c => c.y1))
+  const uh = uy1 - uy0
+  const counts = new Map<number, number>()
+  let rows = 0
+  for (let y = uy0 + Math.floor(uh * 0.25); y < uy1 - Math.floor(uh * 0.25); y++) {
+    let runs = 0, len = 0, thick = false
+    for (let x = ux0; x <= ux1; x++) {
+      const on = x < ux1 && ids.has(label[y * w + x])
+      if (on) len++
+      else if (len) { runs++; if (len > uh * 0.35) thick = true; len = 0 }
+    }
+    rows++
+    if (!thick) counts.set(runs, (counts.get(runs) ?? 0) + 1)
+  }
+  const [n, k] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? [0, 0]
+  return n >= 1 && n <= 3 && k >= rows * 0.7 ? n : null
+}
+
+/**
+ * 원문자 숫자 — 사전에 ①~⑨ 가 있어도 모델은 고리를 버리고 숫자만 읽는다(항 번호 "① 문서는 …" → "1문서는").
+ * xs(박스 로컬 — 숫자 글자의 CTC 자리)마다 그 자리를 품는 둥근 고리 성분(글자 높이 55% 이상, 가로세로 0.8~1.25배)이 키 35% 이상
+ * 성분(숫자)을 안에 두면 원문자다. 괄호 숫자 "(1)"·네모 칸은 고리가 아니라 걸리지 않는다
+ */
+export function circledAt(gray: Uint8Array, w: number, h: number, ink: InkStats, xs: number[]): boolean[] {
+  const { comps } = components(gray, w, h, ink)
+  let charH = 0
+  for (const c of comps) charH = Math.max(charH, c.y1 - c.y0)
+  const rings = charH < 10 ? [] : comps.filter(r => {
+    const rw = r.x1 - r.x0, rh = r.y1 - r.y0
+    return rh >= charH * 0.55 && rw >= rh * 0.8 && rw <= rh * 1.25
+      && comps.some(d => d !== r && d.x0 > r.x0 && d.x1 < r.x1 && d.y0 > r.y0 && d.y1 < r.y1 && d.y1 - d.y0 >= rh * 0.35)
+  })
+  return xs.map(x => rings.some(r => x >= r.x0 && x <= r.x1))
+}
+
+/**
+ * 따옴표 머리 위치 — 모델은 ‘ ’ 를 곧은 ' 로 읽어 방향은 문맥(smartQuotes)이 정하는데, 연도 앞 "‘24년"·"’24년" 은 문서마다
+ * 섞여 문맥으로 못 가른다. cx(박스 로컬 — 따옴표 글자의 CTC 자리)에 가장 가까운 작은 성분(글자 높이 12~50%, 글줄 위쪽 절반)의
+ * 잉크 무게중심 높이를 성분 높이 비로 낸다 — 둥근 머리가 아래인 ‘(6 꼴)는 크고 위인 ’(9 꼴)는 작다
+ */
+export function quoteHead(gray: Uint8Array, w: number, h: number, ink: InkStats, cx: number): number | null {
+  const { comps, label } = components(gray, w, h, ink)
+  let charH = 0
+  for (const c of comps) charH = Math.max(charH, c.y1 - c.y0)
+  if (charH < 10) return null
+  const tall = comps.filter(c => c.y1 - c.y0 >= charH * 0.6)
+  if (!tall.length) return null
+  const mid = (Math.min(...tall.map(c => c.y0)) + Math.max(...tall.map(c => c.y1))) / 2
+  let best: Comp | null = null, bestD = charH * 0.4
+  for (const c of comps) {
+    const ch = c.y1 - c.y0, d = Math.abs((c.x0 + c.x1) / 2 - cx)
+    if (ch < charH * 0.12 || ch > charH * 0.5 || (c.y0 + c.y1) / 2 > mid || d > bestD) continue
+    bestD = d; best = c
+  }
+  if (!best) return null
+  let n = 0, sy = 0
+  for (let y = best.y0; y < best.y1; y++) for (let x = best.x0; x < best.x1; x++) if (label[y * w + x] === best.id) { n++; sy += y }
+  return n ? (sy / n - best.y0) / (best.y1 - best.y0) : null
+}
+
+/**
+ * 한 줄 박스 위아래 끝에 걸린 이웃 줄 글자 끝자락 — 줄 간격이 좁은 칸(조직도 상자 "노동 / 시장 / 정책관")은 검출 박스가 위아래 줄
+ * 글자 끝을 물어, 인식기가 그 조각을 받침으로 읽었다("노동" → "논동"·"시장" → "싫장"·"근로" → "근록", web068). 박스 끝 행(1px 안)에
+ * 닿은 잉크 띠가 빈 행으로 글줄과 떨어져 있고 가장 높은 띠의 45% 미만이면, 그 띠와 다음 띠 사이 빈 행 가운데까지 잘라낸 세로 구간을
+ * 낸다(높이 24px 이상, 남는 띠가 글자 두 자 이상인 글줄일 때만). 괘선(행·열 85% 이상 잉크)은 splitRowBands 처럼 빼고 본다. 좌우 끝 20% 안의 세로 테두리(상자 테두리 — 인식기가 "|"·"["·"(" 로
+ * 읽었다)도 그 바깥에 글 잉크가 없으면 괘선 안쪽으로 잘라낸다. 걸린 것이 없으면 null
+ */
+export function edgeTrim(gray: Uint8Array, w: number, h: number, ink: InkStats): { x0: number; x1: number; y0: number; y1: number } | null {
+  const isInk = (v: number) => (ink.darkInk ? v <= ink.threshold : v > ink.threshold)
+  const colInk = new Uint32Array(w)
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (isInk(gray[y * w + x])) colInk[x]++
+  const ruleCol = new Uint8Array(w)
+  let liveW = 0
+  for (let x = 0; x < w; x++) { if (colInk[x] >= h * 0.85) ruleCol[x] = 1; else liveW++ }
+  const blank = Math.max(1, Math.floor(w * 0.02))
+  const bands: Array<[number, number]> = []
+  let start = -1
+  for (let y = 0; y <= h; y++) {
+    let n = 0
+    if (y < h) for (let x = 0; x < w; x++) if (!ruleCol[x] && isInk(gray[y * w + x])) n++
+    const on = y < h && n > blank && n < liveW * 0.85
+    if (on && start < 0) start = y
+    else if (!on && start >= 0) { bands.push([start, y]); start = -1 }
+  }
+  let y0 = 0, y1 = h
+  if (bands.length >= 2 && h >= 24) {
+    const mh = Math.max(...bands.map(([a, b]) => b - a))
+    const [top, next] = [bands[0], bands[1]], [bot, prev] = [bands[bands.length - 1], bands[bands.length - 2]]
+    if (top[0] <= 1 && top[1] - top[0] < mh * 0.45) y0 = (top[1] + next[0]) >> 1
+    if (bot[1] >= h - 1 && bot[1] - bot[0] < mh * 0.45) y1 = (bot[0] + prev[1] + 1) >> 1
+    // 남는 띠가 글줄이어야 한다 — 글자 크기(띠 높이 30% 이상 폭) 잉크 열 토막이 둘 이상. 아이콘("Q" 로 읽힌 돋보기)·큰 장 번호 한 자
+    // (옅은 "6" 의 끊긴 윗곡선이 조각으로 잘렸다)는 그대로 둔다
+    if (y0 > 0 || y1 < h) {
+      let runs = 0, len = 0
+      for (let x = 0; x <= w; x++) {
+        let on = false
+        if (x < w && !ruleCol[x]) for (let y = y0; y < y1 && !on; y++) on = isInk(gray[y * w + x])
+        if (on) len++
+        else { if (len >= (y1 - y0) * 0.3) runs++; len = 0 }
+      }
+      if (runs < 2) { y0 = 0; y1 = h }
+    }
+  }
+  // 좌우 끝 세로 괘선 — 박스 높이 95% 이상을 관통하는 열이고, 그 바깥 열엔 잉크가 없고, 안쪽으로 빈 열 틈(높이 10%, 2px 이상)을
+  // 두고 글이 시작해야 한다. 큰 제목 글자의 세로 줄기("D")도 박스 높이 85% 를 넘어 테두리로 잘렸다(ODL 073 "Defensoria" → "ria")
+  const textCol = (x: number) => { for (let y = y0; y < y1; y++) if (isInk(gray[y * w + x])) return true; return false }
+  const border = (x: number) => colInk[x] >= h * 0.95
+  const gap = Math.max(2, Math.round(h * 0.1))
+  const clearFrom = (x: number, dir: 1 | -1) => { for (let k = 0; k < gap; k++) { const c = x + dir * k; if (c < 0 || c >= w || textCol(c)) return false } return true }
+  let x0 = 0, x1 = w
+  for (let x = 0; x < w * 0.2; x++) {
+    if (border(x)) { let e = x; while (e + 1 < w && border(e + 1)) e++; if (clearFrom(e + 1, 1)) x0 = e + 1; break }
+    if (textCol(x)) break
+  }
+  for (let x = w - 1; x >= w * 0.8; x--) {
+    if (border(x)) { let e = x; while (e - 1 >= 0 && border(e - 1)) e--; if (clearFrom(e - 1, -1)) x1 = e; break }
+    if (textCol(x)) break
+  }
+  return y0 > 0 || y1 < h || x0 > 0 || x1 < w ? { x0, x1, y0, y1 } : null
+}
+
+/** 키 큰 잉크 덩어리 수 — 글자 높이 절반 이상 성분을 x 가 겹치는 것끼리 묶어 센다(한 글자 = 한 덩어리, 점·쉼표는 안 셈) */
+export function tallInkCount(gray: Uint8Array, w: number, h: number, ink: InkStats): number {
+  const { comps } = components(gray, w, h, ink)
+  let charH = 0
+  for (const c of comps) charH = Math.max(charH, c.y1 - c.y0)
+  const tall = comps.filter(c => c.y1 - c.y0 >= charH * 0.5).sort((a, b) => a.x0 - b.x0)
+  let n = 0, end = -1
+  for (const c of tall) { if (c.x0 >= end) n++; end = Math.max(end, c.x1) }
+  return n
+}
+
 /** 【】 로 볼 기울기 줄 비율 — 코퍼스 실측 [ ] 최대 0.13, 【】 최소 0.19 */
 const BRACKET_TAPER = 0.16
 
@@ -379,7 +527,7 @@ export function bracketShape(f: BracketFeatures, close: boolean): string | null 
 
 
 /**
- * 박스 맨 앞 글머리 기호 — 인식 사전에 없거나(◎ ▪) 모델이 작은 점으로 읽는(● → •·) 공문서 글머리를 잉크 조각 모양으로 가른다.
+ * 박스 맨 앞 글머리 기호 — 인식 사전에 없거나(◎ ▪) 모델이 작은 점으로 읽거나(● → •·) 통째로 빠뜨리는(□) 공문서 글머리를 잉크 조각 모양으로 가른다.
  * 맨 앞 덩어리(x 가 겹치는 성분 묶음)가 글자 높이 대비 크기·채움·겹침으로:
  *   ◎ 이중 원 — 성분 둘 이상이 안팎으로 겹치고 속이 빈 둥근 조각 (함평 계획 21개가 "O")
  *   ● 큰 속 찬 원 — 채움 0.65~0.88(원 π/4≈0.79), 글자 높이 0.45배 이상 (교육청 안내문 17개가 "•"·누락)
@@ -387,7 +535,7 @@ export function bracketShape(f: BracketFeatures, close: boolean): string | null 
  * 속 빈 원(○·ㅇ·❍)은 픽셀로 못 가르니 건드리지 않는다. firstX 는 첫 인식 글자의 CTC 자리(박스 로컬) —
  * 덩어리가 그 앞에서 끝나면 인식에서 빠진 것, 그 글자 자리에 걸치면 그 글자가 이 기호를 잘못 읽은 것이다
  */
-export function leadingBullet(gray: Uint8Array, w: number, h: number, ink: InkStats, firstX: number): { mark: "◎" | "●" | "▪"; covers: boolean } | null {
+export function leadingBullet(gray: Uint8Array, w: number, h: number, ink: InkStats, firstX: number): { mark: "◎" | "●" | "▪" | "□"; covers: boolean } | null {
   const { comps, label } = components(gray, w, h, ink)
   let charH = 0
   for (const c of comps) charH = Math.max(charH, c.y1 - c.y0)
@@ -410,8 +558,17 @@ export function leadingBullet(gray: Uint8Array, w: number, h: number, ink: InkSt
   const ring = (c: Comp) => { const a = c.x1 - c.x0, b = c.y1 - c.y0; return a >= b * 0.75 && a <= b * 1.33 }
   const nested = cl.length >= 2 && cl.some(a => cl.some(b => a !== b && b.x0 > a.x0 && b.x1 < a.x1 && b.y0 > a.y0 && b.y1 < a.y1 && ring(b)
     && Math.abs((b.x0 + b.x1) - (a.x0 + a.x1)) <= (a.x1 - a.x0) * 0.2 && Math.abs((b.y0 + b.y1) - (a.y0 + a.y1)) <= (a.y1 - a.y0) * 0.2))
-  let mark: "\u25ce" | "\u25cf" | "\u25aa" | null = null
-  if (nested && fill < 0.45 && rel >= 0.6) mark = "\u25ce"
+  // 속 빈 정사각 □ — 윗·아랫 띠(높이 15%)가 폭 80% 넘게 차고 가운데 줄이 양끝 두 획뿐. 글자 높이의 0.6~0.92배
+  // (제목 앞 도형 네모는 글자 높이만큼 커 0.98배, 한글 첫소리 ㅁ 은 인식된 글자라 covers 로 걸러진다)
+  const span = (y: number) => { let n = 0; for (let x = x0; x < x1; x++) if (cl.some(c => label[y * w + x] === c.id)) n++; return n }
+  const band = Math.max(1, Math.round(ch * 0.15))
+  const edgeFull = (from: number, dir: 1 | -1) => { let m = 0; for (let k = 0; k < band; k++) m = Math.max(m, span(from + dir * k)); return m >= cw * 0.8 }
+  let midRuns = 0
+  { let prev = false; const my = y0 + (ch >> 1); for (let x = x0; x < x1; x++) { const on = cl.some(c => label[my * w + x] === c.id); if (on && !prev) midRuns++; prev = on } }
+  const hollowSquare = cl.length === 1 && fill < 0.5 && midRuns === 2 && edgeFull(y0, 1) && edgeFull(y1 - 1, -1)
+  let mark: "\u25ce" | "\u25cf" | "\u25aa" | "\u25a1" | null = null
+  if (hollowSquare && rel >= 0.6 && rel <= 0.92) mark = "\u25a1"
+  else if (nested && fill < 0.45 && rel >= 0.6) mark = "\u25ce"
   else if (cl.length === 1 && fill >= 0.9 && rel >= 0.28 && rel <= 0.6) mark = "\u25aa"
   else if (cl.length === 1 && fill >= 0.65 && fill <= 0.88 && rel >= 0.5 && rel <= 0.8) mark = "\u25cf"
   if (!mark) return null

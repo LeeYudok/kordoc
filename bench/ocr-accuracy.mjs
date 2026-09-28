@@ -26,7 +26,7 @@ import { homedir } from "node:os"
 import { fileURLToPath } from "node:url"
 import { parse } from "../dist/index.js"
 import { collectIrGrids, scoreTables } from "./lib/table-score.mjs"
-import { blockTexts, normStrict, fairText, hangulOnly, charBagPR, editDistance, rasterGlyphCoverage, imageRects } from "./ocr-lib.mjs"
+import { blockTexts, normStrict, fairText, hangulOnly, charBagPR, editDistance, rasterGlyphCoverage, imageRects, inlineGlyphImages, renderRectPngs, dropExplainedExtras, dropExplainedMisses } from "./ocr-lib.mjs"
 
 const root = fileURLToPath(new URL(".", import.meta.url))
 const args = process.argv.slice(2)
@@ -38,6 +38,7 @@ const dumpDir = (args.find(a => a.startsWith("--dump=")) ?? "").split("=")[1] ||
 
 const MIN_PAGE_CHARS = 200      // 정답지로 쓸 최소 글자 수 (표지·간지 배제)
 const MAX_CMP_CHARS = 20000     // CER 대조 상한 (O(n·m) DP 가드)
+const MAX_INLINE_GLYPH_IMAGES = 5  // 글줄 안 글자 그림 상한 (inlineGlyphImages — 성과관리 시행계획 쪽마다 9~10, 나머지 0~1)
 const MIN_GLYPH_COVERAGE = 0.8  // 래스터 글자 검사 하한 (코퍼스 82쪽 실측: 정상 ≥ 0.971, 글꼴 미렌더 nanet-seoul-minutes 0.088/0.071)
 
 // 무후퇴 플로어 — 2026-09-24 실측(읽기 품질 2차: OCR 쪽 + 정답지인 텍스트층 파싱의 자간 숫자·괘선 조각 표 수정) 래칫.
@@ -57,13 +58,20 @@ const MIN_GLYPH_COVERAGE = 0.8  // 래스터 글자 검사 하한 (코퍼스 82�
 // 2026-09-28 사전 밖 괄호 「」【】 복원(엔진): 같은 채점기 R .98090 → .98337·P .98246 → .98494 — 하한을 −0.2pp 여유로 올린다
 // 글머리 ◎●▪ 복원: R .98405 → .98486·P .98561 → .98623 (반각 낫표 접기 포함 새 채점기)
 // 글 없는 그림을 글자 자리로 판정(채점 기준 변경): P .98623 → .98693
+// 2026-09-29 채점 기준 변경(㎡·위 첨자 NFKC, • 를 가운뎃점 접기에, 본문 블록에 섞인 그림 글 v3)만으로 HEAD 출력 R .98484 → .98535·
+// P .98693 → .98967, 글줄 안 글자 그림 쪽 제외(모수 54/104 → 53/102)·그려지지 않은 텍스트층 글까지 R .98597·P .99073.
+// 엔진(로마 숫자·원문자·여는 따옴표·채운 자리 글자·이웃 줄 끝자락 지우기·글머리 □) R .98597 → .98771·P .99073 → .99210
 const GATES = {
-  cerMicroMax: 0.100, charRecallMin: 0.9828, charPrecisionMin: 0.9849, hangulRecallMin: 0.992,
-  tableMatchedMin: 0.76, tableCellF1Min: 0.535, minDocs: 54, minPages: 104,
+  cerMicroMax: 0.100, charRecallMin: 0.9857, charPrecisionMin: 0.990, hangulRecallMin: 0.992,
+  tableMatchedMin: 0.76, tableCellF1Min: 0.535, minDocs: 53, minPages: 102,
 }
 
 /** 글 없는 그림 판정 — 텍스트층 글자 자리(글자 단위)로. 종전 블록 bbox 판정은 표 블록이 표 전체를 덮어 표 안 그림(로고 모음)이 늘 '글 있는 그림'이 됐다 */
 const TEXTLESS_BY_GLYPH = !process.env.OCR_TEXTLESS_BLOCKS
+/** 본문 블록에 섞인 글 없는 그림의 글을 따로 읽어 잉여에서 빼기(v3) — OCR_IMAGE_TEXT_V2=1 이면 종전 채점 */
+const IMAGE_TEXT_V3 = !process.env.OCR_IMAGE_TEXT_V2
+/** 그려지지 않은 텍스트층 글로 설명되는 누락 빼기(v3) — OCR_HIDDEN_TEXT_V2=1 이면 종전 채점 */
+const HIDDEN_TEXT_V3 = !process.env.OCR_HIDDEN_TEXT_V2
 const toAB = (b) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)
 
 const pdfDir = join(root, "corpus", "pdf")
@@ -81,7 +89,7 @@ if (Number.isFinite(limit)) files = files.slice(0, limit)
 const rows = []
 const skippedPages = []
 let envFailures = 0
-const A = { dist: 0, len: 0, distS: 0, lenS: 0, hit: 0, hyp: 0, hHit: 0, hLen: 0, pages: 0, ms: 0 }
+const A = { dist: 0, len: 0, lenR: 0, distS: 0, lenS: 0, hit: 0, hyp: 0, hHit: 0, hLen: 0, pages: 0, ms: 0 }
 const tblAgg = { refTables: 0, matched: 0, exact: 0, f1s: [], skippedRef: 0 }
 
 for (const f of files) {
@@ -104,6 +112,15 @@ for (const f of files) {
     skippedPages.push({ doc: f, page: p, glyphCoverage: +c.toFixed(3), reason: "래스터에 텍스트층 글자가 그려지지 않음(글꼴 미렌더)" })
     return false
   })
+  // 글줄 안 글자를 그림으로 찍은 쪽 — 텍스트층에 그 글자(괄호·쉼표·글머리)가 없어 정답이 불완전하다. 래스터 글자 검사(텍스트층
+  // 글자가 안 그려진 쪽)와 짝인 표본 제외 (2026-09-29 채점 기준 변경)
+  const rects = await imageRects(raw, clean)
+  for (let i = clean.length - 1; i >= 0; i--) {
+    const n = inlineGlyphImages(rects.get(clean[i]) ?? [])
+    if (n < MAX_INLINE_GLYPH_IMAGES) continue
+    skippedPages.push({ doc: f, page: clean[i], inlineGlyphImages: n, reason: "텍스트층이 글줄 안 글자를 그림으로 찍음(정답 불완전)" })
+    clean.splice(i, 1)
+  }
   if (!clean.length) { rows.push({ doc: f, skip: "래스터 글자 검사 미달 (skippedPages)" }); continue }
 
   const pages = clean.join(",")
@@ -125,7 +142,6 @@ for (const f of files) {
   }
   // v2: 텍스트층 글이 하나도 없는 그림 영역(인포그래픽·삽화) 안의 OCR 글은 뺀다 — 정답(텍스트층)이 담을 수 없는 글이다.
   // 글이 얹힌 배경 그림(안에 텍스트층 블록이 있는 그림)은 그대로 둔다 (2026-09-28 채점 기준 변경)
-  const rects = await imageRects(raw, clean)
   const inRect = (bb, r) => {
     if (!bb) return false
     const ix = Math.min(bb.x + bb.width, r.x2) - Math.max(bb.x, r.x1), iy = Math.min(bb.y + bb.height, r.y2) - Math.max(bb.y, r.y1)
@@ -136,11 +152,28 @@ for (const f of files) {
     const ix = Math.min(bb.x + bb.width, r.x2) - Math.max(bb.x, r.x1), iy = Math.min(bb.y + bb.height, r.y2) - Math.max(bb.y, r.y1)
     return ix > 0 && iy > 0 && ix * iy >= 0.1 * (r.x2 - r.x1) * (r.y2 - r.y1)
   }
-  const textless = [...rects].flatMap(([pg, rs]) => rs.filter(r => (r.x2 - r.x1) * (r.y2 - r.y1) > 2000 &&
-    (TEXTLESS_BY_GLYPH
-      ? !(rs.textPts ?? []).some(p => p.x >= r.x1 && p.x <= r.x2 && p.y >= r.y1 && p.y <= r.y2)
-      : !gt.blocks.some(g => g.pageNumber === pg && g.type !== "image" && g.bbox && (inRect(g.bbox, r) || overlaps(g.bbox, r))))).map(r => ({ pg, r })))
+  const textlessAt = (pg, rs, r) => TEXTLESS_BY_GLYPH
+    ? !(rs.textPts ?? []).some(p => p.x >= r.x1 && p.x <= r.x2 && p.y >= r.y1 && p.y <= r.y2)
+    : !gt.blocks.some(g => g.pageNumber === pg && g.type !== "image" && g.bbox && (inRect(g.bbox, r) || overlaps(g.bbox, r)))
+  const textless = [...rects].flatMap(([pg, rs]) => rs.filter(r => (r.x2 - r.x1) * (r.y2 - r.y1) > 2000 && textlessAt(pg, rs, r)).map(r => ({ pg, r })))
   const ocrKept = ocr.blocks.filter(o => !textless.some(({ pg, r }) => o.pageNumber === pg && inRect(o.bbox, r)))
+  // v3: 본문 글과 한 블록에 섞인 글 없는 그림(머리 띠 로고·표 칸 로고·글줄 속 글자 그림) — 블록이 그림 밖까지 걸쳐 위 블록 판정이
+  // 못 가른다. 그 그림만 잘라 같은 OCR 로 읽고, OCR 출력이 정답보다 남긴 글자 가운데 그 글로 설명되는 만큼만 글자 대조(P/R)에서
+  // 뺀다 — 정답과 짝지어질 글자는 건드리지 않아 재현율은 그대로다. 위 블록 판정으로 이미 뺀 그림은 건너뛴다. CER 은 v2 그대로
+  const imageText = []
+  if (IMAGE_TEXT_V3) {
+    const byPage = new Map()
+    for (const [pg, rs] of rects) for (const r of rs) {
+      if (r.x2 - r.x1 < 3 || r.y2 - r.y1 < 3 || !textlessAt(pg, rs, r)) continue
+      if (ocr.blocks.some(o => o.pageNumber === pg && inRect(o.bbox, r) && textless.some(t => t.pg === pg && t.r === r))) continue
+      if ((byPage.get(pg) ?? []).some(q => q.x1 === r.x1 && q.y1 === r.y1 && q.x2 === r.x2 && q.y2 === r.y2)) continue
+      byPage.set(pg, [...(byPage.get(pg) ?? []), r])
+    }
+    for (const png of await renderRectPngs(raw, byPage)) {
+      const res = await parse(toAB(png))
+      if (res.success) imageText.push(...blockTexts(res.blocks))
+    }
+  }
   const gSegs = blockTexts(gt.blocks), oSegs = blockTexts(ocrKept)
   const a = fairText(gSegs).slice(0, MAX_CMP_CHARS)
   const b = fairText(oSegs).slice(0, MAX_CMP_CHARS)
@@ -150,7 +183,14 @@ for (const f of files) {
   const distS = editDistance(as, bs)
   const cer = a.length ? dist / a.length : 0
   const cerStrict = as.length ? distS / as.length : 0
-  const bag = charBagPR(a, b)
+  // 그림 글은 2자 이상 낱말이 OCR 출력에 그대로 있을 때만 — 글자 크기 그림(괄호·글머리)을 잘라 읽은 한두 자 잡음이 다른 잉여를 지우지 않게
+  const imageWords = imageText.flatMap(t => t.split(/\s+/)).map(t => fairText([t])).filter(t => [...t].length >= 2 && b.includes(t))
+  const bBag = imageWords.length ? dropExplainedExtras(a, b, imageWords.join("")) : b
+  // 그려지지 않은 텍스트층 글(흰 글·투명 글·그림에 덮인 글 — 속기록 표지의 숨은 "국회본회의회의록")은 OCR 이 볼 수 없다. 정답이 OCR 보다
+  // 남긴 글자 가운데 그 글로 설명되는 만큼만 글자 대조에서 뺀다 — OCR 이 읽은 글자와 짝지어질 글자는 건드리지 않아 정밀도는 그대로다
+  const hidden = clean.flatMap(p => cov.hidden?.get(p) ?? [])
+  const aBag = HIDDEN_TEXT_V3 && hidden.length ? dropExplainedMisses(a, bBag, fairText(hidden)) : a
+  const bag = charBagPR(aBag, bBag)
   // 한글 음절만의 recall — 래스터에 글꼴이 안 그려진 페이지를 드러내는 보조 신호
   const ha = hangulOnly(a), hg = charBagPR(ha, hangulOnly(b))
 
@@ -177,7 +217,8 @@ for (const f of files) {
   }
 
   A.dist += dist; A.len += a.length; A.distS += distS; A.lenS += as.length
-  A.hit += bag.hit; A.hyp += b.length; A.hHit += hg.hit; A.hLen += ha.length
+  A.lenR += aBag.length
+  A.hit += bag.hit; A.hyp += bBag.length; A.hHit += hg.hit; A.hLen += ha.length
   A.pages += clean.length; A.ms += ocrMs
   rows.push({
     doc: f, pages: clean, gtChars: a.length, dist, cer: +cer.toFixed(4), cerStrict: +cerStrict.toFixed(4),
@@ -189,7 +230,7 @@ for (const f of files) {
 
 const scored = rows.filter(r => !r.skip)
 const median = (xs) => xs.length ? +[...xs].sort((x, y) => x - y)[Math.floor(xs.length / 2)].toFixed(5) : null
-const recall = A.len ? A.hit / A.len : null
+const recall = A.lenR ? A.hit / A.lenR : null
 const precision = A.hyp ? A.hit / A.hyp : null
 const summary = {
   generatedAt: new Date().toISOString(),

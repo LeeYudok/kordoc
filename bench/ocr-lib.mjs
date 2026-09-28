@@ -5,8 +5,10 @@
 //  fair(v2): v1 에서 "문서 글자가 아닌 것"과 "픽셀로 구별 불가한 코드포인트 차이"만 더 걷는다.
 //    1) 마크업: 문단 텍스트 안의 마크다운 표(columns.ts 레거시 다열 경로가 `| a | b |`·`| --- |`
 //       를 문단 text 에 넣음 — 코퍼스 GT 에 "|" 1,210자), 링크 [글](url), <u>·~~ 서식 표지
-//    2) 혼동 글리프: 가운뎃점 계열(· ․ ‧ ∙ ⋅ ・ ･ ㆍ ᆞ) → ·, 로마 숫자 Ⅰ~ⅻ → 라틴(NFKC),
-//       전각 ASCII(U+FF01~FF5E) → 반각(NFKC), 물결 ∼ 〜 → ~, 가로 막대 ― → —
+//    2) 혼동 글리프: 가운뎃점 계열(· • ․ ‧ ∙ ⋅ ・ ･ ㆍ ᆞ) → ·, 로마 숫자 Ⅰ~ⅻ → 라틴(NFKC),
+//       전각 ASCII(U+FF01~FF5E) → 반각(NFKC), 물결 ∼ 〜 → ~, 가로 막대 ― → —,
+//       단위 한 글자 ㎡·㎜·㎏(U+3380~33DF)와 위 첨자 ¹²³ → NFKC ("㎡" 한 글자는 "m²" 두 글자와 같은 모양으로 그려진다).
+//       • 는 글꼴마다 · 와 같은 크기로 그려진다(글머리 · 가 글자 높이 0.28~0.32배 — 코퍼스 실측, 정답 • 을 · 로 읽은 문서와 거꾸로인 문서가 다 있다)
 //    3) 리더: … ⋯ 는 점 3개, ‥ 는 2개로 펴고 공백 제거 **뒤** 점 3개+ 제거 — OCR 이 리더를 "……"
 //       두 글자·공백으로 끊어 읽어 종전 규칙(3개+)을 비껴가던 비대칭 해소
 //    4) 추출 범위: 표 캡션·중첩 리스트 항목(children)은 글자로 세고, 이미지 파일 참조는 뺀다 (blockTexts 주석)
@@ -76,12 +78,12 @@ export function stripMarkup(text) {
     .replace(/~~/g, "")
 }
 
-const DOTS = /[\u00b7\u2024\u2027\u2219\u22c5\u30fb\uff65\u318d\u119e]/g
+const DOTS = /[\u00b7\u2022\u2024\u2027\u2219\u22c5\u30fb\uff65\u318d\u119e]/g
 /** 픽셀로 구별 불가한 코드포인트 접기 */
 export function foldConfusables(s) {
   return s
     .replace(DOTS, "\u00b7")
-    .replace(/[\u2160-\u217f\uff01-\uff5e\uff61-\uff64]/g, c => c.normalize("NFKC"))
+    .replace(/[\u2160-\u217f\uff01-\uff5e\uff61-\uff64\u3380-\u33df\u00b2\u00b3\u00b9]/g, c => c.normalize("NFKC"))
     .replace(/[\u223c\u301c]/g, "~")
     .replace(/\u2015/g, "\u2014")
 }
@@ -138,7 +140,9 @@ const WIDE = /[\u1100-\u11ff\u3000-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef
  * 비율. 래스터가 텍스트층을 실제로 그렸는지의 OCR 무관 객관 신호: 비내장 글꼴을 pdfium 이
  * 대체하지 못하면 한글이 통째로 안 그려진다(코퍼스 82쪽 실측: nanet-seoul-minutes 0.088/0.071, 나머지 ≥ 0.971).
  * 그런 페이지는 OCR 정확도의 표본이 아니다.
- * @returns page → 비율 (글자 없으면 1)
+ * @returns page → 비율 (글자 없으면 1). `.hidden` 은 page → 그려지지 않은 글 조각(검사 글자 둘 이상 중 20% 미만에만 잉크 —
+ *   흰 글·투명 글·그림에 덮인 글) 목록
+
  */
 export async function rasterGlyphCoverage(raw, pages, scale = 2) {
   const { createRequire } = await import("node:module")
@@ -154,6 +158,7 @@ export async function rasterGlyphCoverage(raw, pages, scale = 2) {
   const lib = await PDFiumLibrary.init()
   const fdoc = await lib.loadDocument(new Uint8Array(raw))
   const out = new Map()
+  out.hidden = new Map()
   try {
     for (const p of fdoc.pages()) {
       const pn = p.number + 1
@@ -166,7 +171,9 @@ export async function rasterGlyphCoverage(raw, pages, scale = 2) {
       const bpp = px.length / (W * H) // Gray = 1, 방어적으로 BGRA 도 허용
       const lum = (x, y) => px[(y * W + x) * bpp]
       let n = 0, ok = 0
+      const hidden = []
       for (const it of tc.items) {
+        let ni = 0, oki = 0
         if (typeof it.str !== "string" || !it.str.trim()) continue
         const [, b, c, d, e, f] = it.transform
         if (Math.abs(b) > 1e-3 || Math.abs(c) > 1e-3) continue
@@ -188,11 +195,13 @@ export async function rasterGlyphCoverage(raw, pages, scale = 2) {
               const v = lum(x, y); if (v < mn) mn = v; if (v > mx) mx = v
             }
           }
-          n++
-          if (mx - mn >= 60) ok++
+          n++; ni++
+          if (mx - mn >= 60) { ok++; oki++ }
         }
+        if (ni >= 2 && oki / ni < 0.2) hidden.push(it.str)
       }
       out.set(pn, n ? ok / n : 1)
+      out.hidden.set(pn, hidden)
     }
   } finally {
     fdoc.destroy()
@@ -200,6 +209,76 @@ export async function rasterGlyphCoverage(raw, pages, scale = 2) {
     await doc.destroy()
   }
   return out
+}
+
+/**
+ * 글줄 안 글자 그림 수 — 글줄 높이(본문 글자 크기 0.4~2배) 그림이 같은 줄 텍스트층 글 조각 사이(양옆 글자 크기 2배 안)에 박힌 것.
+ * 괄호·쉼표·글머리를 글자 대신 그림으로 찍은 PDF 는 텍스트층에 그 글자가 없어 정답이 불완전하다(성과관리 시행계획: 쪽마다 9~10개,
+ * 코퍼스 나머지 쪽 0~1개). 줄 머리 아이콘(글 조각이 오른쪽에만 있음)은 세지 않는다. rs 는 imageRects 한 쪽 결과
+ */
+export function inlineGlyphImages(rs) {
+  const items = rs.textItems ?? []
+  const fsz = items.map(i => i.fs).sort((a, b) => a - b)[items.length >> 1] ?? 10
+  let n = 0
+  for (const r of rs) {
+    const h = r.y2 - r.y1
+    if (h > fsz * 2 || h < fsz * 0.4) continue
+    const line = items.filter(i => Math.min(i.y2, r.y2) - Math.max(i.y1, r.y1) >= Math.min(h, i.fs) * 0.5)
+    if (line.some(i => i.x2 <= r.x1 + fsz * 0.3 && r.x1 - i.x2 <= fsz * 2) && line.some(i => i.x1 >= r.x2 - fsz * 0.3 && i.x1 - r.x2 <= fsz * 2)) n++
+  }
+  return n
+}
+
+/**
+ * 그림 영역을 잘라 PNG 로 — rectsByPage 는 쪽 번호 → PDF 사용자 좌표(y 위로) 사각형들. PDF OCR 과 같은 216dpi(3배)로 렌더하고
+ * 둘레에 흰 여백 8px 을 둔다 (OCR 채점 v3: 본문 글과 한 블록에 섞인 그림 글을 따로 읽는 데 쓴다)
+ */
+export async function renderRectPngs(raw, rectsByPage, scale = 3) {
+  const { PDFiumLibrary } = await import("@hyzyla/pdfium")
+  const sharp = (await import("sharp")).default
+  const lib = await PDFiumLibrary.init()
+  const fdoc = await lib.loadDocument(new Uint8Array(raw))
+  const out = []
+  try {
+    for (const p of fdoc.pages()) {
+      const rs = rectsByPage.get(p.number + 1)
+      if (!rs?.length) continue
+      const img = await p.render({ scale, colorSpace: "Gray", render: async ({ data }) => data })
+      const W = img.width, H = img.height, bpp = img.data.length / (W * H), Hpt = H / scale
+      for (const r of rs) {
+        const x0 = Math.max(0, Math.floor(r.x1 * scale)), x1 = Math.min(W, Math.ceil(r.x2 * scale))
+        const y0 = Math.max(0, Math.floor((Hpt - r.y2) * scale)), y1 = Math.min(H, Math.ceil((Hpt - r.y1) * scale))
+        if (x1 - x0 < 4 || y1 - y0 < 4) continue
+        const g = Buffer.alloc((x1 - x0) * (y1 - y0))
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) g[(y - y0) * (x1 - x0) + x - x0] = img.data[(y * W + x) * bpp]
+        out.push(await sharp(g, { raw: { width: x1 - x0, height: y1 - y0, channels: 1 } })
+          .extend({ top: 8, bottom: 8, left: 8, right: 8, background: "#ffffff" }).withMetadata({ density: scale * 72 }).png().toBuffer())
+      }
+    }
+  } finally {
+    fdoc.destroy()
+    lib.destroy()
+  }
+  return out
+}
+
+/** 정답 a 에서 OCR b 보다 남는(OCR 이 못 읽은) 글자 가운데 hidden(그려지지 않은 텍스트층 글)에 든 것만 뺀다 */
+export function dropExplainedMisses(a, b, hidden) {
+  return dropExplainedExtras(b, a, hidden)
+}
+
+/** OCR 비교 문자열 b 에서 정답 a 보다 남는 글자 가운데 extra(그림 글) 에 든 것만 뺀다 — 정답 글자와 짝지어질 글자는 건드리지 않는다 */
+export function dropExplainedExtras(a, b, extra) {
+  const count = (s) => { const m = new Map(); for (const c of s) m.set(c, (m.get(c) ?? 0) + 1); return m }
+  const A = count(a), B = count(b), E = count(extra), cut = new Map()
+  for (const [c, n] of E) { const k = Math.min(n, (B.get(c) ?? 0) - (A.get(c) ?? 0)); if (k > 0) cut.set(c, k) }
+  if (!cut.size) return b
+  const chars = [...b]
+  for (let i = chars.length - 1; i >= 0; i--) {
+    const k = cut.get(chars[i])
+    if (k) { cut.set(chars[i], k - 1); chars[i] = "" }
+  }
+  return chars.join("")
 }
 
 /**
@@ -242,6 +321,10 @@ export async function imageRects(raw, pages) {
       // 텍스트층 글자 자리(글 조각 가운데) — 그림 안에 텍스트층 글자가 있는지 가른다
       const tc = await page.getTextContent()
       rects.textPts = tc.items.filter(it => it.str && it.str.trim()).map(it => ({ x: it.transform[4] + (it.width || 0) / 2, y: it.transform[5] + Math.abs(it.transform[3] || it.height || 0) * 0.3 }))
+      rects.textItems = tc.items.filter(it => it.str && it.str.trim()).map(it => {
+        const fs = Math.abs(it.transform[3] || it.height || 0)
+        return { x1: it.transform[4], x2: it.transform[4] + (it.width || 0), y1: it.transform[5], y2: it.transform[5] + fs, fs }
+      })
       out.set(pn, rects)
     }
   } finally {

@@ -136,13 +136,13 @@ Real government documents (press releases, approval documents, statutory forms, 
 | HWPX text & tables | 2,286 documents, 13,041 tables | 0 missing text · every table matches cell for cell · reading order 100% |
 | HWP 5.x | 1,120 HWP/HWPX pairs | identical to the HWPX result |
 | PDF text | 744 pairs (HWPX/DOCX ground truth) | char recall 99.8% · precision 99.5% · reading order 99.1% · word F1 98.7% |
-| PDF tables | 708 pairs, 2,632 tables | found 99.5% · exact cell match 96.7% · cell F1 0.984 |
+| PDF tables | 708 pairs, 2,632 tables | found 99.5% · exact cell match 97.0% · cell F1 0.984 |
 | PDF overall | 1,911 documents (1,724 scored on the text layer) | text coverage 99.8% |
-| Scanned OCR (built-in, local CPU) | 54 documents, 104 pages (216 dpi render) | char recall 98.1% · Hangul recall 99.3% · precision 98.2% · 0.9 s/page |
+| Scanned OCR (built-in, local CPU) | 53 documents, 102 pages (216 dpi render) | char recall 98.8% · Hangul recall 99.4% · precision 99.2% · about 1 s/page |
 | DOCX · XLSX · XLS · HML | 88 documents | 0 missing text or numbers |
 | Markdown → HWPX → Markdown | 83 runs | no loss of text, tables, headings or equations |
 
-> **Scoring rules** (revised 2026-09-28, details in the [CHANGELOG](CHANGELOG.md)) — for PDF text reading order, a line that appears several times counts at its in-order occurrence, and floating text boxes and lines without letters or digits (masking "*****") are excluded from order scoring only. List markers "- " and the footnote wrapper "(주: …)" are stripped from both plain texts. The PDF text/table populations exclude pairs whose PDF is a different edition (PDF text over 3×) and pairs whose PDF text layer (pdftotext) holds less than 93% of the ground-truth characters (render-defect repros etc.). PDF coverage removes leader-dot runs. OCR uses fixed sample pages (`bench/ocr-pages.json`), drops OCR text inside image regions that have no text-layer text, and unfolds table rows whose value cells stack several lines side by side by line index.
+> **Scoring rules** (revised 2026-09-29, details in the [CHANGELOG](CHANGELOG.md)) — for PDF text reading order, a line that appears several times counts at its in-order occurrence, and floating text boxes and lines without letters or digits (masking "*****") are excluded from order scoring only. List markers "- " and the footnote wrapper "(주: …)" are stripped from both plain texts. The PDF text/table populations exclude pairs whose PDF is a different edition (PDF text over 3×) and pairs whose PDF text layer (pdftotext) holds less than 93% of the ground-truth characters (render-defect repros etc.). PDF coverage removes leader-dot runs. OCR uses fixed sample pages (`bench/ocr-pages.json`); OCR text inside image regions with no text-layer text (for logos mixed into a body block, only the surplus explained by reading the image alone) and text-layer text that is never drawn (white or covered text) are left out of the character comparison, and pages that draw in-line characters as images are dropped from the sample. Characters pixels cannot tell apart (middle dots · • ∙, unit ㎡ vs m², corner brackets ｢｣ 「」) are folded, and table rows whose value cells stack several lines side by side are unfolded by line index.
 
 ### HWP · HWPX → Markdown — against HwpForge with the same scorer
 

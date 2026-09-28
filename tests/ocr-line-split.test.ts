@@ -12,7 +12,7 @@
  */
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
-import { bracketFeatures, bracketShape, inkStats, leaderRuns, leadingBullet, leadingTriangle, splitRowBands } from "../src/ocr/line-split.js"
+import { bracketFeatures, bracketShape, circledAt, edgeTrim, inkStats, leaderRuns, leadingBullet, leadingTriangle, quoteHead, romanStems, splitRowBands, tallInkCount } from "../src/ocr/line-split.js"
 
 function canvas(w: number, h: number, bg = 255): Uint8Array {
   return new Uint8Array(w * h).fill(bg)
@@ -223,7 +223,7 @@ describe("bracketFeatures·bracketShape — 사전 밖 괄호 「」【】", () 
   })
 })
 
-describe("leadingBullet — 사전 밖·작은 점으로 읽히는 글머리 ◎ ● ▪", () => {
+describe("leadingBullet — 사전 밖·작은 점으로 읽히거나 빠지는 글머리 ◎ ● ▪ □", () => {
   /** 원(속 빈·찬) — 중심 (cx, cy), 반지름 r, 두께 t (t ≥ r 이면 속 찬 원) */
   function disc(g: Uint8Array, w: number, cx: number, cy: number, r: number, t: number) {
     for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
@@ -245,6 +245,11 @@ describe("leadingBullet — 사전 밖·작은 점으로 읽히는 글머리 ◎
     rect(g2, w, 16, 15, 26, 25); text(g2, w)
     assert.equal(leadingBullet(g2, w, h, inkStats(g2), 80)?.mark, "\u25aa")
   })
+  it("글자 높이 0.6~0.92배 속 빈 정사각(윗·아랫변이 차고 가운데 줄은 양끝 두 획)은 □", () => {
+    const w = 120, h = 40, g = canvas(w, h)
+    rect(g, w, 12, 9, 34, 11); rect(g, w, 12, 29, 34, 31); rect(g, w, 12, 9, 14, 31); rect(g, w, 32, 9, 34, 31); text(g, w)
+    assert.deepEqual(leadingBullet(g, w, h, inkStats(g), 80), { mark: "\u25a1", covers: false })
+  })
   it("가운뎃점 크기(글자 높이 0.2배)·속 빈 원(○·ㅇ)·원문자(안쪽이 숫자)는 null", () => {
     const w = 120, h = 40
     const dot = canvas(w, h); rect(dot, w, 18, 18, 24, 24); text(dot, w)
@@ -253,5 +258,92 @@ describe("leadingBullet — 사전 밖·작은 점으로 읽히는 글머리 ◎
     assert.equal(leadingBullet(ring, w, h, inkStats(ring), 23), null)
     const circled = canvas(w, h); disc(circled, w, 22, 20, 12, 2); rect(circled, w, 21, 13, 24, 27); text(circled, w)
     assert.equal(leadingBullet(circled, w, h, inkStats(circled), 23), null)
+  })
+})
+
+describe("romanStems — 로마 숫자 세로 획 수 (모델이 Ⅲ 을 II·I 로 줄여 읽음)", () => {
+  const text = (g: Uint8Array, w: number) => rect(g, w, 70, 6, 98, 34) // 뒤 한글 글자 (글자 높이 28, 중심 84)
+  /** 세리프 로마 숫자 — n 개 세로 획을 위아래 가로대로 이은 한 성분 */
+  function roman(g: Uint8Array, w: number, n: number) {
+    for (let k = 0; k < n; k++) rect(g, w, 12 + k * 8, 8, 15 + k * 8, 32)
+    rect(g, w, 10, 8, 17 + (n - 1) * 8, 10); rect(g, w, 10, 30, 17 + (n - 1) * 8, 32)
+    rect(g, w, 17 + (n - 1) * 8 + 3, 29, 17 + (n - 1) * 8 + 6, 32) // 뒤 마침표 (작은 성분, 셈에서 빠진다)
+  }
+  it("가로대로 이어진 Ⅲ 은 가운데 줄 세 토막 → 3, Ⅱ → 2", () => {
+    for (const n of [3, 2]) {
+      const w = 110, h = 40, g = canvas(w, h)
+      roman(g, w, n); text(g, w)
+      assert.equal(romanStems(g, w, h, inkStats(g), -Infinity, 84), n)
+    }
+  })
+  it("굵은 획(한글 글자 덩어리)은 세로 획이 아니다 → null", () => {
+    const w = 110, h = 40, g = canvas(w, h)
+    rect(g, w, 10, 8, 34, 32); text(g, w)
+    assert.equal(romanStems(g, w, h, inkStats(g), -Infinity, 84), null)
+  })
+})
+
+describe("circledAt — 원문자 숫자 (모델이 고리를 버리고 숫자만 읽음)", () => {
+  function ring(g: Uint8Array, w: number, cx: number, cy: number, r: number) {
+    for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+      const d = Math.hypot(x - cx, y - cy)
+      if (d <= r && d >= r - 2) g[y * w + x] = 0
+    }
+  }
+  it("고리 안에 숫자 획이 있으면 원문자, 고리 없는 숫자·괄호 숫자는 아니다", () => {
+    const w = 140, h = 40, g = canvas(w, h)
+    ring(g, w, 20, 20, 13); rect(g, w, 19, 12, 22, 28) // ①
+    rect(g, w, 60, 8, 63, 32) // 맨 숫자 1
+    rect(g, w, 90, 6, 92, 34); rect(g, w, 99, 10, 102, 30); rect(g, w, 109, 6, 111, 34) // ( 1 )
+    rect(g, w, 120, 6, 138, 34) // 한글 글자 (글자 높이 28)
+    assert.deepEqual(circledAt(g, w, h, inkStats(g), [20, 61, 100]), [true, false, false])
+  })
+})
+
+describe("quoteHead — 따옴표 머리 위치 (‘ 는 머리가 아래, ’ 는 위)", () => {
+  /** 따옴표 — 머리(3×4)와 꼬리(1×4) */
+  function quote(g: Uint8Array, w: number, x: number, headLow: boolean) {
+    if (headLow) { rect(g, w, x + 2, 6, x + 3, 10); rect(g, w, x, 10, x + 3, 14) }
+    else { rect(g, w, x, 6, x + 3, 10); rect(g, w, x, 10, x + 1, 14) }
+  }
+  it("머리 무게중심이 아래면 크고(여는), 위면 작다(닫는)", () => {
+    const w = 80, h = 40
+    const open = canvas(w, h); quote(open, w, 10, true); rect(open, w, 30, 6, 58, 34)
+    const close = canvas(w, h); quote(close, w, 10, false); rect(close, w, 30, 6, 58, 34)
+    assert.ok(quoteHead(open, w, h, inkStats(open), 11)! >= 0.49)
+    assert.ok(quoteHead(close, w, h, inkStats(close), 11)! < 0.45)
+  })
+})
+
+describe("tallInkCount — 키 큰 잉크 덩어리 수 (채운 자리 글자 거름)", () => {
+  it("빗금 하나 → 1, 숫자 두 자 + 점 → 2", () => {
+    const w = 60, h = 40
+    const slash = canvas(w, h)
+    for (let y = 6; y < 34; y++) rect(slash, w, 30 - (y >> 2), y, 33 - (y >> 2), y + 1)
+    assert.equal(tallInkCount(slash, w, h, inkStats(slash)), 1)
+    const two = canvas(w, h)
+    rect(two, w, 8, 6, 24, 34); rect(two, w, 30, 6, 46, 34); rect(two, w, 50, 30, 53, 33)
+    assert.equal(tallInkCount(two, w, h, inkStats(two)), 2)
+  })
+})
+
+describe("edgeTrim — 한 줄 박스에 걸린 이웃 줄 끝자락·상자 테두리 (인식기가 받침·\"|\" 로 읽음)", () => {
+  it("위아래 끝에 닿은 얇은 띠는 빈 행 가운데까지 잘라내고, 좌우 끝 세로 괘선은 안쪽으로", () => {
+    const w = 120, h = 50, g = canvas(w, h)
+    rect(g, w, 10, 12, 40, 38); rect(g, w, 50, 12, 80, 38) // 글자 두 자
+    rect(g, w, 12, 0, 78, 4) // 윗줄 글자 아랫끝
+    rect(g, w, 12, 46, 78, 50) // 아랫줄 글자 윗끝
+    rect(g, w, 112, 0, 114, 50) // 상자 오른쪽 테두리
+    assert.deepEqual(edgeTrim(g, w, h, inkStats(g)), { x0: 0, x1: 112, y0: 8, y1: 42 })
+  })
+  it("남는 띠가 글자 한 덩어리(아이콘·큰 번호 한 자)면 위아래는 건드리지 않는다", () => {
+    const w = 60, h = 50, g = canvas(w, h)
+    rect(g, w, 15, 0, 45, 4); rect(g, w, 15, 10, 45, 44)
+    assert.equal(edgeTrim(g, w, h, inkStats(g)), null)
+  })
+  it("끝에 닿은 조각이 없으면 null", () => {
+    const w = 120, h = 50, g = canvas(w, h)
+    rect(g, w, 10, 12, 40, 38); rect(g, w, 50, 12, 80, 38)
+    assert.equal(edgeTrim(g, w, h, inkStats(g)), null)
   })
 })
