@@ -36,7 +36,7 @@ import {
   parseCharacterDict,
 } from "./models.js"
 import { edgeTrim, leadingBullet, tallInkCount, grayCrop, inkBounds, inkStats, leaderRuns, leadingTriangle, splitRowBands } from "./line-split.js"
-import { restoreBrackets, restoreCircled, restoreQuotes, restoreRoman } from "./glyph-restore.js"
+import { restoreGlyphs } from "./glyph-restore.js"
 import { isDotFragment, joinLeaderItems, restoreBulletItems, restoreSymbols } from "./postprocess.js"
 import { bandBoxes, splitBoxAtCellRules, lineCrop, type Box, REC_HEIGHT } from "./crop.js"
 
@@ -291,10 +291,7 @@ export class OcrEngine {
 
     let items: OcrItem[] = []
     for (const { job, text: read, confidence, steps, stepPx } of best.values()) {
-      let raw = tuning.postprocess && job.rot === 0 && /[[\]]/.test(read) ? restoreBrackets(rgba, width, job.box, read, steps, stepPx) : read
-      if (tuning.postprocess && job.rot === 0 && /['"]/.test(read)) raw = restoreQuotes(rgba, width, job.box, raw, steps, stepPx)
-      if (tuning.postprocess && job.rot === 0 && /(^|\D)[1-9](\D|$)/.test(read)) raw = restoreCircled(rgba, width, job.box, raw, steps, stepPx)
-      if (tuning.postprocess && job.rot === 0 && /[I\u2160-\u2162]|^\s*\./.test(read)) raw = restoreRoman(rgba, width, job.box, raw, steps, stepPx)
+      const raw = tuning.postprocess && job.rot === 0 ? restoreGlyphs(rgba, width, job.box, read, steps, stepPx) : read
       let text = tuning.postprocess ? restoreSymbols(raw.trim()) : raw
       if (!text.trim()) continue
       // 사전 밖·작은 점으로 읽히거나 빠지는 글머리(◎ ● ▪ □) — 첫 글리프 모양으로 되살린다 (line-split.ts)
