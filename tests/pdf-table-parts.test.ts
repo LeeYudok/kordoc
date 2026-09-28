@@ -141,6 +141,16 @@ describe("mergeCrossPageTables — 클립 표 쪽 넘김 판정", () => {
     assert.equal(blocks.length, 2)
   })
 
+  it("신구조문 대비표의 '[별표 2] …' 행(현행·개정안 두 칸에 같은 글)은 첨부 머리표가 아니라 이어짐이다", () => {
+    const blocks: IRBlock[] = [
+      clipBlock(grid(2, 2, [[0, 0, "현 행"], [0, 1, "개정안"], [1, 0, "제5조 내용"], [1, 1, "제5조 개정 내용"]]), [60, 296, 532], 1, 70, 700),
+      clipBlock(grid(2, 2, [[0, 0, "[별표 2] 과태료의 부과기준\n2. 개별기준"], [0, 1, "[별표 2] 과태료의 부과기준\n2. 개별기준"], [1, 0, "사. 법 제38조"], [1, 1, "사. ----"]]), [60, 296, 532], 2, 600, 167),
+    ]
+    mergeCrossPageTables(blocks, PAGE_H)
+    assert.equal(blocks.length, 1)
+    assert.equal(blocks[0].table!.rows, 4)
+  })
+
   it("글 없는 클립 조각은 이어질 때만 살아남고, 못 이으면 버린다", () => {
     const tail = grid(1, 2, [[0, 0, ""], [0, 1, ""]])
     EMPTY_PARTS.add(tail)

@@ -555,8 +555,12 @@ const ANNEX_HEAD_RE = /^\s*[<\[(【]?\s*(?:붙\s*임|참\s*고|별\s*첨|별\s*�
 function looksContinued(prev: IRBlock, curr: IRBlock, pageHeights?: Map<number, number>): boolean {
   const ph = pageHeights?.get(prev.pageNumber!), ch = pageHeights?.get(curr.pageNumber!)
   if (ph && ch && (prev.bbox!.y > ph * PAGE_EDGE_BAND || curr.bbox!.y + curr.bbox!.height < ch * (1 - PAGE_EDGE_BAND))) return false
-  const firstText = curr.table!.cells[0]?.find(c => c.text.trim())?.text ?? ""
-  return !ANNEX_HEAD_RE.test(firstText)
+  const firstRow = curr.table!.cells[0] ?? []
+  const firstText = firstRow.find(c => c.text.trim())?.text ?? ""
+  if (!ANNEX_HEAD_RE.test(firstText)) return true
+  // 신구조문 대비표 행 — 현행·개정안 두 칸 이상에 같은 "[별표 2] …" 가 들면 첨부 머리표가 아니라 대비표 본문이다 (머리표는 제목 한 칸)
+  const filled = firstRow.map(c => c.text.replace(/\s+/g, "")).filter(Boolean)
+  return filled.length >= 2 && filled.every(t => t === filled[0])
 }
 
 /** 표 첫 행 앵커 — 열 경계 x 범위와 글 */
