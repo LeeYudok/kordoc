@@ -138,7 +138,7 @@ Real government documents (press releases, approval documents, statutory forms, 
 | PDF text | 744 pairs (HWPX/DOCX ground truth) | char recall 99.8% · precision 99.5% · reading order 99.1% · word F1 98.7% |
 | PDF tables | 708 pairs, 2,632 tables | found 99.5% · exact cell match 97.0% · cell F1 0.984 |
 | PDF overall | 1,911 documents (1,724 scored on the text layer) | text coverage 99.8% |
-| Scanned OCR (built-in, local CPU) | 53 documents, 102 pages (216 dpi render) | char recall 98.9% · Hangul recall 99.4% · precision 99.3% · about 1 s/page |
+| Scanned OCR (built-in, local CPU) | 53 documents, 102 pages (216 dpi render) | char recall 99.0% · Hangul recall 99.4% · precision 99.4% · about 1 s/page |
 | DOCX · XLSX · XLS · HML | 88 documents | 0 missing text or numbers |
 | Markdown → HWPX → Markdown | 83 runs | no loss of text, tables, headings or equations |
 

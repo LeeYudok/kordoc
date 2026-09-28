@@ -519,9 +519,12 @@ export function tallInkCount(gray: Uint8Array, w: number, h: number, ink: InkSta
  * 두 글자 사이에서 통째로 빠진 기호 — 인식기가 사전에 없거나(「」) 드물게 배운 기호(▲ □ · . 。)를 글자 자리 없이 건너뛴다. 글줄 띠(키 큰
  * 성분 위아래)와 x 가 겹치는 다른 성분이 없는(빈 열로 떨어진) 조각만 모양으로 가른다:
  *   · 가운데 높이(띠 30~70%)의 작은 둥근 점(띠 높이 8%·3px 이상 25% 이하, 채움 60% 이상 — 1px 잡티는 빼고), 아래쪽(75% 아래)이면 .
+ *     2px 까지 작은 점은 "·\u0001" — 모델이 공백으로 읽은 자리에서만 쓴다
  *   。 아래쪽(60% 아래) 작은 고리(띠 높이 40% 이하, 가운데 줄 두 토막)
  *   ▲ 띠 높이 50% 이상·가로세로 0.9~1.4배, 위로 갈수록 좁아지고 줄마다 한 토막인 속 찬 삼각형
  *   「 」 띠 높이 30~65%, 위(「)·아래(」)에 붙어 그 변이 폭 70% 넘게 차고 반대쪽 변은 절반 이하, 줄기가 왼쪽(「)·오른쪽(」)
+ *   / 띠 높이 60% 이상의 가는 사선(분수 칸 "7/5" — 모델이 숫자 사이 빗금을 빠뜨림)
+ *   - 가운데 높이의 짧은 가로 막대(쪽번호 꼬리말 "- 1 -" 의 앞 막대 — 줄 머리에서만 쓴다)
  *   □ 띠 높이 60~92%·가로세로 0.8~1.25배, 위아래 변이 폭 80% 넘게 차고 가운데 줄은 양끝 두 획. 줄에서 가장 큰 조각이면(글 없이 정사각만
  *     늘어선 칸 "□□-□□□") "□\0" — 새로 넣지는 않고 0·O 로 읽힌 자리만 바꾼다(제목 앞 도형 네모와 섞이지 않게)
  * 칸 경계 세로선(띠 높이 90% 이상·가는 열)은 뺀다. 반환은 박스 로컬 x 구간과 기호, 글줄 띠 높이
@@ -540,7 +543,10 @@ export function gapGlyphs(gray: Uint8Array, w: number, h: number, ink: InkStats)
     const cw = c.x1 - c.x0, ch = c.y1 - c.y0
     if (ch >= bh * 0.9 && cw <= bh * 0.15) continue
     // 빈 열로 떨어진 조각 — 안에 든 성분(□ 속 잡티)은 괜찮다
-    if (comps.some(o => o !== c && inBand(o) && o.x0 < c.x1 + 1 && o.x1 > c.x0 - 1 && !(o.x0 >= c.x0 && o.x1 <= c.x1 && o.y0 >= c.y0 && o.y1 <= c.y1))) continue
+    const others = comps.filter(o => o !== c && inBand(o) && !(o.x0 >= c.x0 && o.x1 <= c.x1 && o.y0 >= c.y0 && o.y1 <= c.y1))
+    const apart = !others.some(o => o.x0 < c.x1 + 1 && o.x1 > c.x0 - 1)
+    // 빗금은 이웃 숫자와 x 가 2px 까지 겹쳐도 된다(사선이라 촘촘히 짠 "7/5" 에서 양옆 숫자 밑·위로 들어간다)
+    const nearlyApart = !others.some(o => Math.min(o.x1, c.x1) - Math.max(o.x0, c.x0) > 2)
     const spans: number[] = [], runs: number[] = []
     let n = 0
     for (let y = c.y0; y < c.y1; y++) {
@@ -554,9 +560,14 @@ export function gapGlyphs(gray: Uint8Array, w: number, h: number, ink: InkStats)
     let mark: string | null = null
     const speck = Math.max(3, bh * 0.08)
     const dot = ch <= bh * 0.25 && cw <= bh * 0.25 && ch >= speck && cw >= speck && cw >= ch * 0.6 && cw <= ch * 1.6
-    if (dot && fill >= 0.6 && cy >= 0.3 && cy <= 0.7) mark = "\u00b7"
+    // 이웃 글자와 x 가 겹치거나(촘촘한 글꼴 "개발·보급") 2px 까지 작은 둥근 점은 공백 자리 대체용으로만 — 한글 자모엔 떨어진 둥근 점이 없다
+    const small = ch <= bh * 0.25 && cw <= bh * 0.25 && ch >= 2 && cw >= 2 && cw >= ch * 0.6 && cw <= ch * 1.6 && fill >= 0.6 && cy >= 0.3 && cy <= 0.7
+    if (!apart && !(nearlyApart && ch >= bh * 0.6)) { if (small) out.push({ x0: c.x0, x1: c.x1, mark: "\u00b7\u0001" }); continue }
+    if (!apart) { /* 빗금 후보만 아래에서 */ } else if (dot && fill >= 0.6 && cy >= 0.3 && cy <= 0.7) mark = "\u00b7"
+    else if (small) mark = "\u00b7\u0001"
     else if (dot && fill >= 0.6 && cy >= 0.75 && cw >= ch * 0.8) mark = "." // 꼬리 달린 쉼표(세로로 긴 점)는 빼고
     else if (ch <= bh * 0.4 && ch >= speck && cw >= ch * 0.75 && cw <= ch * 1.3 && fill < 0.6 && runs[ch >> 1] === 2 && cy >= 0.6) mark = "\u3002"
+    else if (ch <= bh * 0.15 && cw >= ch * 2 && cw <= bh * 0.8 && fill >= 0.7 && cy >= 0.35 && cy <= 0.75) mark = "-"
     else if (ch >= bh * 0.5 && cw >= ch * 0.9 && cw <= ch * 1.4 && fill >= 0.4 && runs.every(r => r <= 1)
       && top <= 0.4 && bottom >= 0.8) mark = "\u25b2"
     else if (ch >= bh * 0.3 && ch <= bh * 0.65 && fill < 0.5) {
@@ -570,6 +581,11 @@ export function gapGlyphs(gray: Uint8Array, w: number, h: number, ink: InkStats)
       else if (c.y1 >= bandB - bh * 0.15 && bottom >= 0.7 && top <= 0.5 && stem(c.y0, c.y1 - band) >= 0.65) mark = "\u300d"
     } else if (ch >= charH * 0.6 && cw >= ch * 0.8 && cw <= ch * 1.25 && fill < 0.5 && top >= 0.8 && bottom >= 0.8
       && runs[ch >> 1] === 2) mark = ch <= charH * 0.92 ? "\u25a1" : "\u25a1\u0000"
+    // 빗금 / — 띠 높이 60% 이상의 가는 사선(폭이 높이의 0.25~0.7배, 줄마다 한 토막, 위쪽이 오른쪽으로 폭의 절반 넘게 치우침)
+    if (!mark && ch >= bh * 0.6 && cw >= ch * 0.25 && cw <= ch * 0.7 && fill <= 0.4 && runs.every(r => r <= 1)) {
+      const mx = (y: number) => { let sx = 0, k = 0; for (let x = c.x0; x < c.x1; x++) if (label[y * w + x] === c.id) { sx += x; k++ } return k ? sx / k : NaN }
+      if (mx(c.y0 + band) - mx(c.y1 - 1 - band) >= cw * 0.5) mark = "/"
+    }
     if (mark) out.push({ x0: c.x0, x1: c.x1, mark })
   }
   return { glyphs: out, bandH: bh }
@@ -579,9 +595,9 @@ export function gapGlyphs(gray: Uint8Array, w: number, h: number, ink: InkStats)
  * 줄 머리 고리 글머리 ○ / ㅇ — 모델은 같은 글리프를 "O"·"ㅇ" 로 오락가락 읽는다(장흥 계획 ○ 27개 중 9개가 ㅇ). cx(첫 글자의 CTC 자리)에
  * 가장 가까운 키 30% 이상 성분이 고리(가로세로 0.85~1.2배, 가운데 가로·세로줄 모두 두 토막)면 크기·채움으로 가른다 — 도형 ○ 는 글줄 띠
  * 높이의 0.65~1.0배에 획이 가늘고(폭의 10% 이하, 채움 0.23 이하 — 그림자 진 고리는 가는 쪽 획 8% 이하·채움 0.33 이하), 자모 ㅇ 은
- * 0.47~0.56배에 채움 0.24 이상(코퍼스 9문서 실측)
+ * 0.47~0.56배에 채움 0.24 이상(코퍼스 9문서 실측), 라틴 o 는 0.6~0.8배로 줄 아래쪽에 앉는다
  */
-export function ringBullet(gray: Uint8Array, w: number, h: number, ink: InkStats, cx: number): "\u25cb" | "\u3147" | null {
+export function ringBullet(gray: Uint8Array, w: number, h: number, ink: InkStats, cx: number): "\u25cb" | "\u3147" | "o" | null {
   const { comps, label } = components(gray, w, h, ink)
   let charH = 0
   for (const c of comps) charH = Math.max(charH, c.y1 - c.y0)
@@ -611,6 +627,9 @@ export function ringBullet(gray: Uint8Array, w: number, h: number, ink: InkStats
   // 그림자 진 고리(한쪽 획만 두꺼움 — ❍, 글꼴에 따라 ○ 도 이렇게 그려진다)도 가는 쪽 획이 가늘면 도형 ○
   if (rel >= 0.62 && (fill <= 0.23 ? row.mx <= cw * 0.1 : fill <= 0.33 && row.mn <= cw * 0.08)) return "\u25cb"
   if (rel <= 0.58 && fill >= 0.24) return "\u3147"
+  // 라틴 소문자 o — x 높이(띠 0.6~0.8배)로 줄 아래쪽에 앉은 굵은 고리(속초 예산서 "o 기본급", 모델은 숫자 0 으로 읽음). 숫자 0 은 세로로 길고
+  // (폭/높이 0.58) 자모 ㅇ 은 띠 가운데(0.41~0.51)에 뜬다
+  if (rel >= 0.6 && rel <= 0.8 && fill >= 0.3 && ((c.y0 + c.y1) / 2 - bandT) / bh >= 0.55) return "o"
   return null
 }
 
@@ -654,6 +673,34 @@ export function serifOne(gray: Uint8Array, w: number, h: number, ink: InkStats, 
   const sw = m1 - m0 + 1
   const even = (l: number, r: number) => l >= sw * 0.4 && r >= sw * 0.4 && Math.abs(l - r) <= Math.max(l, r) * 0.35
   return sw >= 2 && sw <= ch * 0.3 && even(m0 - t0, t1 - m1) && even(m0 - b0, b1 - m1)
+}
+
+/**
+ * 이어진 별표 수 — CTC 는 같은 글자가 붙어 나오면 하나로 합친다("등록증**" → "등록증*"). cx(별표 글자의 CTC 자리)에 가장 가까운 별표
+ * 꼴 조각(글줄 띠 높이 20~50%, 가로세로 0.7~1.4배, 채움 0.25~0.65, 띠 위쪽 절반)에서 좌우로 틈이 조각 폭 이하인 같은 꼴 조각을 센다
+ */
+export function starRun(gray: Uint8Array, w: number, h: number, ink: InkStats, cx: number): number {
+  const { comps, label } = components(gray, w, h, ink)
+  let charH = 0
+  for (const c of comps) charH = Math.max(charH, c.y1 - c.y0)
+  if (charH < 10) return 0
+  const tall = comps.filter(c => c.y1 - c.y0 >= charH * 0.6)
+  const bandT = Math.min(...tall.map(c => c.y0)), bh = Math.max(...tall.map(c => c.y1)) - bandT
+  const star = (c: Comp) => {
+    const cw = c.x1 - c.x0, ch = c.y1 - c.y0
+    if (ch < bh * 0.2 || ch > bh * 0.5 || cw < ch * 0.7 || cw > ch * 1.4 || ((c.y0 + c.y1) / 2 - bandT) / bh > 0.55) return false
+    let n = 0
+    for (let y = c.y0; y < c.y1; y++) for (let x = c.x0; x < c.x1; x++) if (label[y * w + x] === c.id) n++
+    const fill = n / (cw * ch)
+    return fill >= 0.25 && fill <= 0.65
+  }
+  const stars = comps.filter(star).sort((a, b) => a.x0 - b.x0)
+  const k = stars.findIndex(c => cx >= c.x0 - (c.x1 - c.x0) && cx <= c.x1 + (c.x1 - c.x0))
+  if (k < 0) return 0
+  let lo = k, hi = k
+  while (lo > 0 && stars[lo].x0 - stars[lo - 1].x1 <= stars[lo].x1 - stars[lo].x0) lo--
+  while (hi + 1 < stars.length && stars[hi + 1].x0 - stars[hi].x1 <= stars[hi].x1 - stars[hi].x0) hi++
+  return hi - lo + 1
 }
 
 /** 【】 로 볼 기울기 줄 비율 — 코퍼스 실측 [ ] 최대 0.13, 【】 최소 0.19 */

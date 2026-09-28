@@ -12,7 +12,7 @@
  */
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
-import { bracketFeatures, bracketShape, circledAt, edgeTrim, gapGlyphs, inkStats, ringBullet, serifOne, leaderRuns, leadingBullet, leadingTriangle, quoteHead, romanStems, splitRowBands, tallInkCount } from "../src/ocr/line-split.js"
+import { bracketFeatures, bracketShape, circledAt, edgeTrim, gapGlyphs, inkStats, ringBullet, serifOne, starRun, leaderRuns, leadingBullet, leadingTriangle, quoteHead, romanStems, splitRowBands, tallInkCount } from "../src/ocr/line-split.js"
 
 function canvas(w: number, h: number, bg = 255): Uint8Array {
   return new Uint8Array(w * h).fill(bg)
@@ -413,5 +413,27 @@ describe("serifOne — 숫자 1 로 읽은 로마 숫자 Ⅰ (세리프가 좌�
     assert.equal(serifOne(roman, w, h, inkStats(roman), 22), true)
     const one = canvas(w, h); rect(one, w, 20, 8, 24, 32); rect(one, w, 15, 8, 24, 12); text(one, w)
     assert.equal(serifOne(one, w, h, inkStats(one), 22), false)
+  })
+})
+
+describe("starRun — CTC 가 하나로 합친 겹 별표 **", () => {
+  it("글자 옆 별표 꼴 조각 둘이 붙어 있으면 2, 하나면 1", () => {
+    const w = 120, h = 40
+    const star = (g: Uint8Array, x: number) => { rect(g, w, x, 10, x + 8, 12); rect(g, w, x + 3, 7, x + 5, 16); rect(g, w, x + 1, 9, x + 7, 14) }
+    const two = canvas(w, h); rect(two, w, 10, 6, 38, 34); star(two, 42); star(two, 52)
+    assert.equal(starRun(two, w, h, inkStats(two), 46), 2)
+    const one = canvas(w, h); rect(one, w, 10, 6, 38, 34); star(one, 42)
+    assert.equal(starRun(one, w, h, inkStats(one), 46), 1)
+  })
+})
+
+describe("gapGlyphs — 분수 칸 빗금 / 과 꼬리말 막대 -", () => {
+  it("숫자 사이 가는 사선은 /, 가운데 높이 짧은 가로 막대는 -", () => {
+    const w = 120, h = 40
+    const g = canvas(w, h); rect(g, w, 10, 6, 28, 34); rect(g, w, 80, 6, 98, 34)
+    for (let y = 6; y < 34; y++) { const x = 60 - Math.round((y - 6) * 0.45); rect(g, w, x, y, x + 2, y + 1) }
+    assert.deepEqual(gapGlyphs(g, w, h, inkStats(g)).glyphs.map(x => x.mark), ["/"])
+    const d = canvas(w, h); rect(d, w, 10, 6, 28, 34); rect(d, w, 80, 6, 98, 34); rect(d, w, 45, 19, 57, 21)
+    assert.deepEqual(gapGlyphs(d, w, h, inkStats(d)).glyphs.map(x => x.mark), ["-"])
   })
 })

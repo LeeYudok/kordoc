@@ -291,8 +291,9 @@ export class OcrEngine {
 
     let items: OcrItem[] = []
     for (const { job, text: read, confidence, steps, stepPx } of best.values()) {
-      const raw = tuning.postprocess && job.rot === 0 ? restoreGlyphs(rgba, width, job.box, read, steps, stepPx) : read
-      let text = tuning.postprocess ? restoreSymbols(raw.trim()) : raw
+      const note: { ringLead?: boolean } = {}
+      const raw = tuning.postprocess && job.rot === 0 ? restoreGlyphs(rgba, width, job.box, read, steps, stepPx, note) : read
+      let text = tuning.postprocess ? restoreSymbols(raw.trim(), note.ringLead) : raw
       if (!text.trim()) continue
       // 사전 밖·작은 점으로 읽히거나 빠지는 글머리(◎ ● ▪ □) — 첫 글리프 모양으로 되살린다 (line-split.ts)
       if (tuning.postprocess && job.rot === 0 && !/^[◎●▪□■○ㅇ]/.test(text)) {

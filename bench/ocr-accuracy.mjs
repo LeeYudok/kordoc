@@ -62,8 +62,9 @@ const MIN_GLYPH_COVERAGE = 0.8  // 래스터 글자 검사 하한 (코퍼스 82�
 // P .98693 → .98967, 글줄 안 글자 그림 쪽 제외(모수 54/104 → 53/102)·그려지지 않은 텍스트층 글까지 R .98597·P .99073.
 // 엔진(로마 숫자·원문자·여는 따옴표·채운 자리 글자·이웃 줄 끝자락 지우기·글머리 □) R .98597 → .98771·P .99073 → .99210
 // 틈 기호·○/ㅇ·●·소괄호·Ⅰ(엔진)과 ◯·❍ 접기(채점): R .98771 → .98942·P .99210 → .99339
+// 틈 기호 보강·겹 별표·o·따옴표 경계: R .98942 → .99001·P .99339 → .99355
 const GATES = {
-  cerMicroMax: 0.100, charRecallMin: 0.9874, charPrecisionMin: 0.9914, hangulRecallMin: 0.992,
+  cerMicroMax: 0.100, charRecallMin: 0.988, charPrecisionMin: 0.9915, hangulRecallMin: 0.992,
   tableMatchedMin: 0.76, tableCellF1Min: 0.535, minDocs: 53, minPages: 102,
 }
 
