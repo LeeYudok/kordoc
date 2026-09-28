@@ -298,7 +298,7 @@ async function scoreHwpx(file, buf) {
 async function scorePdf(file, buf) {
   // kordoc parse()는 입력 ArrayBuffer를 detach하므로, 교차검증용 바이트를 먼저 복사한다.
   const pdfBytes = Uint8Array.from(buf)
-  const res = await parse(buf, { filename: basename(file) })
+  const res = await parse(buf, { filename: basename(file), ocr: false })
   if (!res.success) {
     if (res.code === "IMAGE_BASED_PDF") {
       return { ok: true, status: "ocr-only", coverage: null, totalPages: res.pageCount ?? 0, needsOcrPages: res.pageCount ?? 0 }

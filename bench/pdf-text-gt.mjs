@@ -220,7 +220,7 @@ for (const { set, base, rel, gtExt } of pairs) {
     const hwpx = await parse(Buffer.from(hwpxBytes), { filename: basename(base) + gtExt })
     // 암호를 모르는 실문서 HWPX(같은 보도자료의 PDF·HWP 는 평문)는 정답지가 없다 — ENCRYPTED 거절만 확인하고 모수에서 뺀다
     if (!hwpx.success && hwpx.code === "ENCRYPTED") { excluded.push({ pair: rel, reason: "HWPX 암호(암호 모름) — 정답지 없음" }); continue }
-    const pdf = await parse(await readFile(base + ".pdf"), { filename: basename(base) + ".pdf" })
+    const pdf = await parse(await readFile(base + ".pdf"), { filename: basename(base) + ".pdf", ocr: false })
     if (!hwpx.success) throw new Error(`hwpx 파싱 실패: ${hwpx.error}`)
     if (!pdf.success) throw new Error(`pdf 파싱 실패: ${pdf.error}`)
     // 줄 머리 목록 표지("- ")는 마크업이다(제목 "#" 처럼) — 같은 항목을 PDF 는 목록 블록("- 가. …"), HWPX 는 문단("가. …")으로

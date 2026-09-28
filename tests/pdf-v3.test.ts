@@ -467,7 +467,8 @@ describe("합성 PDF 통합 — 취소선/NEEDS_OCR", () => {
     const pdf = buildSyntheticPdf(
       "q 500 0 0 700 50 50 cm BI /W 1 /H 1 /CS /RGB /BPC 8 ID \xff\x00\x00 EI Q",
     )
-    const result = await parsePdfDocument(pdf)
+    // OCR 을 끈 경로의 계약 — 모델 캐시가 있으면 기본값(자동 OCR)이 이 쪽을 읽는다
+    const result = await parsePdfDocument(pdf, { ocr: false })
     assert.equal(result.isImageBased, true)
     assert.ok(result.warnings?.some(w => w.code === "NEEDS_OCR"), JSON.stringify(result.warnings))
   })

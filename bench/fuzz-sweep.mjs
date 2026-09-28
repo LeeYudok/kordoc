@@ -102,7 +102,7 @@ for (const file of files) {
   const limitFor = async () => {
     if (limitMs === null) {
       const tc = performance.now()
-      await Promise.race([parse(Buffer.from(orig), { filename: name }).catch(() => null), timeoutAfter(MAX_LIMIT_MS)])
+      await Promise.race([parse(Buffer.from(orig), { filename: name, ocr: false }).catch(() => null), timeoutAfter(MAX_LIMIT_MS)])
       limitMs = Math.min(MAX_LIMIT_MS, Math.max(TIMEOUT_MS, CLEAN_FACTOR * (performance.now() - tc)))
     }
     return limitMs
@@ -113,7 +113,7 @@ for (const file of files) {
     const t = performance.now()
     let outcome, code = null, error = null
     try {
-      const pending = parse(mutated, { filename: name })
+      const pending = parse(mutated, { filename: name, ocr: false })
       let res = await Promise.race([pending, timeoutAfter(TIMEOUT_MS)])
       // 한도를 넘기면 원본 기준 한도까지 같은 파싱을 더 기다린다 (큰 문서의 정상 소요와 진짜 멈춤을 가른다)
       if (res === "__timeout__") {

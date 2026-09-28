@@ -81,7 +81,7 @@ for (const f of files) {
   // pdfjs가 넘긴 ArrayBuffer를 detach하므로 파스마다 새 사본
   const raw = readFileSync(join(pdfDir, f))
   const buf = () => toAB(Buffer.from(raw))
-  const probe = await parse(buf())
+  const probe = await parse(buf(), { ocr: false })
   if (!probe.success || !probe.pageQuality?.length) { rows.push({ doc: f, skip: "parse/quality 없음" }); continue }
 
   // 표본 쪽은 고정 목록(ocr-pages.json)이 있으면 그것 — 파서 출력 글자 수로 고르면 파서가 바뀔 때 표본이 흔들린다
@@ -101,7 +101,7 @@ for (const f of files) {
 
   const pages = clean.join(",")
   // 머리글/바닥글 제거는 텍스트층 y-클러스터 기반이라 OCR 경로와 비대칭 — 양쪽 다 끔
-  const gt = await parse(buf(), { pages, removeHeaderFooter: false })
+  const gt = await parse(buf(), { pages, removeHeaderFooter: false, ocr: false })
   const t0 = performance.now()
   const ocr = await parse(buf(), { pages, removeHeaderFooter: false, ocr: "force" })
   const ocrMs = performance.now() - t0

@@ -59,7 +59,8 @@ function glyphLines(lines: number, perLine: number, opts: { same?: boolean; jitt
 
 async function parsePage(content: string) {
   const { parsePdfDocument } = await import("../src/pdf/parser.js")
-  return parsePdfDocument(buildPdf(content))
+  // OCR 을 끈 경로의 감지·경고 계약 (모델 캐시가 있으면 기본값이 곡선 글자 쪽을 자동 OCR 한다)
+  return parsePdfDocument(buildPdf(content), { ocr: false })
 }
 
 describe("computePageQuality — vector_text", () => {
@@ -195,7 +196,7 @@ describe("코퍼스: rhwp cairo 렌더 결재문서", { skip: !existsSync(CAIRO)
   it("3쪽 전부 vector_text (텍스트층 한글 0자) — 짝 HWPX 는 한글 문서", async () => {
     const { parsePdfDocument } = await import("../src/pdf/parser.js")
     const buf = readFileSync(CAIRO)
-    const r = await parsePdfDocument(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer)
+    const r = await parsePdfDocument(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, { ocr: false })
     assert.deepEqual(r.pageQuality?.map(q => q.ocrReason), ["vector_text", "vector_text", "vector_text"])
     assert.equal((r.markdown.match(/[가-힣]/g) ?? []).length, 0)
     assert.ok(existsSync(HANCOM))

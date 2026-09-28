@@ -479,7 +479,7 @@ async function runCorpus(specs) {
         try {
           // 문서 하나가 멈춰도 전체가 서지 않게 60초 제한 (OCR 이 도는 스캔 PDF 등)
           const r = await Promise.race([
-            parse(await readFile(path), { filePath: path }),
+            parse(await readFile(path), { filePath: path, ocr: false }),
             new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 60000).unref()),
           ])
           if (!r.success) { fails++; continue }

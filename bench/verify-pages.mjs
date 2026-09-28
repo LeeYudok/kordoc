@@ -67,7 +67,7 @@ for (const pair of manifest.pairs) {
   for (const ext of ["hwpx", "hwp"]) {
     if (!present.includes(ext)) continue
     try {
-      const r = await parse(path(ext))
+      const r = await parse(path(ext), { ocr: false })
       const mode = r.metadata?.pageMode
       detail.push(`${ext} ${r.pageCount}${mode === "layout" ? "" : `(${mode})`}`)
       if (r.pageCount !== expectedPages) fail.push(`${ext} ${r.pageCount} ≠ 기준 ${expectedPages}`)

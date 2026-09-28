@@ -47,6 +47,7 @@ import "./polyfill.js"
 import { getDocument, GlobalWorkerOptions, OPS } from "pdfjs-dist/legacy/build/pdf.mjs"
 import { createRequire } from "node:module"
 import { dirname, join } from "node:path"
+import { ocrModelsCached } from "../ocr/models.js"
 
 // 기존 공개 API 경로 유지 — 이동된 함수의 re-export
 export { mergeCrossPageTables }
@@ -106,7 +107,9 @@ async function loadPdfWithTimeout(buffer: ArrayBuffer) {
 export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptions): Promise<InternalParseResult> {
   // pdfjs receives a copy; both OCR paths can reuse the caller's original bytes.
   const formulaBuffer: ArrayBuffer | null = options?.formulaOcr ? buffer : null
-  const ocrBuffer: ArrayBuffer | null = options?.ocr ? buffer : null
+  // ocr 을 지정하지 않으면(false 아님) 텍스트층 없는 쪽만 자동 OCR — 내장 모델이 이미 캐시에 있을 때만(다운로드하지 않는다)
+  const autoOcr = options?.ocr === undefined && await ocrModelsCached()
+  const ocrBuffer: ArrayBuffer | null = options?.ocr || autoOcr ? buffer : null
   const doc = await loadPdfWithTimeout(buffer)
 
   try {
@@ -339,33 +342,35 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     //       그 외=품질 신호가 OCR 을 권하는 페이지만 (깨진 텍스트층 포함 — F1,
     //       혼합 문서의 스캔 페이지 포함 — F2). 정상 페이지 파싱 결과는 유지 (F3).
     const ocrDone = new Set<number>()
-    if (options?.ocr && ocrBuffer) {
+    if (ocrBuffer) {
       const inScope = (p: number) => !pageFilter || pageFilter.has(p)
       const targets = new Set<number>()
-      if (options.ocr === "force" || isImageBased) {
+      if (options?.ocr === "force" || isImageBased) {
         for (let i = 1; i <= effectivePageCount; i++) if (inScope(i)) targets.add(i)
       } else {
         for (const pq of pageQuality) {
           if (!pq.needsOcr) continue
           // low_text 는 빈 페이지(표지/간지)일 수 있으므로 큰 이미지가 있는 페이지만
           if (pq.ocrReason === "low_text" && !pagesWithLargeImage.has(pq.page)) continue
+          // 자동 OCR 은 텍스트층이 없는 쪽만 — 글꼴 매핑이 깨진 쪽(텍스트층은 있다)은 ocr: true 로
+          if (autoOcr && pq.ocrReason !== "low_text" && pq.ocrReason !== "vector_text") continue
           targets.add(pq.page)
         }
-        if (options.ocr === true) for (const p of uncoveredImageRegions.keys()) targets.add(p)
+        if (options?.ocr === true) for (const p of uncoveredImageRegions.keys()) targets.add(p)
       }
       if (targets.size > 0) {
         try {
           const { runPdfOcr } = await import("../ocr/pdf-ocr.js")
-          const mode = typeof options.ocr === "function" ? options.ocr : ("builtin" as const)
+          const mode = typeof options?.ocr === "function" ? options.ocr : ("builtin" as const)
           // 텍스트층이 멀쩡한 쪽은 그림 영역만 읽는다 (쪽 전체를 갈아 끼우는 쪽 — 스캔·깨진 텍스트층 — 은 쪽 전체)
           const regionPages = new Map([...uncoveredImageRegions].filter(([p]) =>
-            options.ocr !== "force" && !isImageBased && !pageQuality.find(q => q.page === p)?.needsOcr))
-          const ocrPageBlocks = await runPdfOcr(ocrBuffer, targets, mode, warnings, options.onProgress, options.tables !== false, vectorPageOps, regionPages)
+            options?.ocr !== "force" && !isImageBased && !pageQuality.find(q => q.page === p)?.needsOcr))
+          const ocrPageBlocks = await runPdfOcr(ocrBuffer, targets, mode, warnings, options?.onProgress, options?.tables !== false, vectorPageOps, regionPages)
           if (ocrPageBlocks.size > 0) {
             const replacePages = new Set<number>()
             for (const [p, obs] of ocrPageBlocks) {
               const needsOcr = pageQuality.find(q => q.page === p)?.needsOcr
-              if (options.ocr === "force" || isImageBased || needsOcr) {
+              if (options?.ocr === "force" || isImageBased || needsOcr) {
                 replacePages.add(p)
                 ocrDone.add(p)
                 continue

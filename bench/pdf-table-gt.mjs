@@ -211,7 +211,7 @@ for (const { set, base, rel } of pairs) {
     if (!hwpx.success && hwpx.code === "ENCRYPTED") { row.locked = true; rows.push(row); continue }
     // 정답지는 기하 격자 — PDF 는 화면만 담아 HWPX 논리 열(행마다 폭이 다른 같은 열)을 되살릴 수 없다 (lib/geo-grid.mjs)
     const geo = await hwpxGeoGrids(hwpxBytes)
-    const pdf = await parse(await readFile(base + ".pdf"), { filename: basename(base) + ".pdf" })
+    const pdf = await parse(await readFile(base + ".pdf"), { filename: basename(base) + ".pdf", ocr: false })
     if (!hwpx.success) throw new Error(`hwpx 파싱 실패: ${hwpx.error}`)
     if (!pdf.success) throw new Error(`pdf 파싱 실패: ${pdf.error}`)
     // 정답지 부족 — PDF 텍스트층 글자(공백 제외)가 HWPX 글의 3배를 넘으면 HWPX 에 없는 부록이 PDF 에 붙은 다른 판이다. PDF 글 정답

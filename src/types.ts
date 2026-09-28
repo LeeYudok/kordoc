@@ -214,6 +214,9 @@ export interface ParseOptions {
    */
   pages?: number[] | string
   /** 이미지 기반 PDF OCR (선택).
+   *  - 지정 안 함(기본): 내장 모델이 이미 캐시에 있으면(`kordoc models` 로 받았거나 앞서 `ocr: true` 로 받은 경우) 텍스트층이
+   *    없는 쪽(스캔·글자를 곡선으로 그린 쪽)만 자동 인식한다. 모델이 없으면 다운로드하지 않고 종전처럼 NEEDS_OCR 경고만.
+   *  - `false`: 끈다.
    *  - `true`: 내장 엔진(PP-OCRv5 korean, ~18MB 자동 다운로드)으로 OCR 필요 판정
    *    페이지만 인식 (스캔 페이지·글꼴 매핑 깨진 페이지). 정상 페이지는 파싱 결과 유지.
    *  - `"force"`: 전 페이지를 내장 엔진으로 강제 OCR.

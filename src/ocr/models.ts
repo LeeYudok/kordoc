@@ -11,6 +11,7 @@
  */
 
 import { join } from "path"
+import { stat } from "fs/promises"
 import {
   type ModelSpec,
   type ModelStatus,
@@ -58,6 +59,15 @@ export async function ensureOcrModels(onProgress?: ProgressHandler): Promise<voi
 /** 텍스트 OCR 모델 상태 (다운로드 없이 확인만) */
 export async function getOcrModelStatus(): Promise<ModelStatus[]> {
   return getModelStatusIn(getOcrModelsDir(), ALL_OCR_MODELS)
+}
+
+/** 텍스트 OCR 모델 세 파일이 캐시에 있나 — 해시 검증 없이 존재만(파싱마다 부르는 자동 OCR 판정용, 검증은 엔진 로드가 한다) */
+export async function ocrModelsCached(): Promise<boolean> {
+  const dir = getOcrModelsDir()
+  for (const spec of ALL_OCR_MODELS) {
+    try { if (!(await stat(join(dir, spec.filename))).size) return false } catch { return false }
+  }
+  return true
 }
 
 /**

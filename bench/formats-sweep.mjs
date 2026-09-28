@@ -488,7 +488,7 @@ for (const kind of ["docx", "xlsx", "xls", "hml"]) {
     const t = performance.now()
     let row = { file: rel, kind }
     try {
-      const res = await parse(Buffer.from(buf), { filename: name })
+      const res = await parse(Buffer.from(buf), { filename: name, ocr: false })
       if (!res.success) {
         parseErrors++
         row = { ...row, ok: false, error: `${res.code}: ${String(res.error).slice(0, 120)}` }
