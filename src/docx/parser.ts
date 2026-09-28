@@ -6,6 +6,7 @@
  */
 
 import JSZip from "jszip"
+import { ListCounter } from "./numbering.js"
 import { DOMParser } from "@xmldom/xmldom"
 import type {
   CellContext, IRBlock, DocumentMetadata, InternalParseResult,
@@ -102,6 +103,9 @@ interface StyleInfo {
   name: string
   basedOn?: string
   outlineLevel?: number
+  /** 스타일에 걸린 번호(w:pPr/w:numPr) — 번호 매긴 제목 "5.1 개요" */
+  numId?: string
+  ilvl?: number
 }
 
 function parseStyles(xml: string): Map<string, StyleInfo> {
@@ -121,11 +125,18 @@ function parseStyles(xml: string): Map<string, StyleInfo> {
     // outlineLevel으로 heading 감지
     const pPrEls = getChildElements(el, "pPr")
     let outlineLevel: number | undefined
+    let numId: string | undefined, ilvl: number | undefined
     if (pPrEls.length > 0) {
       const outlineEls = getChildElements(pPrEls[0], "outlineLvl")
       if (outlineEls.length > 0) {
         const val = getAttr(outlineEls[0], "val")
         if (val !== null) outlineLevel = parseInt(val, 10)
+      }
+      const numPrEls = getChildElements(pPrEls[0], "numPr")
+      if (numPrEls.length > 0) {
+        const idEls = getChildElements(numPrEls[0], "numId"), lvEls = getChildElements(numPrEls[0], "ilvl")
+        numId = idEls.length > 0 ? (getAttr(idEls[0], "val") ?? undefined) : undefined
+        ilvl = lvEls.length > 0 ? parseInt(getAttr(lvEls[0], "val") ?? "0", 10) : undefined
       }
     }
 
@@ -135,7 +146,7 @@ function parseStyles(xml: string): Map<string, StyleInfo> {
       if (headingMatch) outlineLevel = parseInt(headingMatch[1], 10) - 1
     }
 
-    styles.set(styleId, { name, basedOn, outlineLevel })
+    styles.set(styleId, { name, basedOn, outlineLevel, numId, ilvl })
   }
 
   // basedOn 체인 해석 — Heading 기반 사용자 스타일의 outlineLevel 상속 (사이클 가드)
@@ -154,6 +165,15 @@ function parseStyles(xml: string): Map<string, StyleInfo> {
       cur = parent.basedOn
     }
   }
+  // 스타일 번호도 basedOn 으로 물려받는다
+  for (const [styleId, info] of styles) {
+    const seen = new Set<string>([styleId])
+    for (let cur = info.basedOn; info.numId === undefined && cur && !seen.has(cur); cur = styles.get(cur)?.basedOn) {
+      seen.add(cur)
+      const parent = styles.get(cur)
+      if (parent?.numId !== undefined) { info.numId = parent.numId; info.ilvl ??= parent.ilvl }
+    }
+  }
   return styles
 }
 
@@ -162,6 +182,14 @@ function parseStyles(xml: string): Map<string, StyleInfo> {
 interface NumberingInfo {
   numFmt: string  // "decimal", "bullet", etc.
   level: number
+  /** 번호 모양 "%1."·"[%1]" (numbering.ts) */
+  lvlText: string
+  /** w:start — 없으면 0 (ECMA-376 17.9.25, kats "0.1 소개") */
+  start: number
+  list?: string
+  restart?: boolean
+  /** w:lvl/w:pStyle — 이 수준에 묶인 문단 스타일 (스타일 numPr 에 ilvl 이 없을 때 수준을 정한다) */
+  pStyle?: string
 }
 
 function parseNumbering(xml: string): Map<string, Map<number, NumberingInfo>> {
@@ -179,7 +207,16 @@ function parseNumbering(xml: string): Map<string, Map<number, NumberingInfo>> {
       const ilvl = parseInt(getAttr(lvl, "ilvl") ?? "0", 10)
       const numFmtEls = getChildElements(lvl, "numFmt")
       const numFmt = numFmtEls.length > 0 ? (getAttr(numFmtEls[0], "val") ?? "bullet") : "bullet"
-      levels.set(ilvl, { numFmt, level: ilvl })
+      const lvlTextEls = getChildElements(lvl, "lvlText")
+      const startEls = getChildElements(lvl, "start")
+      const pStyleEls = getChildElements(lvl, "pStyle")
+      levels.set(ilvl, {
+        pStyle: pStyleEls.length > 0 ? (getAttr(pStyleEls[0], "val") ?? undefined) : undefined,
+        numFmt, level: ilvl,
+        lvlText: lvlTextEls.length > 0 ? (getAttr(lvlTextEls[0], "val") ?? "") : `%${ilvl + 1}.`,
+        start: startEls.length > 0 ? parseInt(getAttr(startEls[0], "val") ?? "0", 10) || 0 : 0,
+        list: abstractNumId,
+      })
     }
     abstractNums.set(abstractNumId, levels)
   }
@@ -194,7 +231,15 @@ function parseNumbering(xml: string): Map<string, Map<number, NumberingInfo>> {
     if (abstractRefs.length > 0) {
       const ref = getAttr(abstractRefs[0], "val")
       if (ref && abstractNums.has(ref)) {
-        nums.set(numId, abstractNums.get(ref)!)
+        // w:lvlOverride/w:startOverride — 같은 모양을 쓰는 목록을 다른 번호에서 다시 시작
+        const levels = new Map(abstractNums.get(ref)!)
+        for (const ov of getChildElements(el, "lvlOverride")) {
+          const ilvl = parseInt(getAttr(ov, "ilvl") ?? "0", 10)
+          const so = getChildElements(ov, "startOverride")
+          const base = levels.get(ilvl)
+          if (so.length > 0 && base) levels.set(ilvl, { ...base, start: parseInt(getAttr(so[0], "val") ?? "0", 10) || 0, restart: true })
+        }
+        nums.set(numId, levels)
       }
     }
   }
@@ -442,6 +487,14 @@ function collectInline(
 
 // ─── 단락 파싱 ─────────────────────────────────────────
 
+/** 문서마다 번호 카운터 하나 — 번호 정의 표(numbering)에 붙여 둔다(parseParagraph 호출 경로가 여럿이라 인자로 안 넘긴다) */
+const COUNTERS = new WeakMap<Map<string, Map<number, NumberingInfo>>, ListCounter>()
+function counterOf(numbering: Map<string, Map<number, NumberingInfo>>): ListCounter {
+  let c = COUNTERS.get(numbering)
+  if (!c) COUNTERS.set(numbering, (c = new ListCounter()))
+  return c
+}
+
 function parseParagraph(
   p: Element,
   styles: Map<string, StyleInfo>,
@@ -469,24 +522,33 @@ function parseParagraph(
   }
 
   const { text, bold: hasBold, italic: hasItalic, footnoteText } = collectInline(p, footnotes, rels)
+  const style = styles.get(styleId)
+  // 번호 — 문단에 직접 건 numPr, 없으면 스타일의 numPr. 글 없는 문단도 번호는 센다(Word 와 같다)
+  // 스타일 numPr 에 ilvl 이 없으면 abstractNum 에서 이 스타일에 묶인 수준(w:lvl/w:pStyle)을 쓴다 — kats 부속서 "A.1"
+  if (!numId && style?.numId) {
+    numId = style.numId
+    ilvl = style.ilvl ?? [...(numbering.get(numId)?.values() ?? [])].find(l => l.pStyle === styleId)?.level ?? ilvl
+  }
+  const numDef = numId && numId !== "0" ? numbering.get(numId) : undefined
+  const label = numDef ? counterOf(numbering).next(numId, ilvl, numDef) : undefined
   if (!text) return null
 
-  // Heading 판별
-  const style = styles.get(styleId)
+  // Heading 판별 — 번호 매긴 제목은 번호째("5.1 개요")
   if (style?.outlineLevel !== undefined && style.outlineLevel >= 0 && style.outlineLevel <= 5) {
     return {
       type: "heading",
-      text,
+      text: label ? `${label} ${text}` : text,
       level: style.outlineLevel + 1,
     }
   }
 
-  // 리스트 판별
-  if (numId && numId !== "0") {
-    const numDef = numbering.get(numId)
-    const levelInfo = numDef?.get(ilvl)
-    const listType = levelInfo?.numFmt === "bullet" ? "unordered" : "ordered"
-    return { type: "list", text, listType }
+  // 리스트 판별 — 글머리표는 종전대로, 번호는 실제 라벨로("[3] ISO 233"). "N." 꼴이면 순서 목록, 다른 꼴은 라벨을 글에 붙인 목록,
+  // 번호 모양이 빈 수준은 번호 없는 문단
+  if (numId && numId !== "0" && label !== "") {
+    const block: IRBlock = label == null ? { type: "list", text, listType: "unordered" }
+      : { type: "list", text: `${label} ${text}`, listType: /^\d+\.$/.test(label) ? "ordered" : "unordered" }
+    if (footnoteText) block.footnoteText = footnoteText
+    return block
   }
 
   // 일반 단락

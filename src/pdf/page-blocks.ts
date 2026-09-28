@@ -16,6 +16,7 @@ import { detectClusterTables, findTwoColumnProseCutX, type ClusterItem, type Clu
 import { type NormItem, collapseEvenSpacing, computeBBox, dominantStyle, groupByY, mergeSuperscriptLines, mergeLineSimple } from "./text-line.js"
 import { findRuledColumnDivider } from "./ruled-columns.js"
 import { xyCutOrder } from "./xy-cut.js"
+import { fillBlanks } from "./blank-fills.js"
 import { detectColumnGutter, detectPersistentColumnGutter, orderByGutter, detectPanelGutters, orderByPanels, type ColRect } from "./two-column.js"
 import { detectColumns, extractWithColumns } from "./columns.js"
 import { shouldDemoteTable, demoteTableToText, detectListBlocks, detectSpecialKoreanTables } from "./block-detect.js"
@@ -68,6 +69,10 @@ export function extractPageBlocksWithLines(
   // 1단계: PDF 그래픽 명령에서 선 추출
   const extracted = extractLines(opList.fnArray, opList.argsArray)
   let { horizontals, verticals } = extracted
+  // 밑줄 빈칸("翻译成 ____ （语言）")은 앞 글에 공백으로 메우고 선에서 뺀다 — 빈칸 간격이 표 열·단 사이로 읽히지 않게 (blank-fills.ts)
+  const filled = fillBlanks(items, horizontals, verticals)
+  items = filled.items
+  horizontals = filled.horizontals
   // 1.2단계: 셀 클립 사각형 → 테두리 없는 표 그리드 (법령 별지서식 외곽 표). 셀 기하가 확정돼
   // 있어 line 경로를 거치지 않고, 실선 표는 아래 line 경로가 그대로 맡는다 (clip-cells.ts)
   const prevPage = carry?.page === pageNum - 1 ? carry.clip : undefined
@@ -693,7 +698,14 @@ function extractBlocksWithGrids(
     // (fallback 경로의 earlyProseCut 과 같은 순서. 먼저 표로 묶이면 두 단 줄이 한 표 행으로 섞인다)
     const proseColumns = findTwoColumnProseCutX(clusterItems) !== null ||
       detectPersistentColumnGutter(remaining.map(i => ({ x: i.x, y: i.y, w: i.w, h: i.h > 0 ? i.h : i.fontSize }))) !== null
-    const clusterResults = proseColumns ? [] : detectClusterTables(clusterItems, pageNum)
+    // 표 폭을 거의 다 덮는 글 문단 블록(선 상자 칸, 차트 숫자 라벨 말고)을 행 사이에 품은 후보는 한 표가 아니다 — 상자 위아래 본문 줄의 빈칸 간격이 열로
+    // 묶였다(계약서 "著作权人 …" 상자를 사이에 두고 위 제목·아래 "翻译成 ____ （语言）" 본문이 6열 표로, 상자보다 앞에 나왔다)
+    const clusterResults = (proseColumns ? [] : detectClusterTables(clusterItems, pageNum)).filter(cr => {
+      const b = cr.bbox
+      return !blocks.some(x => x.type === "paragraph" && x.bbox && (x.text?.match(/\p{L}/gu)?.length ?? 0) >= 10 &&
+        Math.min(x.bbox.x + x.bbox.width, b.x + b.width) - Math.max(x.bbox.x, b.x) >= 0.8 * b.width &&
+        x.bbox.y >= b.y - 2 && x.bbox.y + x.bbox.height <= b.y + b.height + 2)
+    })
     if (clusterResults.length > 0) {
       const ciToIdx = new Map<ClusterItem, number>()
       for (let ci = 0; ci < clusterItems.length; ci++) ciToIdx.set(clusterItems[ci], ci)

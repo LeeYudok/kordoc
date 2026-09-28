@@ -35,6 +35,7 @@ import { restoreTrackedSpacing } from "./tracked-text.js"
 import { relocateEndnotes } from "./endnotes.js"
 import { dropTabLeaderDots } from "./tab-leaders.js"
 import { orderTwoUpPage } from "./two-up.js"
+import { removeSideTabs } from "./side-tabs.js"
 import { superscriptNoteMarks, inlineFootnotes, footnoteSeparators, type PageNotes } from "./footnotes.js"
 import { demoteNonHeadingRoles } from "./heading-demote.js"
 import { computeMedianFontSizeFromFreq, detectHeadings, mergeStackedHeadingLines, detectTypographyHeadings, detectDocumentStyleHeadings, detectSiblingStyleHeadings, detectRepeatedPageLabels, detectPageLeadHeadings, refineDocumentStyleHeadings, detectMarkerHeadings, detectTableCaptions, detectKoreanListBlocks, removeHeaderFooterBlocks } from "./block-detect.js"
@@ -133,6 +134,7 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     // 전체 문서의 폰트 크기 빈도 수집 (헤딩 감지용) — 빈도 Map으로 메모리 절약
     const fontSizeFreq = new Map<number, number>()
     const pageHeights = new Map<number, number>()
+    const pageWidths = new Map<number, number>()
     // 글꼴 id → 실제 서체 이름(서브셋 접두 뗌) — 제목 강등의 기울임·굵기 증거
     const faceNames = new Map<string, string>()
     // 큰 이미지가 있는 페이지 (needsOcr 경고 노이즈 필터 + SKIPPED_IMAGE)
@@ -167,6 +169,7 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
         const [viewX1, viewY1, viewX2, viewY2] = page.view
         const pageW = viewX2 - viewX1, pageH = viewY2 - viewY1
         pageHeights.set(i, pageH)
+        pageWidths.set(i, pageW)
         const rawItems = tc.items as PdfTextItem[]
         // 선 기반 테이블 감지를 위한 operatorList — 글리프 이름 복원(restoreNamedGlyphs)이 공백 정리 전에 써서 먼저 받는다
         const rawOps = await page.getOperatorList()
@@ -440,6 +443,9 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
       for (let ri = removed.length - 1; ri >= 0; ri--) {
         blocks.splice(removed[ri], 1)
       }
+      // 쪽 옆 띠의 장·절 색인 탭(좌우 바깥 띠에 되풀이되는 짧은 글)
+      const kept = removeSideTabs(blocks, pageWidths)
+      if (kept !== blocks) { blocks.length = 0; blocks.push(...kept) }
     }
 
     // 쪽을 넘는 칸의 1칸 조각을 앞 쪽 표 그 칸에 붙인 뒤(행으로 갈리지 않게) 페이지 걸친 표 병합 —

@@ -96,6 +96,8 @@ export class WrapLexicon {
 const decideCounts = (joined: number, spaced: number): "" | " " | null => (joined && !spaced ? "" : spaced && !joined ? " " : null)
 
 const hasBatchim = (c: string): boolean => { const k = c.charCodeAt(0) - 0xac00; return k >= 0 && k < 11172 && k % 28 !== 0 }
+/** 한자·가나·CJK 문장부호·전각 꼴 */
+const CJK = /[\u3000-\u303F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF]/
 const CLOSE_TAIL = /[’”」』)\]〉》>]+$/
 const TAIL = "[.,)」』’”]*"
 /** 어절 첫머리에 오지 않는 조사·어미 — 다음 줄 첫 어절이 이것뿐이면 앞 어절의 꼬리다 ("다." 는 줄을 넘어온 문장 끝) */
@@ -180,6 +182,8 @@ export function wrapJoiner(prevText: string, nextText: string, lex?: WrapLexicon
   const prev = prevText.replace(MARKUP, "").trimEnd(), next = nextText.replace(MARKUP, "").trimStart()
   const a = prev[prev.length - 1], b = next[0]
   if (!a || !b || /[,;:!?]/.test(a) || (DATE_DAY_END.test(prev) && b !== "(")) return " "
+  // 중·일문은 띄어쓰기가 없다 — 한글 없는 두 줄의 한자·가나·전각 문장부호끼리 꺾임은 붙인다(kpipa 계약서 중문 "代⏎理中介商")
+  if (CJK.test(a) && CJK.test(b) && !/[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(prev + next)) return ""
   // 앞 줄 끝 어절 — 뒤에서 공백까지 거꾸로 (칸에서 이어 붙인 긴 글에 /\S+$/ 를 돌리면 어절 길이 제곱이 든다)
   let s = prev.length
   while (s > 0 && !/\s/.test(prev[s - 1])) s--
@@ -248,6 +252,8 @@ export function joinPageBreakWraps(blocks: IRBlock[], lex?: WrapLexicon): void {
 /** 본문 줄 기하 — 꺾임 판정 입력 (y 는 기준선, PDF 좌표라 아래 줄이 작다) */
 export interface WrapLine { text: string; left: number; right: number; y: number; fontSize: number }
 
+/** 여백 밖에 매달리는 줄 끝 전각 구두점 */
+const HANGING = /[，。、：；！？）」』】〕》〉．]\s*$/
 /** 찬 줄: 묶음 오른끝에 글자 크기 0.25배 안 — 양쪽 정렬 본문은 꺾인 줄이 오른끝까지 찬다 */
 const BODY_FULL_TOL = 0.25
 /** 꺾인 줄 최소 폭(글자 크기 배) — 좁은 줄(가운데 정렬 제목·서명란)은 묶음에서 가장 넓어 오른끝에 닿아도 꺾임이 아니다
@@ -269,13 +275,21 @@ const BODY_MAX_PITCH_ABS_EM = 3.5
 export function bodyLineJoins(lines: WrapLine[], lex?: WrapLexicon): string[] {
   let right = -Infinity
   for (const l of lines) if (l.right > right) right = l.right
+  // 여백 밖에 매단 줄 끝 구두점(LibreOffice 동아시아 조판 "，" "。")은 오른끝을 한 글자 남짓 끌어올린다 — 매단 줄을 뺀 오른끝도
+  // 찬 줄 기준으로 인정한다(글자 크기 1.2배 안에서만). kpipa 계약서 중문 각주: 찬 줄 522, "，" 줄만 533
+  let inner = -Infinity
+  for (const l of lines) if (!HANGING.test(l.text) && l.right > inner) inner = l.right
+  const full = (l: WrapLine) => right - l.right < BODY_FULL_TOL * l.fontSize ||
+    (right - inner <= 1.2 * l.fontSize && inner - l.right < BODY_FULL_TOL * l.fontSize)
   const pitch = (k: number) => lines[k].y - lines[k + 1].y
   const sameSize = (k: number) => Math.abs(lines[k + 1].fontSize - lines[k].fontSize) <= 0.15 * lines[k].fontSize
   // 줄쌍 간격 가운데 가장 좁은 둘 — i 번째 쌍 자신을 뺀 최솟값을 O(1) 로 (같은 글자 크기 쌍만)
   let p1 = Infinity, p2 = Infinity, i1 = -1
   for (let k = 0; k + 1 < lines.length; k++) {
     const p = pitch(k)
-    if (p <= 0 || !sameSize(k)) continue
+    // 폭 3em 미만 줄(쪽 번호 "1")이 낀 쌍은 줄 간격 근거가 아니다 — 본문 끝줄 바로 아래 쪽 번호가 가장 좁은 간격으로 잡혀
+    // 두 줄 간격 본문의 상대 상한을 끌어내렸다(kpipa 계약서 중문 각주 22pt 간격 줄들이 쪽 번호 14pt 간격에 막힘)
+    if (p <= 0 || !sameSize(k) || Math.min(lines[k].right - lines[k].left, lines[k + 1].right - lines[k + 1].left) < 3 * lines[k].fontSize) continue
     if (p < p1) { p2 = p1; p1 = p; i1 = k } else if (p < p2) p2 = p
   }
   const out: string[] = []
@@ -285,7 +299,7 @@ export function bodyLineJoins(lines: WrapLine[], lex?: WrapLexicon): string[] {
     const others = i === i1 ? p2 : p1 // 다른 쌍이 없으면 Infinity — 상대 기준 없이 2em
     const maxPitch = Number.isFinite(others) ? Math.min(BODY_MAX_PITCH_ABS_EM * fs, Math.max(BODY_MAX_PITCH_EM * fs, others * BODY_PITCH_REL)) : BODY_MAX_PITCH_EM * fs
     const wraps = fs > 0
-      && right - a.right < BODY_FULL_TOL * fs
+      && full(a)
       && a.right - a.left >= BODY_MIN_WIDTH_EM * fs
       && a.y - b.y > 0 && a.y - b.y < maxPitch
       && Math.abs(b.fontSize - fs) <= 0.15 * fs

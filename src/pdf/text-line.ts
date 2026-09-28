@@ -175,13 +175,20 @@ export function normalizeItems(rawItems: PdfTextItem[]): NormItem[] {
     const scaleX = Math.hypot(i.transform[0], i.transform[1])
     const scaleY = Math.hypot(i.transform[2], i.transform[3])
     const fontSize = Math.round(Math.max(scaleY, scaleX))
-    const w = Math.round(i.width)
+    let w = Math.round(i.width)
     const h = Math.round(i.height)
+    // 공백 글리프를 U+0000 으로 매긴 글꼴 — 낱말 끝에 붙은 NUL 이 공백 폭을 차지한 채 제어 문자 정리에서 지워져 "다음 글을 읽고"가
+    // "다음글을읽고"가 됐다(온새미로 교재). 글 뒤에 붙은 끝 NUL 런은 공백이다: 폭에서 공백 몫(0.3em)을 덜고 다음 아이템에 공백 힌트
+    if (/[^\u0000]\u0000+$/.test(i.str)) {
+      w = Math.max(1, Math.round(i.width - Math.round(Math.max(Math.hypot(i.transform[2], i.transform[3]), Math.hypot(i.transform[0], i.transform[1]))) * 0.3))
+      spacePositions.push({ x: x + w, y })
+    }
     const isHidden = fontSize === 0 || (i.width === 0 && i.str.trim().length > 0)
 
     // letterSpacing이 적용된 숫자/기호 문자열 정규화
     // "45 0 -7 3 40 )" → "450-7340)" (전화번호, 금액 등)
-    let text = i.str.trim()
+    // 강희 부수(U+2F00~2FD5)로 매긴 한자 글리프는 통합 한자로 — "자성(⾃性)" → "자성(自性)" (NFKC, 부수 블록만)
+    let text = i.str.trim().replace(/[\u2F00-\u2FD5]/g, c => c.normalize("NFKC"))
     if (/^[\d\s\-().·,☎]+$/.test(text) && /\d/.test(text) && / /.test(text)) {
       text = text.replace(/ /g, "")
     }
