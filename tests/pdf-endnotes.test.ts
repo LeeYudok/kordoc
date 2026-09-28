@@ -36,4 +36,57 @@ describe("relocateEndnotes", () => {
     const blocks = [p("1) 가"), p("2) 나"), p("1) 다"), p("2) 라"), p("3) 마")]
     assert.deepEqual(texts(relocateEndnotes(blocks)), texts(blocks))
   })
+
+  it("keeps numbered contents entries before their matching body sections", () => {
+    const blocks = [
+      p("목 차"), p("1) 조사 목적 ············· 3"), p("2) 조사 설계 ············· 3"), p("3) 조사 항목 ············· 3"),
+      p("서문"), p("1) 조사 목적"), p("목적 설명"), p("2) 조사 설계"), p("설계 설명"), p("3) 조사 항목"), p("항목 설명"),
+    ]
+    assert.deepEqual(relocateEndnotes(blocks), blocks)
+  })
+
+  it("keeps contents entries even when they have no dot leaders", () => {
+    const blocks = [
+      p("1) Scope"), p("2) Method"), p("3) Results"), p("Preface"),
+      p("1) Scope"), p("Scope text"), p("2) Method"), p("Method text"), p("3) Results"), p("Results text"),
+    ]
+    assert.deepEqual(relocateEndnotes(blocks), blocks)
+  })
+
+  it("does not use references inside a contents table", () => {
+    const contents: IRBlock = {
+      type: "table",
+      table: {
+        rows: 1, cols: 1, hasHeader: false,
+        cells: [[{ text: "목 차\n1) 조사 연혁\n2) 조사 체계\n3) 조사 결과", colSpan: 1, rowSpan: 1 }]],
+      },
+    }
+    const blocks = [
+      contents, p("본문"), p("1) 조사 연혁"), p("연혁 설명"),
+      p("2) 조사 체계"), p("체계 설명"), p("3) 조사 결과"), p("결과 설명"),
+    ]
+    assert.deepEqual(relocateEndnotes(blocks), blocks)
+  })
+
+  it("does not treat table captions as endnote marks", () => {
+    const blocks = [
+      p("표1) 조사 연혁"), p("표2) 조사 체계"), p("표3) 조사 결과"),
+      p("표1) 조사 연혁"), p("연혁 설명"),
+      p("표2) 조사 체계"), p("체계 설명"),
+      p("표3) 조사 결과"), p("결과 설명"),
+    ]
+    assert.deepEqual(relocateEndnotes(blocks), blocks)
+  })
+
+  it("still moves numeric endnotes attached to body text", () => {
+    const blocks = [
+      p("첫 문장1)입니다"), p("둘째 문장2)입니다"), p("셋째 문장3)입니다"),
+      p("1) 첫 주석"), p("2) 둘째 주석"), p("3) 셋째 주석"),
+    ]
+    assert.deepEqual(texts(relocateEndnotes(blocks)), [
+      "첫 문장1)입니다", "1) 첫 주석",
+      "둘째 문장2)입니다", "2) 둘째 주석",
+      "셋째 문장3)입니다", "3) 셋째 주석",
+    ])
+  })
 })
