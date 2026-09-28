@@ -71,6 +71,7 @@ import { join, relative, basename } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parse } from "../dist/index.js"
 import { execFile } from "node:child_process"
+import { pdftotextText, layerCharRecall } from "./lib/pdf-layer.mjs"
 import { promisify } from "node:util"
 import { mdToPlain } from "./lib/normalize.mjs"
 import { irAnchors, scoreTables } from "./lib/table-score.mjs"
@@ -114,8 +115,9 @@ const round = (x, d = 6) => (x === null || x === undefined ? null : +x.toFixed(d
 // v4.15.0: 정책브리핑 299쌍 추가 → 716쌍/2,692표. 기존 세트의 모든 지표는 보강 후 기준선과 동일.
 // 실측 exact .932021·F1 .959194·cellExact .935242·NED .891261; 재정렬은 새 세트 2건으로 15→17.
 // 모수 변경에 따른 전체 플로어 재잠금, 중첩 매칭 .920455·exact .892045는 상향.
-// 2026-09-28 채점 기준 변경: 정답지 부족 쌍(PDF 텍스트층이 HWPX 글의 3배 초과 — pdf-text-gt 와 같은 모수 규칙) 1쌍 39표를 빼 모수 하한 715/2654
-const GATES = { matchedRate: 0.985, exactRate: 0.932, cellF1: 0.959, cellExactRate: 0.935, contentNED: 0.891, parseErrors: 0, reorderedMax: 17, minPairs: 715, minRefTables: 2654, nestedMatchedRate: 0.92, nestedExactRate: 0.892 }
+// 2026-09-28 채점 기준 변경: 정답지 부족 쌍(PDF 텍스트층이 HWPX 글의 3배 초과 — pdf-text-gt 와 같은 모수 규칙) 1쌍 39표를 빼 모수 하한 715/2654,
+// 같은 날 텍스트층 글 누락 쌍(정답 글자의 93% 미만 — pdf-text-gt 와 같은 규칙) 7쌍 22표를 더 빼 708/2632
+const GATES = { matchedRate: 0.985, exactRate: 0.932, cellF1: 0.959, cellExactRate: 0.935, contentNED: 0.891, parseErrors: 0, reorderedMax: 17, minPairs: 708, minRefTables: 2632, nestedMatchedRate: 0.92, nestedExactRate: 0.892 }
 /** 텍스트층 없음: PDF 텍스트층 한글 / HWPX 한글 이 이 값 미만 (머리 주석 모수 정책) */
 const NO_TEXT_LAYER_RATIO = 0.01
 const hangulCount = s => (s?.match(/[가-힣]/g) ?? []).length
@@ -219,6 +221,12 @@ for (const { set, base, rel } of pairs) {
     const refChars = mdToPlain(hwpx.markdown).text.replace(/\s+/g, "").length
     const layerChars = await pdftotextChars(base + ".pdf")
     if (refChars >= 200 && layerChars !== null && layerChars > refChars * 3) { row.excluded = `정답지 부족 — PDF 텍스트층 ${layerChars}자가 HWPX ${refChars}자의 3배 초과`; rows.push(row); continue }
+    // PDF 텍스트층 글 누락 — 정답 글자의 93% 를 텍스트층이 못 채우면 PDF 에 글이 없다(pdf-text-gt 와 같은 모수 규칙, 2026-09-28 채점 기준 변경)
+    // 텍스트층 한글이 아예 없는 쌍(아래 OCR 트랙)은 그 트랙에 둔다
+    const layerText = (await pdftotextText(base + ".pdf")) ?? ""
+    const layerRecall = refChars >= 50 && hangulCount(layerText) >= hangulCount(hwpx.markdown) * NO_TEXT_LAYER_RATIO
+      ? layerCharRecall(mdToPlain(hwpx.markdown).text, layerText) : 1
+    if (layerRecall < 0.93) { row.excluded = `PDF 텍스트층 글 누락 — 정답 글자의 ${(layerRecall * 100).toFixed(1)}% 만 텍스트층에 있음`; rows.push(row); continue }
 
     // 비교 모수 = 최상위 표 중 2행×2열 이상 (양쪽 동일 규칙).
     // 1×1은 래퍼/안내박스 관행이라 제외하되, 셀 안에 중첩표를 담은 래퍼(공문
@@ -374,7 +382,7 @@ for (const [s, v] of Object.entries(bySet)) {
   const v = summary.nested
   console.log(`  [중첩표] ${v.pairs}쌍 표 ${v.refTables} | 매칭 ${round(v.matchedRate * 100, 2)}% exact ${round(v.exactRate * 100, 2)}% | F1 ${v.cellF1} cellExact ${v.cellExactRate} NED ${v.contentNED}`)
 }
-for (const r of rows.filter(r => r.excluded)) console.log(`  [정답지 부족] ${r.pair} — ${r.excluded}, 모수 제외`)
+for (const r of rows.filter(r => r.excluded)) console.log(`  [모수 제외] ${r.pair} — ${r.excluded}`)
 for (const r of rows.filter(r => r.locked)) console.log(`  [HWPX 암호] ${r.pair} — 암호를 몰라 정답지 없음(ENCRYPTED 거절 확인), 모수 제외`)
 if (noTextRows.length) {
   const line = (label, v) => console.log(`  [${label}] ${v.pairs}쌍 표 ${v.refTables} | 매칭 ${round(v.matchedRate * 100, 2)}% exact ${round(v.exactRate * 100, 2)}% | F1 ${v.cellF1} cellExact ${v.cellExactRate} NED ${v.contentNED}`)

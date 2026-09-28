@@ -25,6 +25,7 @@ import { readdir, readFile, writeFile, mkdir } from "node:fs/promises"
 import { join, relative, basename } from "node:path"
 import { fileURLToPath } from "node:url"
 import { execFile } from "node:child_process"
+import { pdftotextText, layerCharRecall } from "./lib/pdf-layer.mjs"
 import { promisify } from "node:util"
 import { parse } from "../dist/index.js"
 import { extractRef } from "./ref/hwpx-ref.mjs"
@@ -42,7 +43,8 @@ const gateMode = args.includes("--gate")
 // v4.15.0: 751쌍 실측 .99446/.96933/.97672/.97799. 기존 세트 지표 무후퇴 확인 후 상향.
 // 새 세트의 정답지 부족 1쌍 제외 효과와 파서의 띄어쓰기 개선 효과는 별도로 보고한다.
 // 2026-09-28(채점 기준 변경 뒤): 751쌍 실측 .99699/.99471/.99094/.98556 바로 아래로 상향
-const GATES = { recall: 0.9967, precision: 0.9945, order: 0.9907, spaceF1: 0.9853, parseErrors: 0, minPairs: 751 }
+// 2026-09-28 텍스트층 글 누락 제외(7쌍, 채점 기준 변경) 뒤 744쌍 실측 .99814/.99527/.99116/.98713 바로 아래로 상향
+const GATES = { recall: 0.9978, precision: 0.9950, order: 0.9909, spaceF1: 0.9868, parseErrors: 0, minPairs: 744 }
 const flagValue = (k, d) => (args.find(a => a.startsWith(`--${k}=`)) ?? "").split("=")[1] || d
 const docFilter = flagValue("doc", null)
 const SETS = flagValue("sets", "pairs,korea-kr,korea-kr-pairs,korea-kr-pairs2,rhwp,lo-pairs").split(",").filter(Boolean)
@@ -243,6 +245,14 @@ for (const { set, base, rel, gtExt } of pairs) {
     const refChars = hwpxPlain.replace(/\s+/g, "").length
     if (refChars >= 200 && layer && layer.chars > refChars * 3) {
       excluded.push({ pair: rel, reason: `정답지 부족 — PDF 텍스트층 ${layer.chars}자가 HWPX ${refChars}자의 3배 초과(HWPX 에 없는 부록)` })
+      continue
+    }
+    // PDF 텍스트층 글 누락 — 정답 글자의 93% 를 PDF 텍스트층(pdftotext) 글자가 채우지 못하면 PDF 에 글이 없는 것이다(렌더 결함
+    // 재현본 "칸 분할로 본문 누락"·곡선·그림으로만 찍힌 글). 파서는 텍스트층에 없는 글자를 낼 수 없다 — 위 한글 1% 규칙과 같은 논리.
+    // 765쌍 분포(2026-09-28): 0.912 다음이 0.948 로 틈이 있다 (채점 기준 변경)
+    const layerRecall = refChars >= 50 ? layerCharRecall(hwpxPlain, (await pdftotextText(base + ".pdf")) ?? "") : 1
+    if (layerRecall < 0.93) {
+      excluded.push({ pair: rel, reason: `PDF 텍스트층 글 누락 — 정답 글자의 ${(layerRecall * 100).toFixed(1)}% 만 텍스트층에 있음` })
       continue
     }
 
