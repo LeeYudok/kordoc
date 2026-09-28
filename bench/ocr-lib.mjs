@@ -81,7 +81,7 @@ const DOTS = /[\u00b7\u2024\u2027\u2219\u22c5\u30fb\uff65\u318d\u119e]/g
 export function foldConfusables(s) {
   return s
     .replace(DOTS, "\u00b7")
-    .replace(/[\u2160-\u217f\uff01-\uff5e]/g, c => c.normalize("NFKC"))
+    .replace(/[\u2160-\u217f\uff01-\uff5e\uff61-\uff64]/g, c => c.normalize("NFKC"))
     .replace(/[\u223c\u301c]/g, "~")
     .replace(/\u2015/g, "\u2014")
 }
