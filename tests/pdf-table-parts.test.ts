@@ -598,6 +598,27 @@ describe("쪽 넘김 2차 — 쪽 경계에 걸친 세로 병합 칸", () => {
     assert.equal(res2.table.cells[3][0].text, "섬유강화 시멘트판")
   })
 
+  it("앞 조각에 한 행만 보인 칸도 글이 쪽 경계에 걸치고(바닥 반 줄 안) 뒤 조각 칸이 여러 행을 덮으면 잇는다 (TRL 표 \"제품화 / 단계\")", () => {
+    const make = (baseline: number) => {
+      const prev = grid(2, 3, [[0, 0, "구분"], [0, 1, "단계"], [0, 2, "정의"], [1, 0, "제품화"], [1, 1, "7"], [1, 2, "신뢰성 평가 및"]])
+      const curr = grid(3, 3, [[0, 0, "단계", 1, 3], [0, 2, "수요기업 평가", 1, 2], [2, 1, "8"], [2, 2, "시제품 인증"]])
+      for (let r = 0; r < 2; r++) FILLER_CELLS.add(curr.cells[r][1]) // "7" 칸이 쪽 경계를 넘어 이어진다
+      lines(prev.cells[1][0], [[5, 95, baseline]]) // 앞 조각 밑변 30
+      lines(prev.cells[1][2], [[105, 290, baseline]])
+      return joinSplitParts(prev, [0, 100, 300, 400], curr, [0, 100, 300, 400], 0, 30)
+    }
+    const res = make(34)
+    assert.ok(res && !res.split)
+    assert.equal(res.table.cells[1][0].text, "제품화\n단계")
+    assert.equal(res.table.cells[1][0].rowSpan, 4)
+    assert.equal(res.table.cells[1][2].text, "신뢰성 평가 및\n수요기업 평가")
+    // 글이 한 행 칸 가운데(바닥에서 9pt)면 새 칸 (규제영향분석서 "대분류" 다음 쪽 "일몰설정 예외기준")
+    const res2 = make(39)
+    assert.ok(res2)
+    assert.equal(res2.table.cells[1][0].text, "제품화")
+    assert.equal(res2.table.cells[2][0].text, "단계")
+  })
+
   it("줄이 많은 칸은 위에서부터 차 바닥에 닿은 것이라 쪽 경계에 걸친 글로 보지 않는다 (\"라. …\" 뒤 새 칸 \"마. …\")", () => {
     const prev = grid(3, 3, [[0, 0, "구분"], [0, 1, "내용"], [0, 2, "비고"], [1, 0, "라. 항공경찰관 점퍼 제식", 1, 2], [1, 1, "색상"], [2, 1, "재질"], [1, 2, "공통", 1, 2]])
     const curr = grid(2, 3, [[0, 0, "마. 항공경찰관 모자", 1, 2], [0, 1, "색상"], [1, 1, "재질"]])

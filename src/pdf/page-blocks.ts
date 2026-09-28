@@ -551,6 +551,22 @@ function extractBlocksWithGrids(
       finalRows++
       for (const item of unitLine) usedItems.add(item)
     }
+    // 표의 무괘선 첫 행 "(단위: …)" — 한컴 표 칸 안 오른쪽 정렬 글은 칸 안쪽 여백(1.8mm≈5.1pt)만큼 표 오른끝에서 들어가 선다.
+    // 표 밖 오른쪽 정렬 문단은 본문 오른끝(표 오른끝 ±1pt)에 붙는다 — 단위 줄 140개(정답 표 안 40·밖 100): 안 4.8~5.3pt, 밖 4.3pt 이하
+    // 칸 절반 넘게 빈 격자(큰 표 머리의 조각 격자)는 제외 — 조각이 큰 표의 단위 줄을 먼저 가져갔다
+    const filledCells = finalGrid.flat().filter(c => c.text.trim()).length
+    if (!rebuiltUsed && filledCells * 2 >= finalGrid.flat().length && !/^\s*\(\s*단위\s*[:：]/.test(finalGrid[0]?.[0]?.text ?? "")) {
+      const above = items.filter(it => !usedItems.has(it) && it.y >= grid.bbox.y2 && it.y - grid.bbox.y2 <= 8 &&
+        it.x >= grid.bbox.x1 - 3 && it.x + it.w <= grid.bbox.x2 + 3)
+      const line = above.filter(it => Math.abs(it.y - Math.min(...above.map(a => a.y))) <= 1).sort((a, b) => a.x - b.x)
+      const text = line.map(it => it.text).join("")
+      const inset = line.length ? grid.bbox.x2 - (line[line.length - 1].x + line[line.length - 1].w) : 0
+      if (line.length && /^\s*\(\s*단위\s*[:：]/.test(text) && inset >= 4.6 && inset <= 5.6) {
+        finalGrid.unshift(Array.from({ length: numCols }, (_, c) => ({ text: c === 0 ? cleanCellText(text) : "", colSpan: c === 0 ? numCols : 1, rowSpan: 1 })))
+        finalRows++
+        for (const item of line) usedItems.add(item)
+      }
+    }
 
     // Alternating empty bands are visual row spacing, not empty data records.
     // Only a repeated, populated sequence is a semantic one-column table.

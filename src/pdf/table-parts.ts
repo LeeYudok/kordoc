@@ -153,12 +153,15 @@ function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first:
     const u = owner[last][c], d = owner[first][c]
     if (!u) { c++; continue }
     c = u.c + u.cs
-    if (!d || d === u || u.r >= last || u.r + u.rs - 1 !== last || d.r !== first || d.c !== u.c || d.cs !== u.cs) continue
+    // 앞 조각에 끝 행 하나만 보인 칸도 뒤 조각 칸이 두 행 이상을 덮으면 쪽 경계에 걸친 병합 칸이다(성능시험 TRL 표 "제품화 / 단계",
+    // 시험기준표 "플라이애시 / 시멘트(KS L 5211)") — 뒤 조각 한 행 칸은 새 칸일 수 있어 그대로 둔다
+    if (!d || d === u || (u.r >= last && d.rs < 2) || u.r + u.rs - 1 !== last || d.r !== first || d.c !== u.c || d.cs !== u.cs) continue
     const a = table.cells[u.r][u.c], b = table.cells[first][d.c]
     const U = CELL_LINES.get(a)
     if (!U?.length || U.length > STRADDLE_MAX_LINES || !hasContent(b)) continue
     const lu = U[U.length - 1]
-    if (lu.y - prevBottom > STRADDLE_BOTTOM * (lu.h || 10)) continue
+    // 앞 조각에 한 행만 보인 칸은 글이 쪽 경계에 걸쳐야 한다(가운데 정렬 병합 칸 글이 바닥 반 줄 안) — 한 행짜리 새 칸 글은 행 가운데에 선다
+    if (lu.y - prevBottom > (u.r >= last ? STRADDLE_BOTTOM_ONE_ROW : STRADDLE_BOTTOM) * (lu.h || 10)) continue
     appendCell(a, b)
     a.rowSpan = first + d.rs - u.r
     table.cells[first][d.c] = { text: "", colSpan: 1, rowSpan: 1 }
@@ -179,6 +182,7 @@ const SHORT_LINE_GAP = 1.5
 /** 쪽 경계에 걸친 세로 병합 칸 — 글 줄 수 상한, 끝줄 기준선이 앞 조각 밑변 위 글자 크기의 이 배수 안 */
 const STRADDLE_MAX_LINES = 3
 const STRADDLE_BOTTOM = 1.2
+const STRADDLE_BOTTOM_ONE_ROW = 0.5
 /** 칸 조각 이어짐 증거로 보는 빈 자리 열의 최소 폭 (pt) — 클립 격자의 셀 최소 폭과 같다 */
 const CARRIED_MIN_COL_W = 4
 /** 끝난 이름표 — 한 줄 칸 오른쪽에 남은 자리가 글자 크기의 이 배수 이상 (숫자 머리 "4." 한 어절이 들어간다) */
