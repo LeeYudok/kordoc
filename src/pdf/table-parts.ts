@@ -222,6 +222,22 @@ function continuesAcross(u: IRCell, d: IRCell, x1: number, x2: number): boolean 
   return U.some(leftAligned) || D.some(leftAligned) || hanging
 }
 
+/** 개조식 절 제목 줄(□) */
+const OUTLINE_HEAD = /^[□■]\s*\S/
+/** 절 제목 아래 단계 항목 부호 */
+const OUTLINE_ITEM = /^[ㅇ○◦\-‐–·․‧※*]\s*\S/
+
+/**
+ * 개조식 위계 이어짐 — 앞 쪽 칸 글이 □ 절 제목 아래 항목이고 뒤 쪽 칸 글이 그 아래 단계 부호(ㅇ·-·※)로 시작하면 절 안 목록이
+ * 다음 쪽으로 넘어간 것이다 (새 칸이면 절 제목부터 시작한다). 칸 안 문단 경계에서 쪽이 넘어가 글 이어짐 증거가 없는 행을 잡는다
+ * (과제 품목 명세서 "□ 개발내용 / ㅇ … / - … 주사제형화 기술 개발" / 다음 쪽 "ㅇ PFC 나노산소운반체의 …")
+ */
+function outlineContinues(u: IRCell, d: IRCell): boolean {
+  const U = u.text.split("\n").map(l => l.trim()).filter(Boolean)
+  const D = d.text.split("\n").map(l => l.trim()).filter(Boolean)
+  return U.length >= 2 && D.length >= 1 && U.some(l => OUTLINE_HEAD.test(l)) && OUTLINE_ITEM.test(D[0])
+}
+
 /** 한 줄로 끝난 왼쪽 정렬 칸 — 오른쪽에 남은 자리(왼쪽 안쪽 여백만큼 뺀)가 글자 크기의 LABEL_ROOM 배 이상이라 다음 어절이 들어갈 수 있었다.
  *  가운데 정렬 칸은 좌우 여백이 같아 해당하지 않는다 */
 function lineEnded(c: IRCell, x1: number, x2: number): boolean {
@@ -260,6 +276,12 @@ const hasContent = (cell: IRCell): boolean => !!cell.text.trim() || !!cell.block
  *     글 있는 열 쌍이 둘 이상이면 세로 병합 칸만 이어지고 행은 새로 시작하는 경우(시험기준표 "플라이애시 / 시멘트")와
  *     섞여 쓰지 않는다. 위에서 내려온 세로 병합 칸이 클립 없이 넘어간 것은 새 행에서도 똑같아 증거가 아니다
  */
+/** 뒤 쪽 첫 행에 글 있는 칸이 하나뿐이고 그 칸이 개조식 위계로 이어진다 — 다른 열에 새 글(이름표)이 오면 새 행이다 */
+function outlineOnly(pairs: Array<[Anchor, Anchor]>, cell: (a: Anchor) => IRCell): boolean {
+  const filled = pairs.filter(([, d]) => hasContent(d.cell))
+  return filled.length === 1 && outlineContinues(cell(filled[0][0]), cell(filled[0][1]))
+}
+
 function mergeSplitRow(table: IRTable, owner: (Anchor | null)[][], first: number, colXs: number[]): boolean {
   const last = first - 1
   // 열마다 앞 행 칸과 뒤 행 칸을 맞춘다 — 두 행을 다 덮는 세로 병합 칸(앞 쪽에서 넘어와 이어 늘린 칸)은 그대로 두고,
@@ -293,7 +315,7 @@ function mergeSplitRow(table: IRTable, owner: (Anchor | null)[][], first: number
     // "세립토 비율 | KS F 2309"). 같은 글이면 문단마다 붙는 표지다 (신구조문 대비표 "<신 설>" 이 큰 행 두 조각에 하나씩)
     const norm = (c: IRCell): string => c.text.replace(/\s+/g, "")
     if (pairs.some(([u, d]) => hasContent(d.cell) && norm(cell(d)) !== norm(cell(u)) && lineEnded(cell(u), colXs[u.c], colXs[u.c + u.cs]))) return false
-    if (!pairs.some(([u, d]) => continuesAcross(cell(u), cell(d), colXs[u.c], colXs[u.c + u.cs]))) return false
+    if (!outlineOnly(pairs, cell) && !pairs.some(([u, d]) => continuesAcross(cell(u), cell(d), colXs[u.c], colXs[u.c + u.cs]))) return false
   }
   for (const [u, d] of pairs) appendCell(table.cells[u.r][u.c], table.cells[d.r][d.c])
   // 위에서 내려와 두 행에 걸친 세로 병합 칸은 한 행 줄어든다

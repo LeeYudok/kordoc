@@ -678,3 +678,46 @@ describe("쪽 넘김 2차 — 쪼개진 틀 칸 잇기", () => {
     assert.deepEqual(cell.blocks!.map(b => b.type === "table" ? "table" : b.text), ["function InsertBgImg() {", "table", "act = HwpCtrl.CreateAction(\"CellBorderFill\");", "set = act.CreateSet();"])
   })
 })
+
+describe("쪽 넘김 2차 — 개조식 위계 이어짐", () => {
+  it("앞 쪽 칸이 □ 제목 줄로 끝나고 뒤 쪽 같은 칸이 아래 단계 부호(ㅇ·-)로 시작하면 쪼개진 행이다", () => {
+    // 과제 품목 명세서 "□ 개념 … □ 개발내용" / 다음 쪽 "ㅇ PFC 나노산소운반체의 …" — 제목 아래 내용이 없는 칸은 없다
+    const prev = grid(2, 1, [[0, 0, "1. 개념 및 개발내용"], [1, 0, "□ 개념\nㅇ 혈액보다 산소 용해도가 높은 나노 입자\n□ 개발내용"]])
+    const curr = grid(2, 1, [[0, 0, "ㅇ PFC 나노산소운반체의 최적 제조공정 개발"], [1, 0, "2. 지원 필요성"]])
+    lines(prev.cells[1][0], [[10, 60, 90], [20, 250, 75], [10, 70, 60]])
+    lines(curr.cells[0][0], [[20, 240, 780]])
+    const res = joinSplitParts(prev, [0, 300], curr, [0, 300])
+    assert.ok(res?.split)
+    assert.equal(res.table.rows, 3)
+    assert.equal(res.table.cells[1][0].text, "□ 개념\nㅇ 혈액보다 산소 용해도가 높은 나노 입자\n□ 개발내용\nㅇ PFC 나노산소운반체의 최적 제조공정 개발")
+  })
+
+  it("□ 절 안 목록이 쪽을 넘어 같은 단계 부호로 이어지면 쪼개진 행이다", () => {
+    const prev = grid(1, 1, [[0, 0, "□ 개발내용\nㅇ 제형화 기술 개발\n- 주사제형화 기술 개발"]])
+    const curr = grid(1, 1, [[0, 0, "ㅇ 최적 제조공정 개발"]])
+    lines(prev.cells[0][0], [[10, 70, 90], [20, 150, 75], [30, 200, 60]])
+    lines(curr.cells[0][0], [[20, 150, 780]])
+    const res = joinSplitParts(prev, [0, 300], curr, [0, 300])
+    assert.ok(res?.split)
+  })
+
+  it("다른 열에 새 이름표가 오면 개조식 부호로 시작해도 새 행이다", () => {
+    const prev = grid(1, 2, [[0, 0, "추진배경"], [0, 1, "□ 현황\nㅇ 내용"]])
+    const curr = grid(1, 2, [[0, 0, "추진계획"], [0, 1, "ㅇ 단계별 계획"]])
+    lines(prev.cells[0][0], [[5, 50, 90]])
+    lines(prev.cells[0][1], [[105, 150, 90], [115, 200, 75]])
+    lines(curr.cells[0][0], [[5, 50, 780]])
+    lines(curr.cells[0][1], [[115, 200, 780]])
+    const res = joinSplitParts(prev, [0, 100, 300], curr, [0, 100, 300])
+    assert.ok(res && !res.split)
+  })
+
+  it("□ 제목 줄 뒤에 같은 단계 □ 로 시작하면 새 행이다", () => {
+    const prev = grid(1, 1, [[0, 0, "□ 개념\nㅇ 내용\n□ 개발내용"]])
+    const curr = grid(1, 1, [[0, 0, "□ 추진체계"]])
+    lines(prev.cells[0][0], [[10, 60, 90], [20, 150, 75], [10, 70, 60]])
+    lines(curr.cells[0][0], [[10, 70, 780]])
+    const res = joinSplitParts(prev, [0, 300], curr, [0, 300])
+    assert.ok(res && !res.split)
+  })
+})
