@@ -20,6 +20,7 @@ import { detectRulingLines, rulingToPdfLines } from "./ruling-lines.js"
 import { getOcrEngine, type OcrItem, type OcrPageStats } from "./engine.js"
 import { deskewPage } from "./deskew.js"
 import { ensureOcrModels } from "./models.js"
+import { OPTIONAL_DEP_INSTALL_HINT } from "../utils.js"
 
 /** OCR 렌더 스케일 (72dpi × 3 = 216dpi) — 10pt 본문이 rec 입력 높이(48px)에 근접 */
 const OCR_RENDER_SCALE = 3
@@ -272,7 +273,7 @@ async function tryImport<T>(name: string, loader: () => Promise<T>): Promise<T> 
   } catch (e) {
     throw new Error(
       `OCR 을 사용하려면 optional dependency '${name}' 이 필요합니다. ` +
-        `\`npm install ${name}\` 후 다시 실행하세요. 원인: ${(e as Error).message}`,
+        `\`npm install ${name}\` 후 다시 실행하세요.${OPTIONAL_DEP_INSTALL_HINT} 원인: ${(e as Error).message}`,
     )
   }
 }

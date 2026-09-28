@@ -65,10 +65,10 @@ test("#65: --image-refs 는 base64 대신 저장 경로만 남기고 이미지�
     const json = JSON.parse(readFileSync(join(outDir, "imgdoc.json"), "utf-8"))
     assert.equal(json.success, true)
     assert.equal(json.images.length, 1)
-    assert.equal(json.images[0].path, "images/image_001.png")
+    assert.equal(json.images[0].path, "images/imgdoc/image_001.png") // 문서별 폴더 (#98)
     assert.equal(json.images[0].data, undefined, "참조 모드에서 바이트가 인라인되면 안 됨")
 
-    const savedImg = join(outDir, "images", "image_001.png")
+    const savedImg = join(outDir, "images", "imgdoc", "image_001.png")
     assert.ok(existsSync(savedImg), "참조가 가리키는 이미지가 실제로 저장되어야 함")
     assert.deepEqual(new Uint8Array(readFileSync(savedImg)), IMAGE_BYTES)
   } finally {
@@ -125,7 +125,7 @@ test("#65: 파싱 성공 후 출력 단계가 실패해도 stdout 은 원인 코
   }
 })
 
-test("#94: -o 로 Markdown 을 쓰면 그림 링크에 images/ 앞머리가 붙는다 (그림은 images/ 에 저장)", async () => {
+test("#94: -o 로 Markdown 을 쓰면 그림 링크에 images/<문서 이름>/ 앞머리가 붙는다 (그림은 그 폴더에 저장, #98)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "kordoc-md-output-"))
   try {
     const docx = join(dir, "imgdoc.docx")
@@ -135,8 +135,8 @@ test("#94: -o 로 Markdown 을 쓰면 그림 링크에 images/ 앞머리가 붙�
     const md = join(outDir, "문서.md")
     execFileSync(process.execPath, ["--import", "tsx", CLI, docx, "-o", md, "--silent"], { stdio: ["ignore", "ignore", "ignore"], timeout: 30000 })
     const text = readFileSync(md, "utf-8")
-    assert.ok(text.includes("](images/image_001.png)"), text)
-    assert.ok(existsSync(join(outDir, "images", "image_001.png")))
+    assert.ok(text.includes("](images/문서/image_001.png)"), text)
+    assert.ok(existsSync(join(outDir, "images", "문서", "image_001.png")))
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

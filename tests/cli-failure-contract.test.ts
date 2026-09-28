@@ -96,15 +96,15 @@ test("#70 이미지 저장 시 images/manifest.json — name/mimeType/bytes/sour
     const r = runCli(["-d", outDir, src])
     assert.equal(r.status, 0, `CLI 실패: ${r.stderr}`)
 
-    const manifestPath = join(outDir, "images", "manifest.json")
-    assert.ok(existsSync(manifestPath), "images/manifest.json 이 생성되어야 함")
+    const manifestPath = join(outDir, "images", "withimg", "manifest.json") // 문서별 폴더 (#98)
+    assert.ok(existsSync(manifestPath), "images/<문서 이름>/manifest.json 이 생성되어야 함")
     const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"))
     assert.ok(Array.isArray(manifest))
     const entry = manifest.find((m: { source?: string }) => m.source === "BinData/extra.png")
     assert.ok(entry, "주입한 이미지의 manifest 항목")
     assert.equal(entry.mimeType, "image/png")
     assert.equal(entry.bytes, png.length)
-    assert.ok(existsSync(join(outDir, "images", entry.name)), "manifest name 이 실제 파일을 가리킴")
+    assert.ok(existsSync(join(outDir, "images", "withimg", entry.name)), "manifest name 이 실제 파일을 가리킴")
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

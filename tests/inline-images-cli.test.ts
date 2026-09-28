@@ -78,13 +78,14 @@ test("image-1: --inline-images 로 비-HWP5(DOCX) 변환 시 이미지 바이트
     )
 
     // 핵심: 인라인이 실제로 일어나지 않는 포맷이므로 이미지가 파일로 저장되어야 한다(바이트 유실 X)
-    const savedImg = join(outDir, "images", "image_001.png")
+    const savedImg = join(outDir, "images", "imgdoc", "image_001.png") // 문서별 폴더 (#98)
     assert.ok(existsSync(savedImg), "비-HWP5 는 --inline-images 여도 이미지가 저장되어야 함")
     assert.deepEqual(new Uint8Array(readFileSync(savedImg)), IMAGE_BYTES, "저장된 이미지 바이트가 원본과 일치")
 
     // 비-HWP5 는 인라인되지 않으므로 마크다운에 data URI 가 새어나오면 안 된다
     const md = readFileSync(join(outDir, "imgdoc.md"), "utf-8")
     assert.ok(!md.includes("data:image"), "인라인되지 않은 포맷 출력에 data URI 가 없어야 함")
+    assert.ok(md.includes("](images/imgdoc/image_001.png)"), "링크가 문서별 그림 폴더를 가리킨다 (#98)")
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -103,7 +104,7 @@ test("image-1: --inline-images 없는 레거시 경로도 이미지를 그대로
       { stdio: ["ignore", "ignore", "ignore"], timeout: 30000 },
     )
 
-    const savedImg = join(outDir, "images", "image_001.png")
+    const savedImg = join(outDir, "images", "imgdoc", "image_001.png") // 문서별 폴더 (#98)
     assert.ok(existsSync(savedImg), "레거시 경로도 이미지를 저장해야 함")
     assert.deepEqual(new Uint8Array(readFileSync(savedImg)), IMAGE_BYTES, "저장된 이미지 바이트가 원본과 일치")
   } finally {

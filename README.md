@@ -56,6 +56,11 @@ Windows 도 자동으로 `cmd /c npx` 래핑. 수동 JSON 편집 불필요. 재�
 > ```
 > 이후 PowerShell 재시작 → `npx -y kordoc setup` 그대로 됨.
 
+> **네트워크가 제한된 linux/x64 에서 PNG 렌더·이미지 OCR 만 `MISSING_DEPENDENCY`(sharp) 로 실패하면** (#99): 선택 의존 `onnxruntime-node` 의 설치 스크립트가 CUDA 바이너리를 `api.nuget.org` 에서 받다 실패하면 npm 이 `sharp`·`@huggingface/transformers` 까지 함께 뺍니다(kordoc 은 CPU 추론만 씁니다). CUDA 다운로드를 건너뛰고 설치하세요 — npx 캐시 실행은 `npm install sharp` 로 고쳐지지 않습니다.
+> ```bash
+> ONNXRUNTIME_NODE_INSTALL=skip npx -y kordoc@^4 <command> ...
+> ```
+
 ### Claude Code 플러그인으로 설치
 
 MCP 등록 대신 스킬(SKILL.md) 형태로 쓰려면:
@@ -332,7 +337,7 @@ rhwp 최신 devel(v0.8.3~0.8.4)을 훑어 kordoc 의 HWP3 디코더에 반영했
 ## v4.10.0 변경사항
 
 - **📡 실패 계약 전 포맷 확장 (#69)**: 실패 JSON(`success:false` + `code`)이 `--format json` 전용에서 **markdown·chunks 포함 전 포맷**으로 확장됐습니다. 헤드리스 파이프라인이 stderr 한국어 문구 파싱 없이 원인 코드로 분기할 수 있습니다. `code` 값 집합·종료 코드 규칙·안정성 보증을 README [실패 계약](#실패-계약--기계-판독-가능한-실패-json-v4100-69) 표로 문서화했습니다. (@sorbetsharkroundhand 제보)
-- **🖼️ `images/manifest.json` (#70)**: 이미지 저장 시 `[ { name, mimeType, bytes, source } ]` manifest 를 함께 방출합니다. `mimeType` 은 매직바이트 실측 우선이라 확장자 추측이 필요 없습니다. DOCX 이미지의 미지 확장자를 `image/png` 로 단정하던 오폴백도 실측 판별로 교체. (@sorbetsharkroundhand 제보)
+- **🖼️ `images/<문서 이름>/manifest.json` (#70·#98)**: 이미지 저장 시 `[ { name, mimeType, bytes, source } ]` manifest 를 함께 방출합니다. `mimeType` 은 매직바이트 실측 우선이라 확장자 추측이 필요 없습니다. DOCX 이미지의 미지 확장자를 `image/png` 로 단정하던 오폴백도 실측 판별로 교체. (@sorbetsharkroundhand 제보)
 - **🩹 patchHwp soft-wrap 축소 치환 무결성 (#71)**: 자동 줄바꿈으로 LINE_SEG 가 2세그먼트 이상인 문단을 더 짧은 한 줄로 치환하면 잔존 세그먼트의 textpos 가 새 nChars 밖을 가리켜 **한컴이 "문서 손상/변조" 경고로 열기를 거부**하던 버그 수정 — 범위를 벗어난 꼬리 세그먼트만 잘라내고 lineSegCount 를 정합화합니다(유효 세그먼트는 보존해 soft-wrap 렌더 유지). 재작성 압축 스트림에 한컴 실저장본의 8바이트 꼬리(CRC32+비압축 크기, 코퍼스 실측 7/7)도 복원합니다. (@heesun-woodi 제보)
 
 ## v4.9.2 변경사항
@@ -1189,9 +1194,9 @@ npx kordoc watch ./문서 --webhook https://api/hook  # 웹훅 알림
 
 **안정성 보증**: 종료 코드 규칙(성공 0 / 실패 1)과 실패 JSON 의 필드(`success`·`fileType`·`error`·`code`)는 유지되고, `code` 값 집합은 **추가만** 됩니다(기존 값 변경·제거 없음). 어느 입력에서 났는지 알 수 있는 `file`(basename) 필드도 **추가만** 됩니다. `error` 문구는 사람용이라 계약이 아닙니다.
 
-### 이미지 번들 — `images/manifest.json` (v4.10.0+, #70)
+### 이미지 번들 — `images/<문서 이름>/manifest.json` (v4.10.0+, #70 · #98)
 
-`-o`/`-d` 로 저장할 때 추출 이미지는 `images/` 에 저장되고, 같은 폴더에 `manifest.json` 이 함께 나옵니다. 소비자는 확장자·매직바이트 추측 없이 manifest 로 형식을 분기하면 됩니다.
+`-o`/`-d` 로 저장할 때 추출 이미지는 문서마다 `images/<문서 이름>/` 에 저장되고(문서 이름 = `-o` 출력 파일 이름 또는 `-d` 입력 파일 이름에서 확장자를 뺀 것), 같은 폴더에 `manifest.json` 이 함께 나옵니다. 마크다운 링크도 `images/<문서 이름>/image_001.png` 를 가리킵니다(공백·괄호는 퍼센트 인코딩). 여러 문서를 같은 폴더로 변환해도 그림이 서로 덮어쓰이지 않습니다. 소비자는 확장자·매직바이트 추측 없이 manifest 로 형식을 분기하면 됩니다.
 
 ```json
 [ { "name": "image_001.png", "mimeType": "image/png", "bytes": 68, "source": "BinData/image1.png" } ]

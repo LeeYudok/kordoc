@@ -19,6 +19,9 @@ kordoc(npm)은 관공서 문서 파이프라인 도구다. HWP 3.x/5.x·HWPX·HW
 npx -y kordoc@^4 <command> ...
 ```
 
+네트워크가 제한된 linux/x64 에서 PNG 렌더·이미지 OCR 이 `MISSING_DEPENDENCY`(sharp) 로 실패하면 onnxruntime-node 의 CUDA
+다운로드 실패로 sharp 까지 빠진 것이다 — `ONNXRUNTIME_NODE_INSTALL=skip npx -y kordoc@^4 …` 로 다시 설치한다.
+
 첫 호출만 패키지 다운로드로 느리고 이후는 캐시. 상시 사용 환경이면 MCP 서버로 붙일 수도 있다
 (`npx -y kordoc@^4 setup` — 대화형 마법사가 Claude Code/Desktop·Cursor 등에 자동 등록).
 MCP 도구 11종: `parse_document`, `parse_table`, `parse_pages`, `parse_metadata`, `parse_form`,
@@ -147,7 +150,7 @@ npx -y kordoc@^4 seal 신청서.hwpx --image 도장.png --anchor "(인)" -o 신�
 - 크기 기본값은 줄높이×1.6 (7~18mm 클램프), `--size-mm` 로 고정 가능. 위치 미세조정은
   `--dx`/`--dy` (mm).
 - 이미지는 **투명 배경 PNG** 권장 (macOS 미리보기 > 마크업 > 서명 내보내기, 또는 도장 스캔).
-- HWPX 전용. 배치 후 `render --reflow` 로 위치를 확인하고 사용자에게 전달한다.
+- HWPX 전용. 배치 후 `render` 로 위치를 확인하고 사용자에게 전달한다.
 
 ### 6) 비교·검증·미리보기
 
@@ -156,7 +159,7 @@ npx -y kordoc@^4 seal 신청서.hwpx --image 도장.png --anchor "(인)" -o 신�
   검사한다 (한컴독스 업로드 거부 요인 사전 차단). 생성·패치 산출물은 전달 전에 반드시 통과 확인.
 - **미리보기**: `render 문서.hwpx -o 문서.svg`
   - 한컴에서 저장한 파일: 조판 캐시를 그대로 그려 원본 충실 미리보기.
-  - kordoc 이 생성/패치한 파일(조판 캐시 없음): `--reflow` 를 붙여 순수 TS 조판으로 렌더.
+  - kordoc 이 생성/패치한 파일(조판 캐시 없음): 기본으로 순수 TS 조판(reflow)으로 렌더된다(끄려면 `--no-reflow`).
   - `--highlight 검색어` 로 형광펜 표시 가능.
 
 ## 함정

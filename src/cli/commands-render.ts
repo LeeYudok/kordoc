@@ -19,6 +19,7 @@ export function registerRenderCommands(program: Command): void {
     .option("--browser <path>", "PDF 용 Chromium 실행 파일 (기본: PUPPETEER_EXECUTABLE_PATH 또는 자동 탐지)")
     .option("--highlight <terms>", "검색어 형광펜 (쉼표 구분)")
     .option("--no-reflow", "순수 TS 조판 끄기 (조판 캐시 없는 문서가 빈 페이지로 나올 수 있음)")
+    .option("--reflow", "순수 TS 조판 켜기 — 기본값과 같다 (옛 안내 호환, #97)")
     .option("--reflow-mode <mode>", "reflow 줄바꿈 모드: keep(어절) | charAll(글자)", "keep")
     .option("--silent", "진행 메시지 숨기기")
     .action(async (file: string, opts) => {
@@ -90,6 +91,7 @@ export function registerRenderCommands(program: Command): void {
     .option("--padding <pt>", "bbox 둘레 여백 pt", "0")
     .option("--max-width <px>", "페이지 래스터 최대 폭 px (crop 해상도, 기본 1400)")
     .option("--no-reflow", "순수 TS 조판 끄기")
+    .option("--reflow", "순수 TS 조판 켜기 — 기본값과 같다 (옛 안내 호환)")
     .option("--reflow-mode <mode>", "reflow 줄바꿈 모드: keep | charAll", "keep")
     .option("--silent", "진행 메시지 숨기기")
     .action(async (file: string, opts) => {

@@ -27,6 +27,7 @@
 import type { InferenceSession } from "onnxruntime-node"
 import { readFile } from "fs/promises"
 import { join } from "path"
+import { OPTIONAL_DEP_INSTALL_HINT } from "../utils.js"
 import {
   OCR_DET_MODEL,
   OCR_REC_MODEL,
@@ -510,7 +511,7 @@ async function tryImport<T>(name: string, loader: () => Promise<T>): Promise<T> 
   } catch (e) {
     throw new Error(
       `내장 OCR 을 사용하려면 optional dependency '${name}' 이 필요합니다. ` +
-        `\`npm install ${name}\` 후 다시 실행하세요. 원인: ${(e as Error).message}`,
+        `\`npm install ${name}\` 후 다시 실행하세요.${OPTIONAL_DEP_INSTALL_HINT} 원인: ${(e as Error).message}`,
     )
   }
 }

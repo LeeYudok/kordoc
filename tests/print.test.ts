@@ -87,6 +87,12 @@ describe("renderHtml — 기본", () => {
     assert.ok(html.includes('Content-Security-Policy'), html)
   })
 
+  it("CLI 가 저장한 문서별 그림 폴더(images/<문서 이름>/) 칸 그림은 유지한다 (#98)", () => {
+    const html = renderHtml('<table><tr><td><img src="images/a%20b/image_001.png" alt="image"></td></tr></table>')
+    assert.ok(html.includes('<img src="images/a%20b/image_001.png" alt="image">'), html)
+    assert.ok(!html.includes("&lt;img"), html)
+  })
+
   it("병합 표 태그와 이미 이스케이프한 셀 글자를 유지한다", () => {
     const html = renderHtml('<table><tr><th colspan="2">A &amp; B &lt;script&gt;</th></tr></table>')
     assert.ok(html.includes('<th colspan="2">A &amp; B &lt;script&gt;</th>'), html)

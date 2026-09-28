@@ -11,7 +11,7 @@
  */
 
 import type { IRBlock, ParseOptions, ParseWarning } from "../types.js"
-import { KordocError } from "../utils.js"
+import { KordocError, OPTIONAL_DEP_INSTALL_HINT } from "../utils.js"
 import { getOcrEngine, type OcrPageStats } from "./engine.js"
 import { ensureOcrModels } from "./models.js"
 import { detectRulingLines, rulingToPdfLines } from "./ruling-lines.js"
@@ -122,7 +122,7 @@ export async function decodeToRgba(
     // KordocError + "optional dependency" 문구 → sanitizeError 메시지 보존 + MISSING_DEPENDENCY 분류
     throw new KordocError(
       "이미지 파싱에는 optional dependency 'sharp' 가 필요합니다. " +
-        `\`npm install sharp\` 후 다시 실행하세요. 원인: ${(e as Error).message}`,
+        `\`npm install sharp\` 후 다시 실행하세요.${OPTIONAL_DEP_INSTALL_HINT} 원인: ${(e as Error).message}`,
     )
   }
   const input = Buffer.from(buffer)

@@ -43,6 +43,11 @@ Windows gets automatic `cmd /c npx` wrapping. No manual JSON editing. After rest
 
 > **If Windows PowerShell blocks `npx.ps1` (`PSSecurityException`)**: that's PowerShell's default policy blocking unsigned `.ps1` scripts (not kordoc). Either run the same command in **cmd** instead, or relax the policy once from an admin PowerShell: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
+> **PNG rendering / image OCR fail with `MISSING_DEPENDENCY` (sharp) on network-restricted linux/x64** (#99): the optional `onnxruntime-node` install script downloads CUDA binaries from `api.nuget.org`; when that fails npm also drops `sharp` and `@huggingface/transformers` (kordoc only uses CPU inference). Skip the CUDA download — `npm install sharp` does not fix an npx cache:
+> ```bash
+> ONNXRUNTIME_NODE_INSTALL=skip npx -y kordoc@^4 <command> ...
+> ```
+
 ### Install as a Claude Code plugin
 
 Prefer a skill (SKILL.md) over MCP registration:
@@ -281,7 +286,7 @@ Verified by comparing character multisets between nine HWP3 originals in rhwp `s
 ## What's New in v4.10.0
 
 - **📡 Failure contract in every format (#69)**: the failure JSON (`success:false` + `code`) previously reached stdout only with `--format json`; it now covers **markdown and chunks** too, so headless pipelines branch on the cause code instead of keyword-matching Korean stderr messages. The code set, exit-code rule, and a stability guarantee are documented in the README. (reported by @sorbetsharkroundhand)
-- **🖼️ `images/manifest.json` (#70)**: saving images now also emits a `[ { name, mimeType, bytes, source } ]` manifest with magic-byte-verified `mimeType`, removing extension guessing on the consumer side. Also replaces the DOCX fallback that mislabeled unknown image extensions as `image/png`. (reported by @sorbetsharkroundhand)
+- **🖼️ `images/<document name>/manifest.json` (#70·#98)**: saving images now also emits a `[ { name, mimeType, bytes, source } ]` manifest with magic-byte-verified `mimeType`, removing extension guessing on the consumer side. Also replaces the DOCX fallback that mislabeled unknown image extensions as `image/png`. (reported by @sorbetsharkroundhand)
 - **🩹 patchHwp soft-wrap shrink integrity (#71)**: replacing a soft-wrapped paragraph (2+ LINE_SEG segments) with a shorter single line left trailing segments whose `textpos` pointed beyond the new `nChars`, making **Hangul refuse to open the file with a "damaged/tampered" warning**. Out-of-range trailing segments are now trimmed with `lineSegCount` kept consistent (in-range segments are preserved so soft-wrap rendering survives). Rewritten compressed streams also restore Hancom's 8-byte tail (CRC32 + uncompressed size, verified on 7/7 corpus files). (reported by @heesun-woodi)
 
 ## What's New in v4.9.2
@@ -588,7 +593,7 @@ const { scene, assets } = await renderDocument("approval.hwp", { format: "png", 
 const crops = await extractRenderedRegions("approval.hwp", { types: ["table"] })
 ```
 
-From the CLI: `kordoc render approval.hwpx -o approval.svg` (`--reflow`, `--highlight 예산,집행`) — for continuous rendering use `kordoc render-worker` (stdin NDJSON).
+From the CLI: `kordoc render approval.hwpx -o approval.svg` (reflow on by default, `--no-reflow` to disable; `--highlight 예산,집행`) — for continuous rendering use `kordoc render-worker` (stdin NDJSON).
 
 ### Text only (skip images, persistent parse worker)
 
@@ -709,9 +714,9 @@ Conversion failures emit the same failure JSON to stdout **in every `--format` (
 
 This never collides with success output — `markdown` success is markdown text, `chunks` success is a JSON **array**, and a failure is always a `success:false` **object**. With `-o`/`-d`, no output file is produced for a failed input; with multiple inputs, each failed file emits one failure JSON. Codes: `ENCRYPTED`, `DRM_PROTECTED`, `UNSUPPORTED_FORMAT`, `CORRUPTED`, `IMAGE_BASED_PDF`, `ZIP_BOMB`, `DECOMPRESSION_BOMB`, `NO_SECTIONS`, `OUTPUT_TOO_LARGE`, `MISSING_DEPENDENCY`, `EMPTY_INPUT`, `FILE_NOT_FOUND`, `PARSE_ERROR`. Each failure JSON also carries `file` (the failing input's basename), so a batch run can tell which input failed without parsing stderr. **Stability**: the exit-code rule (0 success / 1 failure) and the JSON fields are stable (fields are only ever added), and the `code` set only ever grows — existing values are never renamed or removed. The `error` string is for humans and is not part of the contract.
 
-### Image bundles — `images/manifest.json` (v4.10.0+, #70)
+### Image bundles — `images/<document name>/manifest.json` (v4.10.0+, #70 · #98)
 
-When saving with `-o`/`-d`, extracted images land in `images/` together with a `manifest.json`, so consumers branch on formats without extension or magic-byte guessing.
+When saving with `-o`/`-d`, extracted images land in a per-document folder `images/<document name>/` (the `-o` output name or the `-d` input name without its extension) together with a `manifest.json`, and Markdown links point there (spaces and parentheses percent-encoded). Converting several documents into one folder no longer overwrites each other's images. Consumers branch on formats without extension or magic-byte guessing.
 
 ```json
 [ { "name": "image_001.png", "mimeType": "image/png", "bytes": 68, "source": "BinData/image1.png" } ]

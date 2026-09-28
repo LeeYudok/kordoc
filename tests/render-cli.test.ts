@@ -31,6 +31,16 @@ describe("render CLI", () => {
     const svg = readFileSync(out, "utf8")
     assert.ok(svg.includes('data-page="1"') && svg.includes('data-page="2"') && svg.includes("translate(0 "))
   })
+  it("--reflow 는 기본값(켬)과 같다 — 옛 안내(SKILL.md) 호환 (#97)", async () => {
+    const { markdownToHwpx } = await import("../src/index.js")
+    const gen = join(dir, "gen.hwpx")
+    writeFileSync(gen, Buffer.from(await markdownToHwpx("# 제목\n\n본문 한 줄")))
+    const a = join(dir, "gen-default.svg"), b = join(dir, "gen-reflow.svg")
+    assert.equal(run(["render", gen, "-o", a, "--silent"]).status, 0)
+    const r = run(["render", gen, "--reflow", "-o", b, "--silent"])
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(readFileSync(b, "utf8"), readFileSync(a, "utf8"))
+  })
   it("--format png -d 로 페이지별 파일, --pages 로 한 쪽만", () => {
     const pages = join(dir, "pages")
     const r = run(["render", doc, "--format", "png", "-d", pages, "--silent"])

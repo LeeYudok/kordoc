@@ -34,7 +34,7 @@ program
   .option("--keep-empty-paragraphs", "빈 문단 보존 — 본문은 빈 paragraph 블록, 표 셀은 빈 줄로 (#57, 기본 off: 빈 문단 제거)")
   .option("--include-field-placeholders", "미기입 누름틀 안내문도 출력 — 빈 서식의 칸 용도 보존 (#92, 기본 off: 인쇄되지 않는 안내문 제외)")
   .option("--inline-images", "이미지를 base64 data URI 로 마크다운에 인라인 (BMP→PNG 압축, HWP5 전용 — 인라인된 경우만 파일 미저장, 그 외 포맷은 저장 유지)")
-  .option("--image-refs", "--format json 에서 이미지 바이트를 인라인하지 않고 파일 참조(images/<파일명>)만 남김 (#65 — 이미지가 수백 장인 문서의 직렬화 한계 회피, -o/-d 와 함께 사용)")
+  .option("--image-refs", "--format json 에서 이미지 바이트를 인라인하지 않고 파일 참조(images/<문서 이름>/<파일명>)만 남김 (#65 — 이미지가 수백 장인 문서의 직렬화 한계 회피, -o/-d 와 함께 사용)")
   .option("--password <pw>", "암호로 보호된 문서의 열기 암호 (#59, HWPX·HWP3·HWP5. 한컴 DRM 문서는 해당 없음)")
   .option("--html-tables", "모든 표를 HTML 로 — 파이프 표도 HTML 표로, 태그마다 한 줄씩 들여써 냄")
   .option("--plain", "평문 Markdown — 그림 자리 표시·링크 URL·밑줄/굵게 표기를 빼고 글만 (제목·목록·표 구조는 유지, 색인·RAG 용)")
@@ -120,17 +120,21 @@ program
         // (인라인 모드에선 이미지가 마크다운에 임베드되므로 건너뜀). 종전엔 --out-dir 만 봐서 -o 결과의 그림 링크가 전부 깨졌다(#94).
         // <img src> 는 병합/중첩 표 셀 경로(table/builder.ts) — 마크다운 문법과 함께 둘 다 바꿔야 참조가 안 깨진다
         const savesImageFiles = Boolean(opts.outDir || (opts.output && files.length === 1))
+        // 그림은 문서마다 images/<문서 이름>/ 에 — 같은 폴더로 여러 문서를 변환하면 image_001.png 가 서로 덮어써졌다(#98).
+        // 문서 이름은 출력 파일 이름(-o) 또는 입력 파일 이름(-d)에서 확장자를 뺀 것. 링크에서는 공백·괄호만 퍼센트 인코딩한다
+        const docStem = (opts.output && files.length === 1 ? basename(opts.output) : fileName).replace(/\.[^.]+$/, "")
+        const imgLink = `images/${docStem.replace(/[ ()]/g, ch => encodeURIComponent(ch))}/`
         if (savesImageFiles && result.images?.length && !imagesInlined) {
           markdown = markdown
-            .replace(/!\[image\]\(image_/g, "![image](images/image_")
-            .replace(/(<img\b[^>]*\bsrc=")image_/g, "$1images/image_")
+            .replace(/!\[image\]\(image_/g, `![image](${imgLink}image_`)
+            .replace(/(<img\b[^>]*\bsrc=")image_/g, `$1${imgLink}image_`)
         }
         // json 직렬화 — refsOnly면 이미지 바이트를 빼고 저장 경로만 남긴다.
         // 이미지가 수백 장인 문서는 base64 총량이 V8 문자열 한계를 넘어 RangeError 로
         // 터졌고, 그 예외가 성공 로그 뒤 비-JSON 출력이 되어 파이프라인이 깨졌다 (#65).
         const serializeJson = (refsOnly: boolean): string => {
           const payload = refsOnly && result.images?.length
-            ? { ...result, images: result.images.map(img => ({ filename: img.filename, mimeType: img.mimeType, path: `images/${img.filename}` })) }
+            ? { ...result, images: result.images.map(img => ({ filename: img.filename, mimeType: img.mimeType, path: `images/${docStem}/${img.filename}` })) }
             : result
           return JSON.stringify(payload, (_key, value) =>
             value instanceof Uint8Array ? Buffer.from(value).toString("base64") : value
@@ -146,7 +150,7 @@ program
             // 저장 위치가 없으면(stdout) 구제할 방법이 없으므로 실패 JSON 계약으로 넘긴다.
             if (!savesImages || !result.images?.length) throw err
             output = serializeJson(true)
-            process.stderr.write(`  ⚠️ 이미지 base64 인라인이 직렬화 한계를 넘어 파일 참조로 대체했습니다 (${result.images.length}개 → images/)\n`)
+            process.stderr.write(`  ⚠️ 이미지 base64 인라인이 직렬화 한계를 넘어 파일 참조로 대체했습니다 (${result.images.length}개 → images/${docStem}/)\n`)
           }
         } else if (opts.format === "chunks") {
           const { blocksToChunks } = await import("./chunks.js")
@@ -158,12 +162,12 @@ program
         // 이미지 저장 (--out-dir 또는 --output 시) — 실제 인라인된 경우(HWP5)에만 미저장, 그 외엔 저장 유지
         const saveImages = (dir: string) => {
           if (!result.images?.length || imagesInlined) return
-          const imgDir = resolve(dir, "images")
+          const imgDir = resolve(dir, "images", docStem)
           mkdirSync(imgDir, { recursive: true })
           for (const img of result.images) {
             writeFileSync(resolve(imgDir, img.filename), img.data)
           }
-          // images/manifest.json — 소비자가 확장자·매직바이트 추측 없이 형식 분기(#70).
+          // images/<문서 이름>/manifest.json — 소비자가 확장자·매직바이트 추측 없이 형식 분기(#70).
           // mimeType 은 매직바이트 실측 우선 — 확장자 유래 선언값은 실데이터와 어긋날 수 있다.
           const manifest = result.images.map(img => ({
             name: img.filename,

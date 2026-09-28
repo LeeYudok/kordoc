@@ -1,6 +1,6 @@
 /** SVG → PNG/JPEG 래스터 — sharp optional 의존 (미설치 시 KordocError, SVG 경로는 sharp 불필요) */
 
-import { KordocError } from "../utils.js"
+import { KordocError, OPTIONAL_DEP_INSTALL_HINT } from "../utils.js"
 
 export interface RasterizeOptions {
   /** 출력 최대 폭 px (기본 1400) */
@@ -77,7 +77,8 @@ export async function loadSharp(): Promise<SharpLike> {
     return mod.default ?? mod
   } catch {
     throw new KordocError(
-      'PNG 래스터에는 sharp가 필요합니다 (npm install sharp). sharp 없이 쓰려면 format: "svg" + output_path로 SVG 파일 저장을 사용하세요',
+      'PNG 래스터에는 sharp가 필요합니다 (npm install sharp). sharp 없이 쓰려면 format: "svg" + output_path로 SVG 파일 저장을 사용하세요.' +
+        OPTIONAL_DEP_INSTALL_HINT,
     )
   }
 }
