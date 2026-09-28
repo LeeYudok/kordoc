@@ -56,11 +56,14 @@ const MIN_GLYPH_COVERAGE = 0.8  // 래스터 글자 검사 하한 (코퍼스 82�
 // 같은 출력 R .98117 → .98090·한글 R .99322 → .99288 — 재현율 하한을 새 기준 실측 바로 아래로, 정밀도 하한은 .9825 아래로 올린다
 // 2026-09-28 사전 밖 괄호 「」【】 복원(엔진): 같은 채점기 R .98090 → .98337·P .98246 → .98494 — 하한을 −0.2pp 여유로 올린다
 // 글머리 ◎●▪ 복원: R .98405 → .98486·P .98561 → .98623 (반각 낫표 접기 포함 새 채점기)
+// 글 없는 그림을 글자 자리로 판정(채점 기준 변경): P .98623 → .98693
 const GATES = {
-  cerMicroMax: 0.100, charRecallMin: 0.9828, charPrecisionMin: 0.9842, hangulRecallMin: 0.992,
+  cerMicroMax: 0.100, charRecallMin: 0.9828, charPrecisionMin: 0.9849, hangulRecallMin: 0.992,
   tableMatchedMin: 0.76, tableCellF1Min: 0.535, minDocs: 54, minPages: 104,
 }
 
+/** 글 없는 그림 판정 — 텍스트층 글자 자리(글자 단위)로. 종전 블록 bbox 판정은 표 블록이 표 전체를 덮어 표 안 그림(로고 모음)이 늘 '글 있는 그림'이 됐다 */
+const TEXTLESS_BY_GLYPH = !process.env.OCR_TEXTLESS_BLOCKS
 const toAB = (b) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)
 
 const pdfDir = join(root, "corpus", "pdf")
@@ -134,7 +137,9 @@ for (const f of files) {
     return ix > 0 && iy > 0 && ix * iy >= 0.1 * (r.x2 - r.x1) * (r.y2 - r.y1)
   }
   const textless = [...rects].flatMap(([pg, rs]) => rs.filter(r => (r.x2 - r.x1) * (r.y2 - r.y1) > 2000 &&
-    !gt.blocks.some(g => g.pageNumber === pg && g.type !== "image" && g.bbox && (inRect(g.bbox, r) || overlaps(g.bbox, r)))).map(r => ({ pg, r })))
+    (TEXTLESS_BY_GLYPH
+      ? !(rs.textPts ?? []).some(p => p.x >= r.x1 && p.x <= r.x2 && p.y >= r.y1 && p.y <= r.y2)
+      : !gt.blocks.some(g => g.pageNumber === pg && g.type !== "image" && g.bbox && (inRect(g.bbox, r) || overlaps(g.bbox, r))))).map(r => ({ pg, r })))
   const ocrKept = ocr.blocks.filter(o => !textless.some(({ pg, r }) => o.pageNumber === pg && inRect(o.bbox, r)))
   const gSegs = blockTexts(gt.blocks), oSegs = blockTexts(ocrKept)
   const a = fairText(gSegs).slice(0, MAX_CMP_CHARS)

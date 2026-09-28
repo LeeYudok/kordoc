@@ -239,6 +239,9 @@ export async function imageRects(raw, pages) {
           rects.push({ x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) })
         }
       }
+      // 텍스트층 글자 자리(글 조각 가운데) — 그림 안에 텍스트층 글자가 있는지 가른다
+      const tc = await page.getTextContent()
+      rects.textPts = tc.items.filter(it => it.str && it.str.trim()).map(it => ({ x: it.transform[4] + (it.width || 0) / 2, y: it.transform[5] + Math.abs(it.transform[3] || it.height || 0) * 0.3 }))
       out.set(pn, rects)
     }
   } finally {
