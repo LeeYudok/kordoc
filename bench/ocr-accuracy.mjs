@@ -52,8 +52,10 @@ const MIN_GLYPH_COVERAGE = 0.8  // 래스터 글자 검사 하한 (코퍼스 82�
 // 문단으로 내는 역할 판정(v4.15.5 이전 커밋 3b93f1b)이 원래 OCR 과 잘 맞던 목차 표 4개(ice-arc-2026 3·korean-press-guide 1)를
 // 정답 모수에서 뺐다(72→68표). 종전 0.77/0.545 는 그 표들을 포함한 값이다. 문서별 대조에서 OCR 쪽 실제 차이는 seoul-archives-guide
 // 목차(텍스트층은 한컴 클립 표, OCR 은 목차 문단) 1건이며, 재산정 시점 값은 matched 0.7647·cellF1 0.5409 다
+// 2026-09-28 채점 기준 변경(글 없는 그림 영역 OCR 글 제외): 그림 속 글이 우연히 정답 글자와 짝지어져 부풀던 재현율이 빠져
+// 같은 출력 R .98117 → .98090·한글 R .99322 → .99288 — 재현율 하한을 새 기준 실측 바로 아래로, 정밀도 하한은 .9825 아래로 올린다
 const GATES = {
-  cerMicroMax: 0.100, charRecallMin: 0.981, charPrecisionMin: 0.974, hangulRecallMin: 0.993,
+  cerMicroMax: 0.100, charRecallMin: 0.980, charPrecisionMin: 0.982, hangulRecallMin: 0.992,
   tableMatchedMin: 0.76, tableCellF1Min: 0.535, minDocs: 54, minPages: 104,
 }
 
