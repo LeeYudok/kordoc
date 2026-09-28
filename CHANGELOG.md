@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.16.0] - 2026-09-28
 
-PDF 글 정답(751쌍, 새 채점기 기준 v4.15.7 → 이번): recall 0.99619 → 0.99712 · precision 0.98867 → 0.99521 · order 0.98787 → 0.99102 · 어절 F1 0.98466 → 0.98641 (225문서 나아짐·5문서 혼합 변화 — 아래 항목에 문서명). 한국 PDF 표 정답 exact·OCR 정확도·ODL 200 기본은 그대로, ODL `ocr+plain+htmlTables` 0.9711 → 0.9728.
+PDF 글·표 복원을 채점 기준 정비와 함께 한 단계 더 올리고, 텍스트층 없는 쪽은 OCR 모델이 캐시에 있으면 자동으로 읽는다. PDF 글 정답(744쌍, 새 채점기 기준 v4.15.7 → 4.16.0): recall 0.99619 → 0.99814 · precision 0.98867 → 0.99527 · order 0.98787 → 0.99124 · 어절 F1 0.98466 → 0.98713 (5문서 혼합 변화 — 아래 항목에 문서명). 한국 PDF 표 정답 708쌍 2,632표 exact 96.69%·매칭 99.51%. ODL 200 기본 0.937 → 0.940(모델 캐시 있을 때), `ocr+plain+htmlTables` 0.9711 → 0.9728. DOCX 번호 매기기 실제 라벨, 쪽 아래 각주·문서 끝 미주를 참조 자리로, 보도자료 연락처 표 6열. 이슈 #97~#99 와 보안 보강 PR #100(@LimePencil)·미주 목차 오인 PR #96(@LimePencil)을 반영한다.
 
 ### Fixed
 
