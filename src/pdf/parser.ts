@@ -48,6 +48,7 @@ import { getDocument, GlobalWorkerOptions, OPS } from "pdfjs-dist/legacy/build/p
 import { createRequire } from "node:module"
 import { dirname, join } from "node:path"
 import { ocrModelsCached } from "../ocr/models.js"
+import { splitContactTables } from "./contact-table.js"
 
 // 기존 공개 API 경로 유지 — 이동된 함수의 re-export
 export { mergeCrossPageTables }
@@ -457,6 +458,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     // 머리글/바닥글 제거 후 인접해진 표를 하나로 (ODL TableBorderProcessor.checkNeighborTables 포팅)
     mergeContinuedCells(blocks, pageHeights)
     mergeCrossPageTables(blocks, pageHeights)
+    // 칸 클립 없는 PDF 의 보도자료 연락처 표 4열 → HWPX 서식 6열 (contact-table.ts)
+    splitContactTables(blocks)
     // 후행 빈 열 정리 — HWP 계열 표 빌더와 같은 규칙 (병합 뒤: 쪽마다 같은 열 구조일 때 이어 붙인 다음)
     if (!options?.keepTrailingEmptyCols) trimTrailingEmptyTableCols(blocks)
     // 쪽 넘김으로 꺾인 본문 문단 잇기 — 머리말·꼬리말 제거 뒤, 쪽 끝 그림 주입 전 (line-wrap.ts)

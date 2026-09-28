@@ -365,6 +365,17 @@ function startsWithUnitRow(table: IRTable): boolean {
     && table.cells[0]?.slice(1).every(c => !c.text.trim())
 }
 
+/** 두 첫 행이 같은 머리 모양인가 — 칸마다 열·행 병합이 같고, 세로 병합 칸(두 행 이상)을 하나 이상 품었다 */
+function sameHeadShape(a: IRCell[] | undefined, b: IRCell[] | undefined): boolean {
+  if (!a || !b || a.length !== b.length) return false
+  let tall = false
+  for (let c = 0; c < a.length; c++) {
+    if (a[c].colSpan !== b[c].colSpan || a[c].rowSpan !== b[c].rowSpan) return false
+    if (a[c].rowSpan >= 2 && a[c].text.trim()) tall = true
+  }
+  return tall
+}
+
 export function mergeCrossPageTables(blocks: IRBlock[], pageHeights?: Map<number, number>): void {
   mergeColumnFlow(blocks, pageHeights)
   for (let i = blocks.length - 2; i >= 0; i--) {
@@ -405,6 +416,10 @@ export function mergeCrossPageTables(blocks: IRBlock[], pageHeights?: Map<number
     // joinClipParts 가 쪼개진 행·반복 머리 행 증거가 있을 때만 옮겨 잇는다 (여기서 옮김을 받으면 연달아 놓인 Q&A 상자가 12×5 로 이어진다)
     const px = TABLE_COLXS.get(prev.table), cx = TABLE_COLXS.get(curr.table)
     if (px && cx && !shiftedSame(px, cx, !CLIP_TABLES.has(prev.table) && !CLIP_TABLES.has(curr.table))) continue
+
+    // 다음 표 첫 행이 앞 표 첫 행과 같은 모양(칸마다 열·행 병합이 같고 세로 병합 칸을 품은 머리)인데 글이 다르면 새 표의 머리다
+    // — 쪽마다 새로 놓인 같은 틀 상자("일 러 두 기" 다음 쪽 "목 차", 보도자료 표지 상자). 되풀이 머리 행은 글이 같다
+    if (!rowTextsEqual(prev.table.cells[0], curr.table.cells[0]) && sameHeadShape(prev.table.cells[0], curr.table.cells[0])) continue
 
     // 반복 헤더 행 제거: 다음 표 첫 행이 이전 표 첫 행과 동일하면 중복 헤더
     let currCells = curr.table.cells

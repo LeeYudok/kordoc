@@ -497,6 +497,17 @@ describe("쪽 넘김 2차 — 잇기 판정", () => {
     assert.equal(blocks[0].table!.rows, 3)
   })
 
+  it("다음 쪽 선 표 첫 행이 앞 표 첫 행과 같은 세로 병합 머리 모양인데 글이 다르면 새 상자다 (\"일 러 두 기\" 상자 다음 쪽 \"목 차\" 상자)", () => {
+    const line = (t: IRTable, xs: number[], page: number, y: number, h: number): IRBlock => {
+      TABLE_COLXS.set(t, xs)
+      return { type: "table", table: t, pageNumber: page, bbox: { page, x: xs[0], y, width: xs[xs.length - 1] - xs[0], height: h } }
+    }
+    const box = (title: string, body: string): IRTable => grid(3, 3, [[0, 0, ""], [0, 1, title, 1, 2], [0, 2, ""], [1, 0, ""], [1, 2, ""], [2, 0, body, 3]])
+    const blocks: IRBlock[] = [line(box("일 러 두 기", "□ 본 보도자료는 …"), [60, 200, 400, 540], 1, 70, 700), line(box("목 차", "□ 결과(요약) … 1"), [60, 200, 400, 540], 2, 400, 370)]
+    mergeCrossPageTables(blocks, H)
+    assert.equal(blocks.length, 2)
+  })
+
   it("앞 표 테두리 안의 예시 상자가 쪽 마지막 표여도 앞 표를 다음 쪽 조각과 잇는다", () => {
     const blocks: IRBlock[] = [
       clipBlock(grid(2, 2, [[0, 0, "구분"], [0, 1, "기준"], [1, 0, "3. 쪽번호"], [1, 1, "우측 상단에"]]), [60, 160, 460], 1, 70, 300),
