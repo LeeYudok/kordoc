@@ -35,7 +35,7 @@ import {
   getOcrModelsDir,
   parseCharacterDict,
 } from "./models.js"
-import { grayCrop, inkBounds, inkStats, leaderRuns, leadingTriangle, splitRowBands } from "./line-split.js"
+import { bracketFeatures, bracketShape, grayCrop, inkBounds, inkStats, leaderRuns, leadingTriangle, splitRowBands } from "./line-split.js"
 import { isDotFragment, joinLeaderItems, restoreBulletItems, restoreSymbols } from "./postprocess.js"
 import { bandBoxes, splitBoxAtCellRules, lineCrop, type Box, REC_HEIGHT } from "./crop.js"
 
@@ -263,7 +263,7 @@ export class OcrEngine {
     const results = await this.recognizeJobs(rgba, width, jobs, tuning.recBatch)
 
     // 회전 후보 그룹은 최고 신뢰도 하나만
-    const best = new Map<number, { job: LineJob; text: string; confidence: number }>()
+    const best = new Map<number, { job: LineJob; text: string; confidence: number; steps: number[]; stepPx: number }>()
     jobs.forEach((job, i) => {
       const r = results[i]
       if (!r) return
@@ -272,7 +272,8 @@ export class OcrEngine {
     })
 
     let items: OcrItem[] = []
-    for (const { job, text: raw, confidence } of best.values()) {
+    for (const { job, text: read, confidence, steps, stepPx } of best.values()) {
+      const raw = tuning.postprocess && job.rot === 0 && /[[\]]/.test(read) ? restoreBrackets(rgba, width, job.box, read, steps, stepPx) : read
       let text = tuning.postprocess ? restoreSymbols(raw.trim()) : raw
       if (!text.trim()) continue
       // 숫자 앞 △·▲ 는 사전 밖이라 빈칸으로 사라진다 — 박스 맨 앞 글자 모양으로 되살린다 (line-split.ts)
@@ -378,10 +379,10 @@ export class OcrEngine {
     pageW: number,
     jobs: LineJob[],
     batchSize: number,
-  ): Promise<Array<{ text: string; confidence: number } | null>> {
+  ): Promise<Array<{ text: string; confidence: number; steps: number[]; stepPx: number } | null>> {
     const crops = jobs.map(j => lineCrop(rgba, pageW, j.box, j.rot))
     const order = crops.map((_, i) => i).sort((a, b) => crops[a].w - crops[b].w)
-    const results: Array<{ text: string; confidence: number } | null> = new Array(jobs.length).fill(null)
+    const results: Array<{ text: string; confidence: number; steps: number[]; stepPx: number } | null> = new Array(jobs.length).fill(null)
     const plane = REC_HEIGHT
     for (let s = 0; s < order.length;) {
       // 폭 오름차순이라 배치 마지막 원소가 최대 폭
@@ -414,12 +415,34 @@ export class OcrEngine {
       const [, T, C] = logits.dims as number[]
       const data = logits.data as Float32Array
       idx.forEach((ci, k) => {
-        results[ci] = ctcDecode(data.subarray(k * T * C, (k + 1) * T * C), T, C, this.dict)
+        const r = ctcDecode(data.subarray(k * T * C, (k + 1) * T * C), T, C, this.dict)
+        // CTC 시점 하나가 덮는 원본 픽셀 폭 — crop 은 높이 48 로 줄인 뒤 bw 까지 오른쪽을 채웠다 (회전 crop 은 세로 축)
+        const job = jobs[ci], src = job.rot === 0 ? job.box.w : job.box.h
+        results[ci] = r && { ...r, stepPx: (bw / T) * (src / crops[ci].w) }
       })
       s = e
     }
     return results
   }
+}
+
+/**
+ * 사전 밖 괄호 되살리기 — 인식 사전에 「」·【】 가 없어 모델은 모두 [ ] 로 읽는다(코퍼스 정답 「」44·｢｣23·【】41·[]159 쌍 ↔ OCR [ 274).
+ * [ ] 글자의 CTC 시점을 박스 픽셀로 옮겨 그 자리 잉크 조각 모양을 본다: 【】 는 속이 찬 조각, 「 는 윗변 가로 획만, 」 는 아랫변
+ * 가로 획만 있다([ ] 는 위아래 모두)
+ */
+function restoreBrackets(rgba: Uint8Array, pageW: number, box: Box, text: string, steps: number[], stepPx: number): string {
+  const chars = [...text]
+  if (chars.length !== steps.length) return text
+  const gray = grayCrop(rgba, pageW, box)
+  const ink = inkStats(gray)
+  for (let i = 0; i < chars.length; i++) {
+    if (chars[i] !== "[" && chars[i] !== "]") continue
+    const f = bracketFeatures(gray, box.w, box.h, ink, (steps[i] + 0.5) * stepPx)
+    const shape = f && bracketShape(f, chars[i] === "]")
+    if (shape) chars[i] = shape
+  }
+  return chars.join("")
 }
 
 /** CTC greedy 디코드 — 연속 중복 붕괴 → blank(0) 제거 → 사전 매핑 (테스트용 export) */
@@ -428,11 +451,14 @@ export function ctcDecode(
   T: number,
   C: number,
   dict: string[],
-): { text: string; confidence: number } | null {
+): { text: string; confidence: number; steps: number[] } | null {
   let text = ""
   let confSum = 0
   let confCount = 0
   let prev = -1
+  /** 글자(코드 포인트)마다 CTC 시점 구간 [첫, 끝] — 괄호 모양 판별이 글자 자리를 픽셀로 옮길 때 쓴다 */
+  const runs: Array<[number, number]> = []
+  let open: Array<[number, number]> = []
   for (let t = 0; t < T; t++) {
     const off = t * C
     let best = 0
@@ -443,7 +469,9 @@ export function ctcDecode(
     }
     const repeat = best === prev
     prev = best
-    if (best === 0 || repeat) continue
+    if (repeat && best !== 0) { for (const r of open) r[1] = t; continue }
+    open = []
+    if (best === 0) continue
     // 모델 출력이 softmax 확률이 아니면 (>1) 해당 스텝만 정규화
     let p = bestV
     if (p > 1.0001 || p < 0) {
@@ -453,11 +481,12 @@ export function ctcDecode(
     }
     confSum += p
     confCount++
-    if (best >= 1 && best <= dict.length) text += dict[best - 1]
-    else if (best === dict.length + 1) text += " "
+    const tok = best >= 1 && best <= dict.length ? dict[best - 1] : best === dict.length + 1 ? " " : ""
+    text += tok
+    for (const _ of tok) { const r: [number, number] = [t, t]; runs.push(r); open.push(r) }
   }
   if (!text) return null
-  return { text, confidence: confCount > 0 ? confSum / confCount : 0 }
+  return { text, confidence: confCount > 0 ? confSum / confCount : 0, steps: runs.map(([a, b]) => (a + b) / 2) }
 }
 
 /** 이진화 확률맵의 4-연결 성분 bbox (score = 성분 평균 확률, 테스트용 export) */

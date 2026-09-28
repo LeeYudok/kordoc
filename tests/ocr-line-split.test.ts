@@ -12,7 +12,7 @@
  */
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
-import { inkStats, leaderRuns, leadingTriangle, splitRowBands } from "../src/ocr/line-split.js"
+import { bracketFeatures, bracketShape, inkStats, leaderRuns, leadingTriangle, splitRowBands } from "../src/ocr/line-split.js"
 
 function canvas(w: number, h: number, bg = 255): Uint8Array {
   return new Uint8Array(w * h).fill(bg)
@@ -182,5 +182,43 @@ describe("leadingTriangle — 숫자 앞 △·▲", () => {
     triangle(g, w, 10, 12, 19)
     rect(g, w, 40, 10, 52, 32)
     assert.equal(leadingTriangle(g, w, h, inkStats(g)), "\u25b3")
+  })
+})
+
+describe("bracketFeatures·bracketShape — 사전 밖 괄호 「」【】", () => {
+  // 인식 사전에 「」·【】 가 없어 모두 [ ] 로 읽힌다 (코퍼스 정답 「」·｢｣ 67쌍·【】 41쌍). 괄호 자리 잉크 조각 모양으로 되살린다
+  /** ASCII 조각을 캔버스 (x0, y0) 에 찍는다 ("#" = 잉크) */
+  function art(g: Uint8Array, w: number, x0: number, y0: number, rows: string[]) {
+    rows.forEach((r, y) => [...r].forEach((c, x) => { if (c === "#") g[(y0 + y) * w + x0 + x] = 0 }))
+  }
+  const sq = ["#######", ...Array(24).fill("###...."), "#######"]
+  const lens = ["#######", "######.", "######.", "#####..", "#####..", ...Array(16).fill("####..."), "#####..", "#####..", "######.", "######.", "#######"]
+  const corner = ["##########", "##########", ...Array(11).fill("##........")]
+  const setup = (glyph: string[], y0 = 4) => {
+    const w = 80, h = 36, g = canvas(w, h)
+    art(g, w, 10, y0, glyph)
+    rect(g, w, 30, 4, 56, 30) // 이웃 한글 글자 (글자 높이 기준)
+    return { g, w, h }
+  }
+  it("윗·아랫변 뒤 한 번에 획 폭으로 떨어지면 [ 그대로", () => {
+    const { g, w, h } = setup(sq)
+    const f = bracketFeatures(g, w, h, inkStats(g), 13)!
+    assert.equal(bracketShape(f, false), null)
+  })
+  it("위아래에서 가운데로 폭이 줄어들면 【", () => {
+    const { g, w, h } = setup(lens)
+    const f = bracketFeatures(g, w, h, inkStats(g), 13)!
+    assert.ok(f.taper >= 0.16, `taper=${f.taper}`)
+    assert.equal(bracketShape(f, false), "\u3010")
+  })
+  it("윗변 가로 획만 있는 글자 높이 절반의 조각은 「, 뒤집으면 」", () => {
+    const { g, w, h } = setup(corner)
+    assert.equal(bracketShape(bracketFeatures(g, w, h, inkStats(g), 14)!, false), "\u300c")
+    const { g: g2 } = setup([...corner].reverse().map(r => [...r].reverse().join("")), 17)
+    assert.equal(bracketShape(bracketFeatures(g2, w, h, inkStats(g2), 14)!, true), "\u300d")
+  })
+  it("자리에 괄호 조각이 없으면 null", () => {
+    const { g, w, h } = setup([])
+    assert.equal(bracketFeatures(g, w, h, inkStats(g), 13), null)
   })
 })

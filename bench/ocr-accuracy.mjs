@@ -54,8 +54,9 @@ const MIN_GLYPH_COVERAGE = 0.8  // 래스터 글자 검사 하한 (코퍼스 82�
 // 목차(텍스트층은 한컴 클립 표, OCR 은 목차 문단) 1건이며, 재산정 시점 값은 matched 0.7647·cellF1 0.5409 다
 // 2026-09-28 채점 기준 변경(글 없는 그림 영역 OCR 글 제외): 그림 속 글이 우연히 정답 글자와 짝지어져 부풀던 재현율이 빠져
 // 같은 출력 R .98117 → .98090·한글 R .99322 → .99288 — 재현율 하한을 새 기준 실측 바로 아래로, 정밀도 하한은 .9825 아래로 올린다
+// 2026-09-28 사전 밖 괄호 「」【】 복원(엔진): 같은 채점기 R .98090 → .98337·P .98246 → .98494 — 하한을 −0.2pp 여유로 올린다
 const GATES = {
-  cerMicroMax: 0.100, charRecallMin: 0.980, charPrecisionMin: 0.982, hangulRecallMin: 0.992,
+  cerMicroMax: 0.100, charRecallMin: 0.9815, charPrecisionMin: 0.983, hangulRecallMin: 0.992,
   tableMatchedMin: 0.76, tableCellF1Min: 0.535, minDocs: 54, minPages: 104,
 }
 

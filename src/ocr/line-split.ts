@@ -328,3 +328,52 @@ export function inkBounds(
   if (x1 < x0 || y1 < y0) return { x0: 0, y0: 0, x1: w, y1: h }
   return { x0, y0, x1: x1 + 1, y1: y1 + 1 }
 }
+
+/**
+ * 괄호 조각 모양 — 윗·아랫 띠(높이 15%)의 가로 획 길이(폭 대비)와 기울기 줄 비율(taper: 획 폭과 전체 폭 사이 폭인 줄 / 높이).
+ * [ ] 는 윗·아랫변 뒤 한 번에 획 폭으로 떨어지고(taper ≈ 0), 【】 는 위아래에서 가운데로 폭이 줄어든다(창원 계획 【 0.19~0.52 · 강원 정보화 계획 [ 0.03~0.06)
+ */
+export interface BracketFeatures { top: number; bottom: number; taper: number; ch: number; charH: number }
+
+/** 박스 로컬 x 중심(cx) 자리의 괄호 조각 — 글자 높이 30% 이상 성분 가운데 cx 에 가장 가까운 것 (「」 는 글자 높이의 절반쯤이다) */
+export function bracketFeatures(gray: Uint8Array, w: number, h: number, ink: InkStats, cx: number): BracketFeatures | null {
+  const { comps, label } = components(gray, w, h, ink)
+  let charH = 0
+  for (const c of comps) charH = Math.max(charH, c.y1 - c.y0)
+  if (charH < 8) return null
+  const tol = Math.max(2, charH * 0.3)
+  let best: Comp | null = null, bestD = Infinity
+  for (const c of comps) {
+    if (c.y1 - c.y0 < charH * 0.3 || c.x1 < cx - tol || c.x0 > cx + tol) continue
+    const d = Math.abs((c.x0 + c.x1) / 2 - cx)
+    if (d < bestD) { bestD = d; best = c }
+  }
+  if (!best) return null
+  const b = best
+  const cw = b.x1 - b.x0, ch = b.y1 - b.y0
+  if (cw < 3 || ch < 8) return null
+  const spans: number[] = []
+  for (let y = b.y0; y < b.y1; y++) {
+    let n = 0
+    for (let x = b.x0; x < b.x1; x++) if (label[y * w + x] === b.id) n++
+    spans.push(n)
+  }
+  const band = Math.max(1, Math.round(ch * 0.15))
+  const top = Math.max(...spans.slice(0, band)) / cw, bottom = Math.max(...spans.slice(ch - band)) / cw
+  const midRows = spans.slice(Math.floor(ch * 0.3), Math.ceil(ch * 0.7)).sort((p, q) => p - q)
+  const stroke = midRows[midRows.length >> 1] ?? 0
+  const taper = spans.filter(n => n > stroke && n < cw).length / ch
+  return { top, bottom, taper, ch, charH }
+}
+
+/** 【】 로 볼 기울기 줄 비율 — 코퍼스 실측 [ ] 최대 0.13, 【】 최소 0.19 */
+const BRACKET_TAPER = 0.16
+
+/** 괄호 모양 판별 — 모를 때 null (인식 결과 [ ] 를 둔다) */
+export function bracketShape(f: BracketFeatures, close: boolean): string | null {
+  const [near, far] = close ? [f.bottom, f.top] : [f.top, f.bottom]
+  if (near >= 0.7 && far <= 0.5) return close ? "\u300d" : "\u300c"
+  if (near >= 0.7 && far >= 0.7 && f.taper >= BRACKET_TAPER) return close ? "\u3011" : "\u3010"
+  return null
+}
+
