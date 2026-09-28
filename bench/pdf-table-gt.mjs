@@ -70,6 +70,9 @@ import { homedir } from "node:os"
 import { join, relative, basename } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parse } from "../dist/index.js"
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
+import { mdToPlain } from "./lib/normalize.mjs"
 import { irAnchors, scoreTables } from "./lib/table-score.mjs"
 import { hwpxGeoGrids, toGeoAnchors } from "./lib/geo-grid.mjs"
 
@@ -79,6 +82,18 @@ const gateMode = args.includes("--gate")
 const verbose = args.includes("--verbose")
 const docFilter = (args.find(a => a.startsWith("--doc=")) ?? "").split("=")[1] ?? null
 const flagValue = (k, d) => (args.find(a => a.startsWith(`--${k}=`)) ?? "").split("=")[1] || d
+
+const execFileP = promisify(execFile)
+/** PDF 텍스트층(pdftotext) 공백 뺀 글자 수 — 모수 정책(정답지 부족)에만 쓴다 (pdf-text-gt 와 같은 판정) */
+async function pdftotextChars(file) {
+  for (const bin of ["/opt/homebrew/bin/pdftotext", "pdftotext"]) {
+    try {
+      const { stdout } = await execFileP(bin, ["-enc", "UTF-8", "-q", file, "-"], { maxBuffer: 256 * 1024 * 1024 })
+      return stdout.replace(/\s+/g, "").length
+    } catch { /* 다음 후보 */ }
+  }
+  return null
+}
 
 const round = (x, d = 6) => (x === null || x === undefined ? null : +x.toFixed(d))
 
@@ -99,7 +114,8 @@ const round = (x, d = 6) => (x === null || x === undefined ? null : +x.toFixed(d
 // v4.15.0: 정책브리핑 299쌍 추가 → 716쌍/2,692표. 기존 세트의 모든 지표는 보강 후 기준선과 동일.
 // 실측 exact .932021·F1 .959194·cellExact .935242·NED .891261; 재정렬은 새 세트 2건으로 15→17.
 // 모수 변경에 따른 전체 플로어 재잠금, 중첩 매칭 .920455·exact .892045는 상향.
-const GATES = { matchedRate: 0.985, exactRate: 0.932, cellF1: 0.959, cellExactRate: 0.935, contentNED: 0.891, parseErrors: 0, reorderedMax: 17, minPairs: 716, minRefTables: 2692, nestedMatchedRate: 0.92, nestedExactRate: 0.892 }
+// 2026-09-28 채점 기준 변경: 정답지 부족 쌍(PDF 텍스트층이 HWPX 글의 3배 초과 — pdf-text-gt 와 같은 모수 규칙) 1쌍 39표를 빼 모수 하한 715/2654
+const GATES = { matchedRate: 0.985, exactRate: 0.932, cellF1: 0.959, cellExactRate: 0.935, contentNED: 0.891, parseErrors: 0, reorderedMax: 17, minPairs: 715, minRefTables: 2654, nestedMatchedRate: 0.92, nestedExactRate: 0.892 }
 /** 텍스트층 없음: PDF 텍스트층 한글 / HWPX 한글 이 이 값 미만 (머리 주석 모수 정책) */
 const NO_TEXT_LAYER_RATIO = 0.01
 const hangulCount = s => (s?.match(/[가-힣]/g) ?? []).length
@@ -198,6 +214,11 @@ for (const { set, base, rel } of pairs) {
     const pdf = await parse(await readFile(base + ".pdf"), { filename: basename(base) + ".pdf" })
     if (!hwpx.success) throw new Error(`hwpx 파싱 실패: ${hwpx.error}`)
     if (!pdf.success) throw new Error(`pdf 파싱 실패: ${pdf.error}`)
+    // 정답지 부족 — PDF 텍스트층 글자(공백 제외)가 HWPX 글의 3배를 넘으면 HWPX 에 없는 부록이 PDF 에 붙은 다른 판이다. PDF 글 정답
+    // (pdf-text-gt)과 같은 모수 규칙 (2026-09-28 채점 기준 변경: 가계동향조사 보도자료 — PDF 통계표 수십 쪽·행 구성이 HWPX 와 다름, 39표 중 35 오답)
+    const refChars = mdToPlain(hwpx.markdown).text.replace(/\s+/g, "").length
+    const layerChars = await pdftotextChars(base + ".pdf")
+    if (refChars >= 200 && layerChars !== null && layerChars > refChars * 3) { row.excluded = `정답지 부족 — PDF 텍스트층 ${layerChars}자가 HWPX ${refChars}자의 3배 초과`; rows.push(row); continue }
 
     // 비교 모수 = 최상위 표 중 2행×2열 이상 (양쪽 동일 규칙).
     // 1×1은 래퍼/안내박스 관행이라 제외하되, 셀 안에 중첩표를 담은 래퍼(공문
@@ -331,7 +352,7 @@ const summarize = a => ({
   contentNED: round(a.contentDen ? a.contentNum / a.contentDen : 1),
 })
 const noTextRows = rows.filter(r => r.noTextLayer)
-const trackRows = rows.filter(r => !r.noTextLayer && !r.locked)
+const trackRows = rows.filter(r => !r.noTextLayer && !r.locked && !r.excluded)
 const summary = { ...summarize(agg), pairs: trackRows.length, parseErrors, nested: summarize(nestedAgg) }
 const bySet = Object.fromEntries([...setAgg].filter(([, a]) => a.pairs > 0).map(([s, a]) => [s, summarize(a)]))
 const noTextLayer = {
@@ -353,6 +374,7 @@ for (const [s, v] of Object.entries(bySet)) {
   const v = summary.nested
   console.log(`  [중첩표] ${v.pairs}쌍 표 ${v.refTables} | 매칭 ${round(v.matchedRate * 100, 2)}% exact ${round(v.exactRate * 100, 2)}% | F1 ${v.cellF1} cellExact ${v.cellExactRate} NED ${v.contentNED}`)
 }
+for (const r of rows.filter(r => r.excluded)) console.log(`  [정답지 부족] ${r.pair} — ${r.excluded}, 모수 제외`)
 for (const r of rows.filter(r => r.locked)) console.log(`  [HWPX 암호] ${r.pair} — 암호를 몰라 정답지 없음(ENCRYPTED 거절 확인), 모수 제외`)
 if (noTextRows.length) {
   const line = (label, v) => console.log(`  [${label}] ${v.pairs}쌍 표 ${v.refTables} | 매칭 ${round(v.matchedRate * 100, 2)}% exact ${round(v.exactRate * 100, 2)}% | F1 ${v.cellF1} cellExact ${v.cellExactRate} NED ${v.contentNED}`)

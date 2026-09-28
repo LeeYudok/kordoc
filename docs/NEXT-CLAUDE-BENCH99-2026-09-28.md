@@ -11,9 +11,9 @@
 | | precision | 0.99471 | ✅ |
 | | order | 0.99094 | ✅ |
 | | spaceF1 | 0.98556 | 0.99 |
-| 한국 PDF 표 `bench/pdf-table-gt.mjs --no-ocr` (2,693표) | 매칭 | 99.0% | ✅ |
-| | exact | 94.39% | 99% |
-| | 중첩표 exact (176) | 94.32% | 99% |
+| 한국 PDF 표 `bench/pdf-table-gt.mjs --no-ocr` (2,654표) | 매칭 | 99.2% | ✅ |
+| | exact | 95.63% | 99% |
+| | 중첩표 exact (174) | 95.4% | 99% |
 | ODL 200 (`~/workspace/odl-bench-breakthrough-20260925`) | 기본 | 0.93705 | 0.99 |
 | | ocr+plain+htmlTables | 0.97276 | 0.99 |
 | OCR `bench/ocr-accuracy.mjs` | charRecall / charPrecision / CER | 0.981 / 0.975 / 0.082 | 0.99 / 0.99 / 0.01 |
