@@ -35,7 +35,7 @@ import {
   getOcrModelsDir,
   parseCharacterDict,
 } from "./models.js"
-import { bracketFeatures, bracketShape, grayCrop, inkBounds, inkStats, leaderRuns, leadingTriangle, splitRowBands } from "./line-split.js"
+import { bracketFeatures, bracketShape, leadingBullet, grayCrop, inkBounds, inkStats, leaderRuns, leadingTriangle, splitRowBands } from "./line-split.js"
 import { isDotFragment, joinLeaderItems, restoreBulletItems, restoreSymbols } from "./postprocess.js"
 import { bandBoxes, splitBoxAtCellRules, lineCrop, type Box, REC_HEIGHT } from "./crop.js"
 
@@ -276,6 +276,20 @@ export class OcrEngine {
       const raw = tuning.postprocess && job.rot === 0 && /[[\]]/.test(read) ? restoreBrackets(rgba, width, job.box, read, steps, stepPx) : read
       let text = tuning.postprocess ? restoreSymbols(raw.trim()) : raw
       if (!text.trim()) continue
+      // 사전 밖·작은 점으로 읽히는 글머리(◎ ● ▪) — 첫 글리프 모양으로 되살린다 (line-split.ts)
+      if (tuning.postprocess && job.rot === 0 && !/^[◎●▪□■○ㅇ]/.test(text)) {
+        const chars = [...read], k = chars.findIndex(c => c.trim())
+        if (k >= 0 && steps.length === chars.length) {
+          const g = grayCrop(rgba, width, job.box)
+          const b = leadingBullet(g, job.box.w, job.box.h, inkStats(g), (steps[k] + 0.5) * stepPx)
+          // ◎ 는 "O" 로 잘못 읽은 자리만 바꾼다(장식 아이콘에 끼워 넣지 않게). ●▪ 는 본문 줄(뒤 글 한글 4음절 이상)에서만 —
+          // 표 칸의 큰 가운뎃점("·수학"·"·승합", 글꼴에 따라 네모·원으로 그려짐)은 정답도 "·" 다
+          const body = (text.match(/[가-힣]/g) ?? []).length >= 4
+          const miss = /^[Oo0•·ㆍ∙‧○]/.test(text)
+          if (b?.mark === "\u25ce" && b.covers && /^[Oo0○]/.test(text)) text = b.mark + " " + text.slice(1).trimStart()
+          else if (b && b.mark !== "\u25ce" && body) text = b.covers ? (miss ? b.mark + " " + text.slice(1).trimStart() : text) : b.mark + " " + text
+        }
+      }
       // 숫자 앞 △·▲ 는 사전 밖이라 빈칸으로 사라진다 — 박스 맨 앞 글자 모양으로 되살린다 (line-split.ts)
       if (tuning.postprocess && /^\d/.test(text) && job.rot === 0) {
         const g = grayCrop(rgba, width, job.box)

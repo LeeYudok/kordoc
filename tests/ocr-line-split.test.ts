@@ -12,7 +12,7 @@
  */
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
-import { bracketFeatures, bracketShape, inkStats, leaderRuns, leadingTriangle, splitRowBands } from "../src/ocr/line-split.js"
+import { bracketFeatures, bracketShape, inkStats, leaderRuns, leadingBullet, leadingTriangle, splitRowBands } from "../src/ocr/line-split.js"
 
 function canvas(w: number, h: number, bg = 255): Uint8Array {
   return new Uint8Array(w * h).fill(bg)
@@ -220,5 +220,38 @@ describe("bracketFeatures·bracketShape — 사전 밖 괄호 「」【】", () 
   it("자리에 괄호 조각이 없으면 null", () => {
     const { g, w, h } = setup([])
     assert.equal(bracketFeatures(g, w, h, inkStats(g), 13), null)
+  })
+})
+
+describe("leadingBullet — 사전 밖·작은 점으로 읽히는 글머리 ◎ ● ▪", () => {
+  /** 원(속 빈·찬) — 중심 (cx, cy), 반지름 r, 두께 t (t ≥ r 이면 속 찬 원) */
+  function disc(g: Uint8Array, w: number, cx: number, cy: number, r: number, t: number) {
+    for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+      const d = Math.hypot(x - cx, y - cy)
+      if (d <= r && d >= r - t) g[y * w + x] = 0
+    }
+  }
+  const text = (g: Uint8Array, w: number) => rect(g, w, 60, 6, 110, 34) // 뒤 글자 (글자 높이 28)
+  it("안팎으로 겹친 두 고리는 ◎", () => {
+    const w = 120, h = 40, g = canvas(w, h)
+    disc(g, w, 22, 20, 12, 2); disc(g, w, 22, 20, 6, 2); text(g, w)
+    assert.deepEqual(leadingBullet(g, w, h, inkStats(g), 23), { mark: "\u25ce", covers: true })
+  })
+  it("글자 높이 절반이 넘는 속 찬 원은 ●, 작은 속 찬 네모는 ▪ — 첫 글자 앞에 따로 있으면 누락(covers false)", () => {
+    const w = 120, h = 40, g = canvas(w, h)
+    disc(g, w, 22, 20, 8, 8); text(g, w)
+    assert.deepEqual(leadingBullet(g, w, h, inkStats(g), 80), { mark: "\u25cf", covers: false })
+    const g2 = canvas(w, h)
+    rect(g2, w, 16, 15, 26, 25); text(g2, w)
+    assert.equal(leadingBullet(g2, w, h, inkStats(g2), 80)?.mark, "\u25aa")
+  })
+  it("가운뎃점 크기(글자 높이 0.2배)·속 빈 원(○·ㅇ)·원문자(안쪽이 숫자)는 null", () => {
+    const w = 120, h = 40
+    const dot = canvas(w, h); rect(dot, w, 18, 18, 24, 24); text(dot, w)
+    assert.equal(leadingBullet(dot, w, h, inkStats(dot), 80), null)
+    const ring = canvas(w, h); disc(ring, w, 22, 20, 12, 2); text(ring, w)
+    assert.equal(leadingBullet(ring, w, h, inkStats(ring), 23), null)
+    const circled = canvas(w, h); disc(circled, w, 22, 20, 12, 2); rect(circled, w, 21, 13, 24, 27); text(circled, w)
+    assert.equal(leadingBullet(circled, w, h, inkStats(circled), 23), null)
   })
 })

@@ -377,3 +377,43 @@ export function bracketShape(f: BracketFeatures, close: boolean): string | null 
   return null
 }
 
+
+/**
+ * 박스 맨 앞 글머리 기호 — 인식 사전에 없거나(◎ ▪) 모델이 작은 점으로 읽는(● → •·) 공문서 글머리를 잉크 조각 모양으로 가른다.
+ * 맨 앞 덩어리(x 가 겹치는 성분 묶음)가 글자 높이 대비 크기·채움·겹침으로:
+ *   ◎ 이중 원 — 성분 둘 이상이 안팎으로 겹치고 속이 빈 둥근 조각 (함평 계획 21개가 "O")
+ *   ● 큰 속 찬 원 — 채움 0.65~0.88(원 π/4≈0.79), 글자 높이 0.45배 이상 (교육청 안내문 17개가 "•"·누락)
+ *   ▪ 작은 속 찬 네모 — 채움 0.9 이상, 글자 높이 0.28~0.6배 (가운뎃점 "·" 은 0.21배 안팎)
+ * 속 빈 원(○·ㅇ·❍)은 픽셀로 못 가르니 건드리지 않는다. firstX 는 첫 인식 글자의 CTC 자리(박스 로컬) —
+ * 덩어리가 그 앞에서 끝나면 인식에서 빠진 것, 그 글자 자리에 걸치면 그 글자가 이 기호를 잘못 읽은 것이다
+ */
+export function leadingBullet(gray: Uint8Array, w: number, h: number, ink: InkStats, firstX: number): { mark: "◎" | "●" | "▪"; covers: boolean } | null {
+  const { comps, label } = components(gray, w, h, ink)
+  let charH = 0
+  for (const c of comps) charH = Math.max(charH, c.y1 - c.y0)
+  if (charH < 10) return null
+  const cand = comps.filter(c => c.y1 - c.y0 >= charH * 0.15).sort((a, b) => a.x0 - b.x0)
+  const first = cand[0]
+  if (!first) return null
+  const cl = cand.filter(c => c.x0 < first.x1 && c.x1 > first.x0)
+  const x0 = Math.min(...cl.map(c => c.x0)), x1 = Math.max(...cl.map(c => c.x1)), y0 = Math.min(...cl.map(c => c.y0)), y1 = Math.max(...cl.map(c => c.y1))
+  const cw = x1 - x0, ch = y1 - y0
+  if (cw < ch * 0.8 || cw > ch * 1.25) return null
+  // 덩어리 뒤에 틈이 있어야 글머리다 (글자 획이 아님). 기호 하나만 든 상자(목차 열의 ◎)는 뒤가 비어 있다
+  const next = cand.find(c => c.x0 >= x1)
+  if (next && next.x0 - x1 < ch * 0.3) return null
+  let inkN = 0
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (cl.some(c => label[y * w + x] === c.id)) inkN++
+  const fill = inkN / (cw * ch)
+  const rel = ch / charH
+  // 이중 원 — 안쪽 조각도 가운데 놓인 둥근 고리여야 한다 (원문자 ①② 는 안쪽이 숫자라 좁다)
+  const ring = (c: Comp) => { const a = c.x1 - c.x0, b = c.y1 - c.y0; return a >= b * 0.75 && a <= b * 1.33 }
+  const nested = cl.length >= 2 && cl.some(a => cl.some(b => a !== b && b.x0 > a.x0 && b.x1 < a.x1 && b.y0 > a.y0 && b.y1 < a.y1 && ring(b)
+    && Math.abs((b.x0 + b.x1) - (a.x0 + a.x1)) <= (a.x1 - a.x0) * 0.2 && Math.abs((b.y0 + b.y1) - (a.y0 + a.y1)) <= (a.y1 - a.y0) * 0.2))
+  let mark: "\u25ce" | "\u25cf" | "\u25aa" | null = null
+  if (nested && fill < 0.45 && rel >= 0.6) mark = "\u25ce"
+  else if (cl.length === 1 && fill >= 0.9 && rel >= 0.28 && rel <= 0.6) mark = "\u25aa"
+  else if (cl.length === 1 && fill >= 0.65 && fill <= 0.88 && rel >= 0.5 && rel <= 0.8) mark = "\u25cf"
+  if (!mark) return null
+  return { mark, covers: firstX <= x1 + ch * 0.3 }
+}
