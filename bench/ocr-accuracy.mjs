@@ -26,7 +26,7 @@ import { homedir } from "node:os"
 import { fileURLToPath } from "node:url"
 import { parse } from "../dist/index.js"
 import { collectIrGrids, scoreTables } from "./lib/table-score.mjs"
-import { blockTexts, normStrict, fairText, hangulOnly, charBagPR, editDistance, rasterGlyphCoverage } from "./ocr-lib.mjs"
+import { blockTexts, normStrict, fairText, hangulOnly, charBagPR, editDistance, rasterGlyphCoverage, imageRects } from "./ocr-lib.mjs"
 
 const root = fileURLToPath(new URL(".", import.meta.url))
 const args = process.argv.slice(2)
@@ -116,7 +116,23 @@ for (const f of files) {
     mkdirSync(dumpDir, { recursive: true })
     writeFileSync(join(dumpDir, f + ".json"), JSON.stringify({ pages: clean, ms: ocrMs, gt: gt.blocks, ocr: ocr.blocks, warnings: ocr.warnings }))
   }
-  const gSegs = blockTexts(gt.blocks), oSegs = blockTexts(ocr.blocks)
+  // v2: 텍스트층 글이 하나도 없는 그림 영역(인포그래픽·삽화) 안의 OCR 글은 뺀다 — 정답(텍스트층)이 담을 수 없는 글이다.
+  // 글이 얹힌 배경 그림(안에 텍스트층 블록이 있는 그림)은 그대로 둔다 (2026-09-28 채점 기준 변경)
+  const rects = await imageRects(raw, clean)
+  const inRect = (bb, r) => {
+    if (!bb) return false
+    const ix = Math.min(bb.x + bb.width, r.x2) - Math.max(bb.x, r.x1), iy = Math.min(bb.y + bb.height, r.y2) - Math.max(bb.y, r.y1)
+    return ix > 0 && iy > 0 && ix * iy >= 0.6 * Math.max(1, bb.width * bb.height)
+  }
+  // 글 있는 그림 — 그림 안에 든 텍스트층 블록이 있거나, 그림 넓이의 10% 넘게 겹치는 텍스트층 블록(칸마다 그림을 넣은 쪽 전체 표)이 있다
+  const overlaps = (bb, r) => {
+    const ix = Math.min(bb.x + bb.width, r.x2) - Math.max(bb.x, r.x1), iy = Math.min(bb.y + bb.height, r.y2) - Math.max(bb.y, r.y1)
+    return ix > 0 && iy > 0 && ix * iy >= 0.1 * (r.x2 - r.x1) * (r.y2 - r.y1)
+  }
+  const textless = [...rects].flatMap(([pg, rs]) => rs.filter(r => (r.x2 - r.x1) * (r.y2 - r.y1) > 2000 &&
+    !gt.blocks.some(g => g.pageNumber === pg && g.type !== "image" && g.bbox && (inRect(g.bbox, r) || overlaps(g.bbox, r)))).map(r => ({ pg, r })))
+  const ocrKept = ocr.blocks.filter(o => !textless.some(({ pg, r }) => o.pageNumber === pg && inRect(o.bbox, r)))
+  const gSegs = blockTexts(gt.blocks), oSegs = blockTexts(ocrKept)
   const a = fairText(gSegs).slice(0, MAX_CMP_CHARS)
   const b = fairText(oSegs).slice(0, MAX_CMP_CHARS)
   const as = normStrict(blockTexts(gt.blocks, { v1: true }).join(" ")).slice(0, MAX_CMP_CHARS)

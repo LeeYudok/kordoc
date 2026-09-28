@@ -16,7 +16,7 @@
 | | 중첩표 exact (170) | 97.65% | 99% |
 | ODL 200 (`~/workspace/odl-bench-breakthrough-20260925`) | 기본(모델 캐시 있음) | 0.94011 | 0.99 |
 | | ocr+plain+htmlTables | 0.97276 | 0.99 |
-| OCR `bench/ocr-accuracy.mjs` | charRecall / charPrecision / CER | 0.981 / 0.975 / 0.069 | 0.99 / 0.99 / 0.01 |
+| OCR `bench/ocr-accuracy.mjs` | charRecall / charPrecision / CER | 0.981 / 0.982 / 0.062 | 0.99 / 0.99 / 0.01 |
 
 PDF 글·표 수치는 2026-09-28 채점 기준 변경 뒤 값이다(텍스트층 글 누락 7쌍 제외 포함)(선택지 LIS·떠 있는 글상자·무내용 유닛 순서 제외·목록 표지·각주 감싸개 걷기 — CHANGELOG).
 OCR 은 표본 쪽을 `bench/ocr-pages.json` 으로 고정했다.
@@ -83,6 +83,8 @@ OCR 은 표본 쪽을 `bench/ocr-pages.json` 으로 고정했다.
 - best: 148(차트 제목을 정답이 `#` 로 — OCR 줄 크기 차 1.14배뿐이라 보류), 141, 098(지도 OCR), 106, 027.
 
 ### E. OCR 정확도 → 0.99
+
+(완료) 글 없는 그림 영역 OCR 글 제외(채점, imageRects) — CER 0.069 → 0.062·정밀도 0.975 → 0.982.
 
 2026-09-28 3차 분해: CER 편집거리 4,854/59,109자 중 예산서 4종(부천·속초·괴산×2) 1,522(31%) — 글자 P/R 0.99대인데 표 행 순서 차.
 텍스트층 파서는 한컴 칸 클립(보이지 않는 칸 경계)으로 "02 민간경상사업보조 / ○사회적기업 …" 을 두 행으로 가르고, OCR 은 픽셀에

@@ -201,3 +201,48 @@ export async function rasterGlyphCoverage(raw, pages, scale = 2) {
   }
   return out
 }
+
+/**
+ * 쪽마다 그림 배치 사각형(PDF 사용자 좌표, y 위로) — 그리기 명령의 변환 행렬을 따라 그림 단위 정사각형을 옮긴다.
+ * OCR 채점에서 텍스트층 글이 하나도 없는 그림 영역 안의 OCR 글(인포그래픽·스캔 삽화)을 가르는 데만 쓴다.
+ */
+export async function imageRects(raw, pages) {
+  const { createRequire } = await import("node:module")
+  const { dirname, join } = await import("node:path")
+  const require = createRequire(import.meta.url)
+  const pkgDir = dirname(require.resolve("pdfjs-dist/package.json"))
+  const { getDocument, OPS } = await import("pdfjs-dist/legacy/build/pdf.mjs")
+  const doc = await getDocument({
+    data: new Uint8Array(raw), useSystemFonts: true, disableFontFace: true, isEvalSupported: false,
+    cMapUrl: join(pkgDir, "cmaps") + "/", cMapPacked: true, standardFontDataUrl: join(pkgDir, "standard_fonts") + "/",
+  }).promise
+  const mul = (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3],
+    m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]]
+  const out = new Map()
+  try {
+    for (const pn of pages) {
+      const page = await doc.getPage(pn)
+      const { fnArray, argsArray } = await page.getOperatorList()
+      const rects = []
+      let ctm = [1, 0, 0, 1, 0, 0]
+      const stack = []
+      for (let i = 0; i < fnArray.length; i++) {
+        const fn = fnArray[i], a = argsArray[i]
+        if (fn === OPS.save) stack.push(ctm)
+        else if (fn === OPS.restore) ctm = stack.pop() ?? ctm
+        else if (fn === OPS.transform) ctm = mul(ctm, a)
+        else if (fn === OPS.paintFormXObjectBegin) { stack.push(ctm); if (Array.isArray(a?.[0]) && a[0].length === 6) ctm = mul(ctm, a[0]) }
+        else if (fn === OPS.paintFormXObjectEnd) ctm = stack.pop() ?? ctm
+        else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageXObjectRepeat) {
+          const xs = [ctm[4], ctm[0] + ctm[4], ctm[2] + ctm[4], ctm[0] + ctm[2] + ctm[4]]
+          const ys = [ctm[5], ctm[1] + ctm[5], ctm[3] + ctm[5], ctm[1] + ctm[3] + ctm[5]]
+          rects.push({ x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) })
+        }
+      }
+      out.set(pn, rects)
+    }
+  } finally {
+    await doc.destroy()
+  }
+  return out
+}
