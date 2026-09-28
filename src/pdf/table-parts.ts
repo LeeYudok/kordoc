@@ -12,6 +12,7 @@
 
 import type { IRBlock, IRCell, IRTable } from "../types.js"
 import { CELL_LINES, CLIP_TABLES, EMPTY_PARTS, FILLER_CELLS, IMAGE_CELLS, TABLE_COLXS } from "./table-meta.js"
+import { CONTACT_HEAD, CONTACT_ROLE } from "./contact-table.js"
 
 /** 두 조각의 경계를 같은 것으로 보는 거리 (pt) — 클립 좌표 오차 0.05pt, 조각 간 반올림 여유 */
 const PART_COL_TOL = 1
@@ -577,6 +578,9 @@ function restartsTable(blocks: IRBlock[], i: number, curr: IRTable, pageHeights?
   const head = blocks[chainHead(blocks, i, pageHeights)].table!
   if (cs.length === 1 && restartsTitledForm(head, curr)) return true
   if (cs.length < RESTART_MIN_ANCHORS) return false
+  // 보도자료 연락처 표의 다음 부처 묶음 — "담당 부서 | 부처 | 책임자 | …" 를 되풀이해도 한 표다 (HWPX 연락처 표 522개 중 여러 묶음 72개,
+  // 묶음마다 따로 둔 표 0개). 정부합동 보도자료에서 쪽 끝 묶음과 다음 쪽 묶음이 두 표로 갈렸다
+  if (CONTACT_HEAD.test(cs[0].t) && cs.some(c => CONTACT_ROLE.test(c.t))) return false
   const hs = firstRowSig(head)
   if (!hs || hs.length !== cs.length) return false
   const dx = hs[hs.length - 1].x2 - cs[cs.length - 1].x2
