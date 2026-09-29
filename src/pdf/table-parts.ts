@@ -563,7 +563,7 @@ function joinClipParts(prev: IRBlock, curr: IRBlock, pageHeights?: Map<number, n
   if (!CLIP_TABLES.has(pt) || !CLIP_TABLES.has(ct)) return null
   const px = TABLE_COLXS.get(pt), cx = TABLE_COLXS.get(ct)
   if (!px || !cx) return null
-  let xs = cx, shifted = false, dx = 0
+  let xs = cx, shifted = false, dx = 0, foreign = false
   if (!shiftedSame(px, cx, false)) {
     // 열 구성이 다르면 쪽 넘김 기하를 반드시 확인 (looksContinued 는 쪽 높이를 모르면 통과시킨다)
     if (!pageHeights?.get(prev.pageNumber!) || !pageHeights?.get(curr.pageNumber!)) return null
@@ -574,9 +574,17 @@ function joinClipParts(prev: IRBlock, curr: IRBlock, pageHeights?: Map<number, n
     dx = px[px.length - 1] - cx[cx.length - 1]
     if (Math.abs(dx) > CONTINUATION_COL_TOL) { xs = cx.map(x => x + dx); shifted = true } else dx = 0
     if (!px.some(x => Math.abs(x - xs[0]) <= CONTINUATION_COL_TOL)) return null
+    // 뒤 조각이 짧은 제목 한 칸으로 시작하고(첫 행에 글 있는 칸이 하나, 공백 뺀 8자 이하) 안쪽 열 경계가 앞 조각 경계 어디에도
+    // 맞물리지 않으면 새로 놓인 상자다 — 옮긴 조각처럼 쪼개진 행·글 있는 머리 행 되풀이가 있을 때만 잇는다 (서식 7열 표 뒤 다음 쪽
+    // "목 차" 3열 상자). 쪽마다 열 짜임을 바꾸며 이어지는 별표·서식은 첫 행이 여러 칸이거나 앞 쪽 비고의 이어진 문단("가. 제조(수입)
+    // 업무의 …", 과징금 산정기준)이거나 경계 일부가 맞물린다(규제영향분석서 12.규제일몰제)
+    const inner = xs.slice(1, -1)
+    const heads = (ct.cells[0] ?? []).map(c => c.text.replace(/\s+/g, "")).filter(Boolean)
+    foreign = inner.length > 0 && !inner.some(x => px.some(p => Math.abs(p - x) <= CONTINUATION_COL_TOL))
+      && heads.length === 1 && heads[0].length <= 8
   }
   const res = joinSplitParts(pt, px, ct, xs, dx, prev.bbox?.y)
-  if (!res || (shifted && !res.split && !res.header)) return null
+  if (!res || ((shifted || foreign) && !res.split && !res.header)) return null
   TABLE_COLXS.set(res.table, res.colXs)
   CLIP_TABLES.add(res.table)
   return res.table
