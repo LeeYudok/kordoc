@@ -67,6 +67,7 @@ Buffer → detectFormat() [매직바이트] → 포맷별 파서 → IRBlock[] �
 - PDF 1칸 틀은 획 4변이 있어야 한다(본문 영역 클립이 쪽 전체 1×1 표가 되는 것 방지). 테두리 없는 틀은 제목 아래 틀 기하로만.
 - PDF 본문은 문단 블록이다(line-wrap 이 줄을 잇는다). 헤딩 판정의 글자 크기 중앙값은 아이템 수 기준이라 아이템을 쪼개는 변경은 중앙값을 흔든다.
 - HWP5 `flattenLayoutTables` 는 A4 보다 높은 여러 쪽 본문 상자만 푼다.
+- 보이지 않는 틀 표 풀기(`table/layout-frames.ts`, `layoutTables` 기본 visual)는 파서가 마크다운을 만들기 직전에 건다. 원본 표 서수가 필요한 경로(패치·세션·양식·`extractTables`)는 `layoutTables: "keep"`. PDF 는 한컴 PDF 칸 클립 격자 표에만 칸 변을 단다(워드 PDF 도 칸마다 클립을 깐다, ODL 064).
 - 첨자는 파서가 IR 글에 `<sup>`·`<sub>` 를 넣는다(밑줄 `<u>` 와 같은 방식). `scriptTags` 기본은 HWPX·HWP·DOCX 켬, PDF 끔(`stripScriptTags`),
   OCR 글은 늘 평문. PDF 는 판정을 다 한 뒤 `tagScripts` 로 넣는다 — 판정 로직에 태그가 섞이면 안 된다. 채점 정규화는 태그를 걷는다.
 - 아웃바운드는 2곳뿐(`src/pdf/formula/models.ts` 모델 다운로드, `src/watch.ts` webhook), 둘 다 `assertNetworkAllowed()` 뒤. 세 번째를 만들지 않는다

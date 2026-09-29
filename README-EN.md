@@ -10,7 +10,7 @@
 HWP 3.x/5.x, HWPX, HWPML, PDF, XLS, XLSX, DOCX, images (PNG/JPG/WebP) — parse, compare and generate the documents Korean government offices run on. [한국어](./README.md)
 
 - 📊 **#1 on the public PDF benchmark** — opendataloader-bench (200 documents) overall 0.960, above all 12 published parsers (commercial included) (OCR off: 0.937 at 0.04 s per page)
-- 🇰🇷 **Lossless Korean tables** — scored against the original HWPX, all 13,041 HWPX tables match cell for cell
+- 🇰🇷 **Korean tables as they look** — scored against what the original HWPX shows, 99.6% of 9,865 visible tables match cell for cell; invisible-border layout frames become text and cell-built fractions become `$\frac{}{}$`
 
 [![kordoc — watch the demo](./docs/video-demo.jpg)](https://youtu.be/Q13GmgDcIw0)
 
@@ -73,7 +73,7 @@ PDF and OCR dependencies are installed by default (`--omit=optional` slims the i
 | Feature | What it does |
 | --- | --- |
 | 📄 **Document → Markdown** | HWP · HWPX · PDF · DOCX · XLS(X) · images to Markdown + structured IR (`IRBlock[]`) |
-| 📊 **Tables** | Merged and nested tables keep their structure — borderless PDF tables and clause comparison tables too |
+| 📊 **Tables** | As they look in the original: ruled tables keep merges and nesting, invisible-border layout frames become text, cell-built fractions become equations. Borderless PDF tables and clause comparison tables too |
 | 🔍 **Redline** | Block- and cell-level differences between two documents (HWP ↔ HWPX works) |
 | 📝 **Markdown → HWPX** | AI-written text back to HWPX, with tables, equations and charts |
 | 🏛️ **Official documents** | Gaejosik reports, draft documents, press releases and Seoul policy-plan presets, plus a 19-rule notation linter (`kordoc lint`) |
@@ -120,14 +120,15 @@ Every number is reproduced by `npm run bench:gate`, which every release must pas
 
 ### Korean government documents — scored against the original HWPX
 
-Real government documents (press releases, approval documents, statutory forms, budgets) that exist both as HWPX and as a PDF export.
+Real government documents (press releases, approval documents, statutory forms, budgets) that exist both as HWPX and as a PDF export. The table ground truth is the **visible** table, i.e. what the cell borders draw (v4.17.0 scoring).
 
 | Area | Size | Result |
 | --- | --- | --- |
-| HWPX text & tables | 2,286 documents, 13,041 tables | 0 missing text · every table matches cell for cell · reading order 100% |
+| HWPX text & tables | 2,286 documents, 9,865 visible tables | 0 missing text · 99.6% of tables match cell for cell · reading order 100% |
 | HWP 5.x | 1,120 HWP/HWPX pairs | identical to the HWPX result |
 | PDF text | 744 pairs | char recall 99.8% · precision 99.6% · reading order 99.1% · word F1 98.8% |
-| PDF tables | 708 pairs, 2,632 tables | found 99.5% · exact cell match 97.4% · cell F1 0.986 |
+| PDF tables | 708 pairs, 2,331 visible tables | found 99.7% · exact cell match 97.3% · cell F1 0.989 |
+| Statute annexes (HWP · Hancom PDF) | 272 annexes, 346 visible tables | HWP all tables match · PDF 96.8% · cell-built fractions 11/11 (HWP) |
 | PDF overall | 1,911 documents | text coverage 99.8% |
 | Scanned OCR (local CPU) | 53 documents, 102 pages | char recall 99.0% · precision 99.4% · about 1 s/page |
 | DOCX · XLSX · XLS · HML | 88 documents | 0 missing text or numbers |
@@ -135,7 +136,7 @@ Real government documents (press releases, approval documents, statutory forms, 
 
 ### HWP · HWPX → Markdown — against HwpForge
 
-The same corpus scored against the original HWPX XML with the same scorer (single-column tables excluded).
+The same corpus scored against the original HWPX XML with the same scorer (single-column tables excluded). Measured at v4.16 against the previous ground truth (HWPX table structure as is).
 
 | | kordoc | HwpForge 0.16.6 |
 | --- | ---: | ---: |
@@ -187,6 +188,7 @@ if (result.success) {
 | `password` | `--password` | open password (HWPX · HWP3 · HWP5; not Hancom DRM) |
 | `tables` | `--no-tables` | `false` turns off PDF table detection (two-column exam sheets whose boxes read as tables and flip the order) |
 | `removeHeaderFooter` | `--no-header-footer` | remove PDF running headers/footers (default on, 3+ pages) |
+| `layoutTables` | `--keep-layout-tables` | invisible-border layout tables. Default `"visual"`: as they look (frames become text, only ruled parts stay tables, cell-built fractions become equations). `"keep"`: original table structure (use it for markdown you will `patch` back) |
 | `keepTrailingEmptyCols` | `--keep-empty-cols` | keep empty trailing table columns (form input columns) |
 | `keepEmptyParagraphs` | `--keep-empty-paragraphs` | keep empty paragraphs — source paragraph count = line count (HWPX) |
 | `includeFieldPlaceholders` | `--include-field-placeholders` | also emit unfilled click-here field guide text (HWPX · HWP5) |
@@ -578,12 +580,14 @@ import type {
 
 ## 📝 Recent Changes
 
+### v4.17.0
+- Reads Korean documents **as they look**: invisible-border layout frames become text, only ruled parts stay tables, fractions built from two cells and a rule become `$\frac{…}{…}$` (`layoutTables`, default visual; `--keep-layout-tables` keeps the old structure). Statute annexes, 346 visible tables matched: HWP 72 → 346, PDF 66 → 335
+- PDF cross-page tables: split rows, unjoined fragments, tables with pictures, very large grids (151×76)
+- Text after dotted (leader) tabs is no longer cut off (HWPX · HWP5 · HWP3, HWPML tabs)
+- Markdown for `kordoc patch` must come from `--keep-layout-tables` (visual-mode edits are rejected with instructions)
+
 ### v4.16.3
 - Security: MCP document generation no longer follows image-folder symlinks outside `KORDOC_ROOT` (#101); MCP also embeds Korean-named images
-
-### v4.16.2
-- Superscripts and subscripts as `<sup>`/`<sub>` — "10⁴ m²" no longer flattens to "104 m2" (`scriptTags`, on by default for HWPX · HWP · DOCX; set `true` for papers and math PDFs)
-- Author-line affiliation marks (∗†) in two-column PDF papers no longer drop above the names
 
 Full history in the [CHANGELOG](CHANGELOG.md).
 

@@ -44,7 +44,17 @@ LM-Kit One (commercial; results-only PR) reports 0.948 without OCR and 0.963 wit
 
 Real government documents (press releases, approval documents, statutory forms, budgets) for which both the HWPX original and its PDF export exist; text and tables extracted from the PDF are scored with the original as ground truth.
 
-### Scoring rules (revised 2026-09-29, history in the [CHANGELOG](../CHANGELOG.md))
+### Scoring rules (revised 2026-09-29, visible tables 2026-09-30, history in the [CHANGELOG](../CHANGELOG.md))
+
+**Table ground truth = the tables you see in the original** (v4.17.0)
+- Tables are split the way their cell borders draw them (header.xml borderFill; line type NONE and white lines are invisible). `bench/ref/visible-tables.mjs`, no code shared with the parser.
+- A row with a visible vertical edge, or with two or more cells between full-width horizontal rules, is a table row; each run of table rows is one visible table. Other rows are text (still counted in text recall).
+- Gridlines no cell edge uses, empty indent cells outside the ruled extent, blank spacer rows without lines, and trailing empty columns are folded.
+- A fraction built from two cells and a rule is an equation (removed from the text population, counted once in equation presence). Two full-width cells count as a fraction only in a 2×1 table.
+- Image check against Hancom PDFs of statute annexes (66 original pages, 50 visible tables): 42/50 matched, 48/50 after the spacer-row (A1) and fraction false-positive (P1) fixes. The remaining two are a continued row and a formula inside a bordered box, one case each, so no rule was added.
+
+**Statute annexes** (`bench/annex-gt.mjs`)
+- The HWP original and the Hancom PDF of 272 statute annexes from the Ministry of Government Legislation (licbyl-byl, licbyl-byl2), scored against the same ground truth. PDFs are parsed with `ocr: false` (same as the Korean Law MCP and lexdiff servers).
 
 **PDF text**
 - Reading order: a line that appears several times counts at its in-order occurrence.
