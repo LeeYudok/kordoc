@@ -135,7 +135,7 @@ Real government documents (press releases, approval documents, statutory forms, 
 | --- | --- | --- |
 | HWPX text & tables | 2,286 documents, 13,041 tables | 0 missing text · every table matches cell for cell · reading order 100% |
 | HWP 5.x | 1,120 HWP/HWPX pairs | identical to the HWPX result |
-| PDF text | 744 pairs (HWPX/DOCX ground truth) | char recall 99.8% · precision 99.5% · reading order 99.1% · word F1 98.7% |
+| PDF text | 744 pairs (HWPX/DOCX ground truth) | char recall 99.8% · precision 99.6% · reading order 99.1% · word F1 98.8% |
 | PDF tables | 708 pairs, 2,632 tables | found 99.5% · exact cell match 97.0% · cell F1 0.984 |
 | PDF overall | 1,911 documents (1,724 scored on the text layer) | text coverage 99.8% |
 | Scanned OCR (built-in, local CPU) | 53 documents, 102 pages (216 dpi render) | char recall 99.0% · Hangul recall 99.4% · precision 99.4% · about 1 s/page |
@@ -594,7 +594,7 @@ import type {
 ## 📝 Recent Changes
 
 ### v4.16.0
-- **PDF text & tables**: against the original HWPX/DOCX, char recall 99.8% · precision 99.5% · reading order 99.1% · word F1 98.7%; tables match cell for cell 96.7%.
+- **PDF text & tables**: against the original HWPX/DOCX, char recall 99.8% · precision 99.6% · reading order 99.1% · word F1 98.8%; tables match cell for cell 97.0%.
 - **PDF recovery**: page-bottom footnotes and document-end endnotes move next to their references; TOC leader dots, book-edge index tabs, underlined form blanks, Chinese/Japanese line wraps, press-release contact tables.
 - **Automatic OCR**: pages without a text layer (scans, glyphs drawn as curves) are OCR'd automatically when the OCR model is cached — ODL 200 default 0.940 (`ocr: false` turns it off).
 - **DOCX**: numbered lists carry their real labels ("[3]", "5.1", "A.1") instead of "1.".

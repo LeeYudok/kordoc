@@ -444,7 +444,7 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
 
     // 머리글/바닥글 필터링 (기본 ON — 명시적 false일 때만 비활성화)
     if (options?.removeHeaderFooter !== false && parsedPageCount >= 3) {
-      const removed = removeHeaderFooterBlocks(blocks, pageHeights, warnings)
+      const removed = removeHeaderFooterBlocks(blocks, pageHeights, warnings, noteMarks)
       // 필터링된 블록 제거 (뒤에서부터 삭제)
       for (let ri = removed.length - 1; ri >= 0; ri--) {
         blocks.splice(removed[ri], 1)
@@ -458,6 +458,11 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     // 머리글/바닥글 제거 후 인접해진 표를 하나로 (ODL TableBorderProcessor.checkNeighborTables 포팅)
     mergeContinuedCells(blocks, pageHeights)
     mergeCrossPageTables(blocks, pageHeights)
+    // 괘선 상자 머리말·꼬리말(표 블록) — 쪽 넘김 표 병합 뒤라야 상자가 갈라 두던 이웃 쪽 표를 잇지 않는다 (block-detect.ts)
+    if (options?.removeHeaderFooter !== false && parsedPageCount >= 3) {
+      const boxes = removeHeaderFooterBlocks(blocks, pageHeights, warnings, noteMarks, true)
+      for (let ri = boxes.length - 1; ri >= 0; ri--) blocks.splice(boxes[ri], 1)
+    }
     // 칸 클립 없는 PDF 의 보도자료 연락처 표 4열 → HWPX 서식 6열 (contact-table.ts)
     splitContactTables(blocks)
     // 후행 빈 열 정리 — HWP 계열 표 빌더와 같은 규칙 (병합 뒤: 쪽마다 같은 열 구조일 때 이어 붙인 다음)
