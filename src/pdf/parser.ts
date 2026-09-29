@@ -51,6 +51,21 @@ import { ocrModelsCached } from "../ocr/models.js"
 import { splitContactTables } from "./contact-table.js"
 
 // 기존 공개 API 경로 유지 — 이동된 함수의 re-export
+
+/**
+ * 그림 영역 OCR 대상 — `ocr: true` 는 글 없는 그림 후보 전부(쪽 면적 2%+·머리 띠 로고), 기본값의 자동 OCR 은 쪽 면적 5% 넘는 큰
+ * 그림만 읽는다(작은 아이콘·로고는 잡음 글이 되기 쉽고 쪽당 시간을 키운다). 큰 그림이 없는 쪽은 뺀다
+ */
+export function ocrImageRegions(regions: Map<number, ImageRegion[]>, large: Set<ImageRegion>, all: boolean): Map<number, ImageRegion[]> {
+  if (all) return regions
+  const out = new Map<number, ImageRegion[]>()
+  for (const [p, rs] of regions) {
+    const big = rs.filter(r => large.has(r))
+    if (big.length) out.set(p, big)
+  }
+  return out
+}
+
 export { mergeCrossPageTables }
 export { cleanPdfText }
 export { detectTableCaptions, detectKoreanListBlocks, removeHeaderFooterBlocks }
@@ -108,7 +123,7 @@ async function loadPdfWithTimeout(buffer: ArrayBuffer) {
 export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptions): Promise<InternalParseResult> {
   // pdfjs receives a copy; both OCR paths can reuse the caller's original bytes.
   const formulaBuffer: ArrayBuffer | null = options?.formulaOcr ? buffer : null
-  // ocr 을 지정하지 않으면(false 아님) 텍스트층 없는 쪽만 자동 OCR — 내장 모델이 이미 캐시에 있을 때만(다운로드하지 않는다)
+  // ocr 을 지정하지 않으면(false 아님) 텍스트층 없는 쪽과 큰 그림 속 글을 자동 OCR — 내장 모델이 이미 캐시에 있을 때만(다운로드하지 않는다)
   const autoOcr = options?.ocr === undefined && await ocrModelsCached()
   const ocrBuffer: ArrayBuffer | null = options?.ocr || autoOcr ? buffer : null
   const doc = await loadPdfWithTimeout(buffer)
@@ -146,6 +161,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     // 텍스트 없는 큰 이미지 영역: page → count
     const skippedImagePages = new Map<number, number>()
     const uncoveredImageRegions = new Map<number, ImageRegion[]>()
+    // 그 가운데 쪽 면적 5% 넘는 큰 그림 — 기본값(자동 OCR)은 이것만 읽는다 (ocrImageRegions)
+    const largeImageRegions = new Set<ImageRegion>()
     // 이미지 XObject 바이트 추출 상태 (문서 단위 중복 억제·상한).
     // image 블록은 페이지 경계 표 병합(mergeCrossPageTables)의 인접성을 깨지 않도록
     // 페이지별로 모아뒀다가 병합 후 주입한다.
@@ -275,6 +292,7 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
                 const regions = uncoveredImageRegions.get(i) ?? []
                 regions.push(r)
                 uncoveredImageRegions.set(i, regions)
+                if (large) largeImageRegions.add(r)
               }
             }
           }
@@ -345,6 +363,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     //       그 외=품질 신호가 OCR 을 권하는 페이지만 (깨진 텍스트층 포함 — F1,
     //       혼합 문서의 스캔 페이지 포함 — F2). 정상 페이지 파싱 결과는 유지 (F3).
     const ocrDone = new Set<number>()
+    // 그림 영역 OCR — ocr: true 는 후보 전부, 자동 OCR(기본값)은 큰 그림만
+    const ocrRegions = options?.ocr === true || autoOcr ? ocrImageRegions(uncoveredImageRegions, largeImageRegions, options?.ocr === true) : new Map<number, ImageRegion[]>()
     if (ocrBuffer) {
       const inScope = (p: number) => !pageFilter || pageFilter.has(p)
       const targets = new Set<number>()
@@ -359,14 +379,14 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
           if (autoOcr && pq.ocrReason !== "low_text" && pq.ocrReason !== "vector_text") continue
           targets.add(pq.page)
         }
-        if (options?.ocr === true) for (const p of uncoveredImageRegions.keys()) targets.add(p)
+        for (const p of ocrRegions.keys()) targets.add(p)
       }
       if (targets.size > 0) {
         try {
           const { runPdfOcr } = await import("../ocr/pdf-ocr.js")
           const mode = typeof options?.ocr === "function" ? options.ocr : ("builtin" as const)
           // 텍스트층이 멀쩡한 쪽은 그림 영역만 읽는다 (쪽 전체를 갈아 끼우는 쪽 — 스캔·깨진 텍스트층 — 은 쪽 전체)
-          const regionPages = new Map([...uncoveredImageRegions].filter(([p]) =>
+          const regionPages = new Map([...ocrRegions].filter(([p]) =>
             options?.ocr !== "force" && !isImageBased && !pageQuality.find(q => q.page === p)?.needsOcr))
           const ocrPageBlocks = await runPdfOcr(ocrBuffer, targets, mode, warnings, options?.onProgress, options?.tables !== false, vectorPageOps, regionPages)
           if (ocrPageBlocks.size > 0) {
@@ -378,7 +398,7 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
                 ocrDone.add(p)
                 continue
               }
-              const regions = uncoveredImageRegions.get(p)
+              const regions = ocrRegions.get(p)
               if (!regions || mergeOcrImageRegions(blocks, p, regions, obs) === 0) continue
               ocrDone.add(p)
               // The extracted image remains in result.images; its Markdown placeholder

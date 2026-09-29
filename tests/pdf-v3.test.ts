@@ -643,3 +643,14 @@ describe("removeHeaderFooterBlocks — 본문 오탐 방지", () => {
     assert.deepEqual(removed, [1, 3, 5], "페이지 번호만 제거, 본문 첫 줄은 유지")
   })
 })
+
+describe("ocrImageRegions — 그림 영역 OCR 대상", () => {
+  it("ocr: true 는 모든 후보, 기본값(자동 OCR)은 쪽 면적 5% 넘는 큰 그림만 — 큰 그림 없는 쪽은 빠진다", async () => {
+    const { ocrImageRegions } = await import("../src/pdf/parser.js")
+    const big = { x1: 0, y1: 0, x2: 300, y2: 300 }, logo = { x1: 0, y1: 700, x2: 60, y2: 740 }, chart = { x1: 0, y1: 0, x2: 200, y2: 100 }
+    const regions = new Map([[1, [big, logo]], [2, [chart]]])
+    const large = new Set([big])
+    assert.deepEqual([...ocrImageRegions(regions, large, true)].map(([p, rs]) => [p, rs.length]), [[1, 2], [2, 1]])
+    assert.deepEqual([...ocrImageRegions(regions, large, false)].map(([p, rs]) => [p, rs.length]), [[1, 1]])
+  })
+})

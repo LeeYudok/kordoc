@@ -10,18 +10,22 @@ Scoring rules, reproduction steps and per-option numbers behind the README [Perf
 
 | Setting | Overall | Reading order | Tables | Headings | Time / page |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| default (OCR model cached) | 0.940 | 0.943 | 0.936 | 0.935 | 0.05 s |
-| default (no OCR model) | 0.937 | 0.938 | 0.936 | 0.933 | 0.04 s |
-| `plain: true` | 0.946 | 0.947 | 0.937 | 0.940 | 0.03 s |
-| `plain: true, htmlTables: true` | 0.949 | 0.954 | 0.940 | 0.943 | 0.03 s |
-| `ocr: true` | 0.960 | 0.960 | 0.979 | 0.949 | 0.46 s |
-| `ocr: true, plain: true` | 0.967 | 0.968 | 0.981 | 0.956 | 0.46 s |
-| `ocr: true, plain: true, htmlTables: true` | 0.973 | 0.977 | 0.983 | 0.959 | 0.46 s |
+| default (OCR model cached) | 0.960 | 0.961 | 0.979 | 0.945 | 0.52 s |
+| default + `plain: true` | 0.968 | 0.969 | 0.981 | 0.952 | 0.52 s |
+| default + `plain: true, htmlTables: true` | 0.972 | 0.976 | 0.983 | 0.955 | 0.52 s |
+| `ocr: false` (= default without the OCR model) | 0.937 | 0.938 | 0.936 | 0.933 | 0.04 s |
+| `ocr: false, plain: true` | 0.946 | 0.948 | 0.937 | 0.940 | 0.04 s |
+| `ocr: false, plain: true, htmlTables: true` | 0.949 | 0.954 | 0.940 | 0.943 | 0.04 s |
+| `ocr: true` | 0.960 | 0.960 | 0.979 | 0.949 | 0.57 s |
+| `ocr: true, plain: true` | 0.967 | 0.968 | 0.981 | 0.956 | 0.57 s |
+| `ocr: true, plain: true, htmlTables: true` | 0.973 | 0.977 | 0.983 | 0.959 | 0.58 s |
+
+Time per page: 200 documents parsed sequentially in one process on an Apple M4 24GB, 2026-09-29 (scoring excluded).
 
 ### What the options do
 
-- **Default OCR** — when the OCR model is already cached (`kordoc models`, or an earlier `ocr: true`), only **pages without a text layer (scans, glyphs drawn as curves)** are OCR'd. Without a cached model nothing is downloaded; a `NEEDS_OCR` warning is raised.
-- **Text inside images** — images on pages that do have text (charts, logos) are flagged with `SKIPPED_IMAGE` and read by `ocr: true` (→ 0.960). `ocr: false` also turns off the automatic OCR.
+- **Default OCR** — when the OCR model is already cached (`kordoc models`, or an earlier `ocr: true`), **pages without a text layer (scans, glyphs drawn as curves)** and **text inside large images (over 5% of the page) that have no text layer** are read automatically (72 of 200 documents). Without a cached model nothing is downloaded; `NEEDS_OCR` / `SKIPPED_IMAGE` warnings are raised.
+- **`ocr: true`** — also reads small images (over 2% of the page) and page-header logos. **`ocr: false`** turns the automatic OCR off too (fastest).
 - **`plain: true`** — drops image placeholders, link URLs and underline/bold marks for indexing and RAG. The ground truth has none of these, so the score rises too.
 - **`htmlTables: true`** — emits every table as indented HTML.
 

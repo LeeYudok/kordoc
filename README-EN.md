@@ -9,7 +9,7 @@
 
 HWP 3.x/5.x, HWPX, HWPML, PDF, XLS, XLSX, DOCX, images (PNG/JPG/WebP) — parse, compare and generate the documents Korean government offices run on. [한국어](./README.md)
 
-- 📊 **#1 on the public PDF benchmark** — opendataloader-bench (200 documents) overall 0.940, above all 12 published parsers (commercial included), 0.05 s per page
+- 📊 **#1 on the public PDF benchmark** — opendataloader-bench (200 documents) overall 0.960, above all 12 published parsers (commercial included) (OCR off: 0.937 at 0.04 s per page)
 - 🇰🇷 **Lossless Korean tables** — scored against the original HWPX, all 13,041 HWPX tables match cell for cell
 
 [![kordoc — watch the demo](./docs/video-demo.jpg)](https://youtu.be/Q13GmgDcIw0)
@@ -99,9 +99,9 @@ Every number is reproduced by `npm run bench:gate`, which every release must pas
 
 | Rank | Engine | Overall | Reading order | Tables | Headings | Time / page |
 | ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| **1** | **kordoc default** | **0.940** | **0.943** | **0.936** | **0.935** | **0.05 s** |
-| ref. | kordoc `ocr: true` | 0.960 | 0.960 | 0.979 | 0.949 | 0.46 s |
-| ref. | kordoc `ocr: true, plain: true, htmlTables: true` | 0.973 | 0.977 | 0.983 | 0.959 | 0.46 s |
+| **1** | **kordoc default** | **0.960** | **0.961** | **0.979** | **0.945** | **0.52 s** |
+| ref. | kordoc `ocr: false` (fastest) | 0.937 | 0.938 | 0.936 | 0.933 | 0.04 s |
+| ref. | kordoc `ocr: true, plain: true, htmlTables: true` | 0.973 | 0.977 | 0.983 | 0.959 | 0.58 s |
 | 2 | opendataloader-hybrid | 0.907 | 0.934 | 0.928 | 0.821 | 0.46 s |
 | 3 | nutrient (commercial) | 0.885 | 0.925 | 0.708 | 0.819 | 0.01 s |
 | 4 | docling | 0.882 | 0.898 | 0.887 | 0.824 | 0.76 s |
@@ -115,8 +115,8 @@ Every number is reproduced by `npm run bench:gate`, which every release must pas
 | 12 | markitdown | 0.589 | 0.844 | 0.273 | 0.000 | 0.11 s |
 | 13 | liteparse | 0.576 | 0.866 | 0.000 | 0.000 | 1.06 s |
 
-- The default alone is first on all four columns — no GPU, cloud API or LLM, just Node.js.
-- By default only pages without a text layer are OCR'd (when the model is cached). Use `ocr: true` to read text inside images too.
+- The default alone is first on all four columns — no GPU, cloud API or LLM, just Node.js. `ocr: false` is also first on all four.
+- When the OCR model is cached, the default reads scanned pages and text inside large images. Image-heavy documents get slower; use `ocr: false` when speed matters.
 
 ### Korean government documents — scored against the original HWPX
 
@@ -178,7 +178,7 @@ if (result.success) {
 | Option | CLI | Description |
 | --- | --- | --- |
 | `pages` | `-p, --pages` | `"1-3"` · `"1,3,5-7"` · `[1, 5, 10]` — real pages for PDF and Hancom-saved files, section approximation without a typesetting cache |
-| `ocr` | `--ocr` · `--ocr-force` | default: pages without a text layer only (when the model is cached) · `true`: + text in images (~18MB model auto-download) · `"force"`: every page · `false`: off · function: external OCR |
+| `ocr` | `--ocr` · `--ocr-force` | default: scanned pages + text in large images (when the model is cached) · `true`: + small images and logos (~18MB model auto-download) · `"force"`: every page · `false`: off · function: external OCR |
 | `formulaOcr` | `--formula-ocr` | PDF formula OCR (MFD+MFR, ~155MB models) — detected formulas as `$…$` / `$$…$$` |
 | `images` | `--no-images` | `false` skips image bytes (placeholders remain; PDF skips PNG encoding) |
 | `plain` | `--plain` | text-first Markdown without image placeholders, link URLs, underline or bold (headings, lists and table structure kept; `blocks` unchanged) |
