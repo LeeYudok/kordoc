@@ -31,6 +31,8 @@ export interface NormItem {
   isHidden: boolean
   /** pdfjs 공백 아이템이 이 아이템 직전에 있었음 — 단어 경계 힌트 */
   hasSpaceBefore?: boolean
+  /** 직전 공백이 pdfjs 가 글자 틈으로 만든 것뿐(글리프 흐름에 공백 글리프 없음, tracked-text markSyntheticSpaces) — 균등배분 run 을 끊지 않는다 */
+  syntheticSpace?: boolean
   /** 취소선이 그어진 텍스트 (신구조문대비표 삭제 표시 등) */
   strike?: boolean
   /** 밑줄이 그어진 텍스트 (개정문 추가·변경 표시, 제목 강조 등) */
@@ -155,7 +157,7 @@ export function dominantStyle(items: NormItem[]): { fontSize: number; fontName?:
 export function normalizeItems(rawItems: PdfTextItem[]): NormItem[] {
   const items: NormItem[] = []
   // pdfjs 공백 아이템 위치 수집 — 단어 경계 힌트로 활용
-  const spacePositions: { x: number; y: number }[] = []
+  const spacePositions: { x: number; y: number; synthetic?: boolean }[] = []
 
   let seq = 0
   for (const i of rawItems) {
@@ -166,7 +168,7 @@ export function normalizeItems(rawItems: PdfTextItem[]): NormItem[] {
 
     if (!i.str.trim()) {
       // 공백 전용 아이템: 위치만 기록 (단어 구분 힌트)
-      spacePositions.push({ x, y })
+      spacePositions.push({ x, y, synthetic: (i as { synthetic?: boolean }).synthetic })
       continue
     }
 
@@ -250,7 +252,11 @@ export function normalizeItems(rawItems: PdfTextItem[]): NormItem[] {
           nearest = item
         }
       }
-      if (nearest) nearest.hasSpaceBefore = true
+      if (nearest) {
+        // 진짜 공백이 하나라도 닿으면 진짜 경계
+        nearest.syntheticSpace = (nearest.hasSpaceBefore ? nearest.syntheticSpace === true : true) && sp.synthetic === true
+        nearest.hasSpaceBefore = true
+      }
     }
   }
 

@@ -172,7 +172,7 @@ export function cellTextToString(items: TextItem[], wrap?: { box: { x1: number; 
         s[1].x + s[1].w - s[0].x >= (wrap.box.x2 - wrap.box.x1) - Math.max(s[0].fontSize, s[1].fontSize) * 2) return s[0].text + s[1].text
 
     // 균등배분 구간 감지 (좌표 기반)
-    const evenSpaced = detectEvenSpacedItems(s)
+    const evenSpaced = detectEvenSpacedItems(s, true)
 
     let result = s[0].text
     for (let j = 1; j < s.length; j++) {
@@ -258,9 +258,19 @@ function mergeSuperscriptRows(lines: TextItem[][]): TextItem[][] {
  * 일정 간격으로 3개+ 연속되면 균등배분으로 판단.
  * ODL TextLineProcessor의 핵심 로직을 좌표 기반으로 구현.
  */
-function detectEvenSpacedItems(items: TextItem[]): boolean[] {
+function detectEvenSpacedItems(items: TextItem[], cellLine = false): boolean[] {
   const result = new Array(items.length).fill(false)
   if (items.length < 3) return result
+  // 칸 한 줄이 한 음절 글자뿐이고 글자 틈이 모두 벌어졌는데 공백 글리프가 하나도 없으면(pdfjs 가 틈에 만든 공백뿐) 배분 정렬 칸이다 —
+  // "보 [-777.8] 험 [-777.8] 업"(해외직접투자 보도자료), 틈 일부에만 합성 공백이 든 "법 무 연 수 원"(교정공무원 인사). 공백 글리프가 있거나
+  // 붙은 글자가 있으면(한 글자씩 찍고 낱말 틈만 벌린 글) 아래 종전 규칙(공백에서 끊음)대로.
+  // 칸 글에서만 — 쪽 줄(mergeLineSimple)은 칸 경계를 넘어 한 글자씩 찍은 행("대구교도소장 김진아")을 한 낱말로 붙였다
+  if (cellLine && items.every(it => /^[가-힣]$/.test(it.text)) && items.slice(1).every(it => !it.hasSpaceBefore || it.syntheticSpace)
+    && items.slice(1).every((it, k) => it.x - (items[k].x + items[k].w) >= it.fontSize * 0.1)) {
+    markEvenRun(items, result, 0, items.length)
+    // 줄 전체가 고른 배분이 아니면(틈 비율 3배 넘음 — "전 문 업 종  건 설 업") 종전 규칙으로 부분 run 을 본다
+    if (result.some(Boolean)) return result
+  }
 
   let runStart = -1
   for (let i = 0; i < items.length; i++) {

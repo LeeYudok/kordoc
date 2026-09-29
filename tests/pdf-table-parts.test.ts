@@ -262,6 +262,16 @@ describe("글자 조각 순서·자리표시 글리프", () => {
     assert.equal(blocks[0].text, " 추진 배경")
     assert.equal(blocks[1].table!.cells[0][0].text, " 항목")
   })
+
+  it("홀로 선 첫소리 자모(U+1100~1112)는 호환 자모로 — 한컴 PDF 글머리 \"ᄋ (추진배경)\" → \"ㅇ (추진배경)\", 옛한글 음절은 그대로", () => {
+    const blocks: IRBlock[] = [
+      { type: "paragraph", text: "\u110B (추진배경) 농업기계 \u1100\u119E\u11A8" },
+      { type: "table", table: grid(1, 1, [[0, 0, "\u110B\n대전권"]]) },
+    ]
+    sanitizeBlockControlChars(blocks)
+    assert.equal(blocks[0].text, "\u3147 (추진배경) 농업기계 \u1100\u119E\u11A8")
+    assert.equal(blocks[1].table!.cells[0][0].text, "\u3147\n대전권")
+  })
 })
 
 describe("칸 글 줄 병합 — 숫자", () => {

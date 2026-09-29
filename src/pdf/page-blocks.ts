@@ -462,7 +462,7 @@ function extractBlocksWithGrids(
     // 텍스트→셀 매핑 (hasSpaceBefore 전파 — 셀 텍스트 단어 공백 복원)
     const textItems: TextItem[] = tableItems.map(i => ({
       text: i.text, x: i.x, y: i.y, w: i.w, h: i.h,
-      fontSize: i.fontSize, fontName: i.fontName, hasSpaceBefore: i.hasSpaceBefore, seq: i.seq,
+      fontSize: i.fontSize, fontName: i.fontName, hasSpaceBefore: i.hasSpaceBefore, syntheticSpace: i.syntheticSpace, seq: i.seq,
     }))
     const cellTextMap = mapTextToCells(textItems, cells)
 
@@ -592,7 +592,7 @@ function extractBlocksWithGrids(
       const head = headerLineAbove(items.filter(it => !usedItems.has(it)), grid.colXs, grid.bbox.y2)
       if (head) {
         finalGrid.unshift(head.map(col => ({ text: cleanCellText(cellTextToString(col.map(i => ({
-          text: i.text, x: i.x, y: i.y, w: i.w, h: i.h, fontSize: i.fontSize, fontName: i.fontName, hasSpaceBefore: i.hasSpaceBefore, seq: i.seq,
+          text: i.text, x: i.x, y: i.y, w: i.w, h: i.h, fontSize: i.fontSize, fontName: i.fontName, hasSpaceBefore: i.hasSpaceBefore, syntheticSpace: i.syntheticSpace, seq: i.seq,
         })))), colSpan: 1, rowSpan: 1 })))
         finalRows++
         for (const col of head) for (const it of col) usedItems.add(it)
@@ -708,7 +708,7 @@ function extractBlocksWithGrids(
     // 클러스터 기반 테이블 감지 (XY-Cut 전에 실행 — 테이블이 쪼개지지 않도록)
     const clusterItems: ClusterItem[] = remaining.map(i => ({
       text: i.text, x: i.x, y: i.y, w: i.w, h: i.h,
-      fontSize: i.fontSize, fontName: i.fontName, hasSpaceBefore: i.hasSpaceBefore,
+      fontSize: i.fontSize, fontName: i.fontName, hasSpaceBefore: i.hasSpaceBefore, syntheticSpace: i.syntheticSpace,
     }))
     // 두 단 본문은 쪽 전체 클러스터 표 감지 전에 가른다 — 아래 거터 경로가 단마다 표를 따로 찾는다
     // (fallback 경로의 earlyProseCut 과 같은 순서. 먼저 표로 묶이면 두 단 줄이 한 표 행으로 섞인다)
@@ -1105,7 +1105,7 @@ export function extractPageBlocksFallback(items: NormItem[], pageNum: number, fu
   // 1단계: 클러스터 기반 테이블 감지 우선 (헤더 감지 시 정확도 높음)
   const clusterItems: ClusterItem[] = items.map(i => ({
     text: i.text, x: i.x, y: i.y, w: i.w, h: i.h,
-    fontSize: i.fontSize, fontName: i.fontName, hasSpaceBefore: i.hasSpaceBefore,
+    fontSize: i.fontSize, fontName: i.fontName, hasSpaceBefore: i.hasSpaceBefore, syntheticSpace: i.syntheticSpace,
   }))
   // A page with two justified prose columns must be partitioned before
   // cluster-table detection. Otherwise paired footnotes and body lines can
