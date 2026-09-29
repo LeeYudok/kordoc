@@ -143,3 +143,15 @@ ${bf(1, "NONE")}${bf(2, "SOLID")}${bf(3, "SOLID", "SOLID", "#FFFFFF")}
     assert.match(out, /R= \$\\frac\{F\}\{P\}\$/)
   })
 })
+
+describe("패치 편집본 모드 판별 (editedFromVisual)", () => {
+  it("틀 표가 있는 문서에서 기본(visual) 출력을 고친 편집본을 가려낸다", async () => {
+    const { editedFromVisual } = await import("../src/roundtrip/markdown-units.js")
+    const keep = "<table>\n<tr><th>■ 별표 1</th></tr>\n<tr><td>가. 첫째</td></tr>\n</table>"
+    const visual = "■ 별표 1\n\n가. 첫째"
+    assert.equal(editedFromVisual(keep, visual, "■ 별표 1\n\n가. 고친 첫째"), true)
+    assert.equal(editedFromVisual(keep, visual, keep.replace("첫째", "고친 첫째")), false)
+    // 틀 표가 없는 문서(두 출력이 같음)는 늘 keep 경로
+    assert.equal(editedFromVisual(visual, visual, "■ 별표 1\n\n가. 고친 첫째"), false)
+  })
+})
