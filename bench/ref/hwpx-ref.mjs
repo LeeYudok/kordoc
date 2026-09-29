@@ -267,9 +267,8 @@ export async function extractRef(buffer) {
     // 자동부호 문단 사용 수 — phantom의 자동번호 관용(score.mjs) 문서 단위 게이트용
     if (headingParaIds.has(p.attrs?.parapridref)) counters.autoNumHeadingParas++
     let text = ""
-    let leaderCut = false
     const structural = [] // {type:'tbl'|'shape'|'drawtext', node}
-    const addText = s => { if (leaderCut) counters.leaderTabChars += s.length; else text += s }
+    const addText = s => { text += s }
 
     const walkText = node => {
       for (const ch of node.children) {
@@ -287,7 +286,7 @@ export async function extractRef(buffer) {
           // 문서 순서 유닛으로 분할한다 (#49/#50). float 표는 종전대로 텍스트 뒤
           const inline = ch.children.some(c => typeof c !== "string" && c.tag === "pos" && c.attrs?.treataschar === "1")
           structural.push({ type: "tbl", node: ch })
-          if (inline && !leaderCut) text += "\x1E"
+          if (inline) text += "\x1E"
           continue
         }
         if (t === "drawtext") { structural.push({ type: "drawtext", node: ch }); continue }
@@ -312,12 +311,9 @@ export async function extractRef(buffer) {
           addText(noteAutoNumText(ch))
           continue
         }
-        if (t === "tab") {
-          const leader = ch.attrs.leader
-          if (leader && leader !== "0") leaderCut = true // 리더탭 이후 절단 (whitelist: leader-tab-cut)
-          else addText(" ")
-          continue
-        }
+        // 채움(leader≠0) 탭도 보통 탭 — 채움선은 글이 아니고 뒤 글(목차 쪽 번호·일정)은 한컴이 그린다 (2026-09-29 채점 기준 변경:
+        // 종전 whitelist leader-tab-cut 은 파서와 같이 뒤를 잘랐다)
+        if (t === "tab") { addText(" "); continue }
         if (t === "br" || t === "linebreak") { addText("\n"); continue }
         if (t === "fwspace" || t === "hwspace") { addText(" "); continue }
         // 양식 선택 상자(☐/☑)·라디오 단추(○/●) — 한컴이 인쇄하는 상자와 캡션(캡션은 개체 폭이 상자 + 글자 한 자 이상일 때만,
@@ -352,7 +348,7 @@ export async function extractRef(buffer) {
           case "footer": specials.footers.push(subListParts(ch)); break
           case "footnote": case "endnote": {
             // 개체 자리의 본문 참조 부호("1)"·"문1）") — 한컴이 그린다 (hp:t 에 없음)
-            if (!leaderCut) addText(noteRefMark(ch, noteFormats[ch.tag]))
+            addText(noteRefMark(ch, noteFormats[ch.tag]))
             const parts = subListParts(ch)
             ;(ch.tag === "footnote" ? specials.footnotes : specials.endnotes).push(normText(parts.join(" ")))
             notes.push({ kind: ch.tag, parts })
@@ -374,7 +370,7 @@ export async function extractRef(buffer) {
           }
           case "fieldend": {
             const open = openFields.pop()
-            if (open && !leaderCut) {
+            if (open) {
               const value = text.slice(open.start)
               if (value && (value === open.guide || value.trimEnd() === open.guide)) {
                 text = text.slice(0, open.start)

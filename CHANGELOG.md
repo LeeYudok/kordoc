@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **점선(채움) 탭 뒤 글이 잘리던 것 (HWPX·HWP5·HWP3)**: 목차 "1. 추진배경 및 목적·····3" 처럼 채움 탭(leader≠0)을 만나면 문단 끝까지 잘라 쪽 번호가 사라지고, 목차가 아닌 곳의 글도 같이 사라졌다. 일정표 "사용자 의견조사 ····· '26년 8~9월" 의 일정, 줄바꿈 뒤 다음 목차 항목 "<참고2> 직종별사업체노동력조사 개요 ···· 20" 이 통째로 빠진 사례가 코퍼스에 있다. 이제 채움 탭도 보통 탭으로 다룬다. 채움선(점)은 글로 내지 않고 뒤 글은 남긴다(PDF 가 점 채움을 탭 하나로 바꾸고 쪽 번호를 남기는 것과 같다). HWPX 코퍼스 채움 탭 913개 중 36개는 뒤가 쪽 번호가 아닌 글이었다.
+- **HWPML `<TAB/>` 누락**: 글자 사이 탭을 통째로 빠뜨려 목차 "사업 개요 및 추진체계<TAB/>3" 이 "추진체계3" 으로 쪽 번호가 글에 붙던 것을 탭으로 낸다.
+
+### 채점 기준 변경 (2026-09-29)
+
+- HWPX 참조 추출기(`bench/ref/hwpx-ref.mjs`)의 화이트리스트 `leader-tab-cut`(채움 탭 뒤 절단, 파서 정책 미러)을 뺀다. 채움 탭도 보통 탭처럼 빈칸으로 두고 뒤 글을 모수에 넣는다(한컴이 그리는 글).
+
 ## [4.16.3] - 2026-09-29
 
 MCP `generate_document` 가 이미지 폴더 안 심링크를 따라 `KORDOC_ROOT` 밖 파일을 생성 HWPX 에 실을 수 있던 것을 막는다(#101). MCP 도 한글·URL 인코딩 이름 그림을 싣는다.
