@@ -253,7 +253,7 @@ const PRESET_DEFAULTS: Record<
   // 중앙부처 업무보고 — 실측(재경부 2차 업무보고): 함초롬바탕 15pt, 줄피치 21.7pt(≈145%), □→ㅇ→-→*(각주)
   ministry: { bodyPt: 15, lineSpacing: 145, numbering: "report" },
   // 서울 방침서 — 실측(시장방침 「청년취업사관학교 2.0」 추진계획 외 4건): □ HY견고딕 17 · ㅇ 한컴돋움 15b · - 휴먼명조 14, 줄간격 200%
-  bangchim: { bodyPt: 15, lineSpacing: 200, numbering: "report" },
+  bangchim: { bodyPt: 15, lineSpacing: 190, numbering: "report" },
 }
 
 /** 프리셋 별칭(한글/영문) → 내부 preset 키. CLI·라이브러리 공용 */

@@ -45,7 +45,7 @@ const MARK = /^[\s ]*(?:[□■ㅇ○◦●\-‐–·ㆍ※*▪▸➊-➓❶-�
 // 따옴표·가운뎃점 변형은 문자 다듬기(’ ‘ “ ”)가 바꾸는 표기라 짝짓기에서 접는다 — 서식 비교가 목적
 const key = t => t.replace(MARK, "").replace(/[\s \t]+/g, "").replace(/[‘’']/g, "'").replace(/[“”"]/g, '"').replace(/[․‧·ㆍ]/g, "·")
 
-/** 골격 표 역할 — 칸 문단은 가장 안쪽 표 모양으로: 1×3 장 상자(번호|간격|제목), 2×1 제목표(제목/담당), 1×1 요약박스 */
+/** 골격 표 역할 — 칸 문단은 가장 안쪽 표 모양으로: 1×3 장 상자(번호|간격|제목), 제목표(2×1 제목/담당, 1×1 제목 상자), 1×1 요약박스 */
 function frameRole(x) {
   const t = x.ctx[x.ctx.length - 1]
   if (!t || x.ctx.length !== 1) return null
@@ -53,16 +53,17 @@ function frameRole(x) {
     const roman = /^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩIVX]+\.?$/.test(t.head)
     return (roman ? "장" : "절") + (t.rc === "0,0" ? "번호" : "제목")
   }
-  if (t.rows === 2 && t.cols === 1) return t.rc === "0,0" ? "제목" : "담당"
-  if (t.rows === 1 && t.cols === 1 && t.id === summaryTable) return "요약"
+  if (t.id === frame.title) return t.rows === 2 && t.cols === 1 && t.rc !== "0,0" ? "담당" : "제목"
+  if (t.rows === 1 && t.cols === 1 && t.id === frame.summary) return "요약"
   return null
 }
-/** 요약박스 — 제목표(2×1) 다음 첫 1×1 표 (그 밖의 1×1 상자는 표칸) */
-let summaryTable = -1
-function findSummary(arr) {
-  const ti = arr.findIndex(x => x.ctx.length === 1 && x.ctx[0].rows === 2 && x.ctx[0].cols === 1)
-  const s = arr.slice(Math.max(ti, 0)).find(x => x.ctx.length === 1 && x.ctx[0].rows === 1 && x.ctx[0].cols === 1)
-  return s ? s.ctx[0].id : -1
+/** 제목표 — 본문 시작 글(from)이 든 첫 표(2×1 제목/담당 또는 1×1 제목 상자), 요약박스 — 그 다음 첫 1×1 표. 그 밖의 2×1·1×1 상자는 표칸 */
+let frame = { title: -1, summary: -1 }
+function findFrame(arr, from) {
+  const ti = arr.findIndex(x => x.ctx.length === 1 && (!from || key(x.text).includes(key(from))))
+  const title = ti >= 0 ? arr[ti].ctx[0].id : -1
+  const s = arr.slice(Math.max(ti, 0)).find(x => x.ctx.length === 1 && x.ctx[0].id !== title && x.ctx[0].rows === 1 && x.ctx[0].cols === 1)
+  return { title, summary: s ? s.ctx[0].id : -1 }
 }
 
 function role(x) {
@@ -70,8 +71,11 @@ function role(x) {
   const f = frameRole(x)
   if (f) return f
   if (x.ctx.length) return "표칸"
-  const m = t.match(/^([□■ㅇ○◦●‐–\-·ㆍ※*▪▸])/)
-  if (m) return { "○": "ㅇ", "◦": "ㅇ", "‐": "-", "–": "-", "ㆍ": "·", "■": "□" }[m[1]] ?? m[1]
+  // 한컴 PUA 글머리 U+F03DA 는 □(둥근 모서리 빈 네모). 숫자 위계 방침서(1. → 1) → ①)는 부호 갈래가 역할
+  const m = t.match(/^([□■ㅇ○◦●‐–\-·ㆍ※*▪▸\u{F03DA}])/u)
+  if (m) return { "○": "ㅇ", "◦": "ㅇ", "‐": "-", "–": "-", "ㆍ": "·", "■": "□", "\u{F03DA}": "□" }[m[1]] ?? m[1]
+  const n = t.match(/^(?:\d{1,2}([.)])|[①-⑳])/u)
+  if (n) return n[1] ? `1${n[1]}` : "①"
   return "글"
 }
 
@@ -128,12 +132,13 @@ for (const set of sets) {
     const gt = flatten(digest(readFileSync(join(dir, c.hwpx))))
     const md = readFileSync(join(dir, c.md), "utf8")
     const gen = flatten(digest(Buffer.from(await markdownToHwpx(md, c.options ?? {}))))
-    const cut = arr => { const i = c.from ? arr.findIndex(x => key(x.text).includes(key(c.from))) : 0; return i < 0 ? arr : arr.slice(i) }
+    // 본문 시작 — from 글이 처음 나오는 본문·제목표 문단(표지 안 겹표의 같은 제목은 건너뛴다: 거기서 자르면 LCS 가 표지 제목과 짝을 맺어 제목표가 누락된다)
+    const cut = arr => { const i = c.from ? arr.findIndex(x => x.ctx.length <= 1 && key(x.text).includes(key(c.from))) : 0; return i < 0 ? arr : arr.slice(i) }
     // 마스킹 줄(부분공개 "*****")은 정답 글이 아니다
     const live = x => key(x.text) && !/^\*{5,}$/.test(key(x.text))
     const G = cut(gt).filter(live), H = cut(gen).filter(live)
-    const sg = findSummary(G), sh = findSummary(H)
-    const roleOf = (x, side) => { summaryTable = side === "g" ? sg : sh; return role(x) }
+    const fg = findFrame(G, c.from), fh = findFrame(H, c.from)
+    const roleOf = (x, side) => { frame = side === "g" ? fg : fh; return role(x) }
     const pairs = align(G.map(x => key(x.text)), H.map(x => key(x.text)))
     const stat = {}
     const bad = []

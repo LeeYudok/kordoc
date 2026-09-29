@@ -341,17 +341,18 @@ export function buildBangchimSummary(text: string, ctx: FrameCtx): { xml: string
   return { xml: host(ftbl([row], w, h, 1, { bottomGap: 600 }), reg.para({ align: "CENTER", lineSp: 100 }), c), lines }
 }
 
-export function buildSquareChapter(roman: string, title: string, ctx: FrameCtx, st: { font: string; pt: number }, before: number): { xml: string; overflow: boolean } {
+export function buildSquareChapter(label: string, title: string, ctx: FrameCtx, st: { font: string; pt: number }, before: number): { xml: string; overflow: boolean } {
   const { reg, bf } = ctx
   const numW = 3223, gapW = 1414, h = 3014
   const maxTitle = ctx.W - numW - gapW
   const fit = fitOneLine(title, st.font, st.pt, maxTitle - 1200, st.pt - 3)
   const textW = measureTextWidth(title, Math.round(fit.pt * 100), fit.ratio, { faceClass: faceClassForGen(st.font), spacingPct: fit.spacing })
   const titleW = Math.min(maxTitle, Math.max(14000, Math.round(textW) + 1200))
-  const cNum = reg.char({ font: "HY견명조", pt: 19, bold: true })
+  // 번호칸 — 로마 숫자는 HY견명조 굵게(로마 8건 중 7), 아라비아 숫자·가나다는 제목칸과 같은 글꼴·크기(7건 중 6)
+  const cNum = /^[Ⅰ-Ⅻ]+$/u.test(label) ? reg.char({ font: "HY견명조", pt: 19, bold: true }) : reg.char({ font: st.font, pt: st.pt })
   const cTitle = reg.char({ font: st.font, pt: fit.pt, ratio: fit.ratio, spacing: fit.spacing })
   const center = reg.para({ align: "CENTER", lineSp: 150, left: 300 })
-  const row = tc({ bf: bf.get({ t: MM05, b: MM05, l: MM05, r: MM05 }), row: 0, col: 0, w: numW, h, paras: para(roman, center, cNum) })
+  const row = tc({ bf: bf.get({ t: MM05, b: MM05, l: MM05, r: MM05 }), row: 0, col: 0, w: numW, h, paras: para(label, center, cNum) })
     + tc({ bf: bf.get({ t: "none", b: "none", l: MM05, r: "none" }), row: 0, col: 1, w: gapW, h, paras: para("", reg.para({ align: "JUSTIFY", lineSp: 160 }), cTitle) })
     + tc({ bf: bf.get({ t: MM05, b: MM05, l: "none", r: "none" }), row: 0, col: 2, w: titleW, h, paras: para(title, center, cTitle), name: "__kordoc_h2" })
   const w = numW + gapW + titleW

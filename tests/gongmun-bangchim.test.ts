@@ -52,22 +52,31 @@ const sec = async (m: string) => {
 }
 
 describe("서울 방침서(bangchim) 프리셋 — 해석", () => {
-  it("별칭 서울방침·방침서·방침 → bangchim, 서울 보고서 여백·장 상자·줄간격 200%", () => {
+  it("별칭 서울방침·방침서·방침 → bangchim, 서울 보고서 여백·장 상자·줄간격 190%", () => {
     for (const a of ["서울방침", "방침서", "방침", "bangchim"]) assert.equal(PRESET_ALIAS[a], "bangchim")
     const g = resolveGongmun({ preset: "서울방침" })
     assert.deepEqual(g.margins, { top: 13, bottom: 13, left: 18, right: 18 })
     assert.equal(g.h2Marker, "square")
-    assert.equal(g.lineSpacing, 200)
+    assert.equal(g.lineSpacing, 190)
   })
 
-  it("스킴 — □ HY견고딕 17 보통 · ㅇ 한컴돋움 15 굵게 왼쪽 · - 휴먼명조 14 · ▸ 한컴돋움 13 · ※ 한컴돋움 13", () => {
+  it("스킴 — □ HY견고딕 17 보통 · ㅇ 한컴돋움 15 굵게 양쪽 · - 휴먼명조 14 · ▸ 한컴돋움 13 · ※ 한컴돋움 13", () => {
     const s = pickScheme(resolveGongmun({ preset: "bangchim" }), true)
     assert.deepEqual([s.levels[0].font, s.levels[0].pt, s.levels[0].bold], ["HY견고딕", 17, false])
-    assert.deepEqual([s.levels[1].font, s.levels[1].pt, s.levels[1].bold, s.levels[1].align], ["한컴돋움", 15, true, "LEFT"])
+    assert.deepEqual([s.levels[1].font, s.levels[1].pt, s.levels[1].bold, s.levels[1].align ?? "JUSTIFY"], ["한컴돋움", 15, true, "JUSTIFY"])
     assert.deepEqual([s.levels[2].font, s.levels[2].pt], ["휴먼명조", 14])
     assert.deepEqual([s.levels[3].font, s.levels[3].pt, s.marker(3, 0)], ["한컴돋움", 13, "▸"])
     assert.deepEqual([s.ref.font, s.ref.pt], ["한컴돋움", 13])
-    assert.equal(s.lineSp, 200)
+    assert.equal(s.lineSp, 190)
+  })
+
+  it("숫자 위계 스킴 — 1. □ 글꼴 · 1) ㅇ 글꼴 · ① 와 그 아래 - 는 휴먼명조 14, 넷째 단계 부호 -", () => {
+    const s = pickScheme(resolveGongmun({ preset: "bangchim" }), false, true)
+    assert.deepEqual([s.levels[0].font, s.levels[0].pt], ["HY견고딕", 17])
+    assert.deepEqual([s.levels[1].font, s.levels[1].pt, s.levels[1].bold], ["한컴돋움", 15, true])
+    assert.deepEqual([s.levels[2].font, s.levels[2].pt, s.levels[3].font, s.levels[3].pt], ["휴먼명조", 14, "휴먼명조", 14])
+    assert.ok(s.levels[3].leadTa > s.levels[2].leadTa)
+    assert.equal(s.marker(3, 0), "-")
   })
 })
 
@@ -75,6 +84,19 @@ describe("서울 방침서 — 아웃라인", () => {
   it("부호 없는 목록은 직전 명시 부호의 한 단계 아래 (ㅇ 뒤 '- …' → -)", () => {
     const o = buildOutline(parseMarkdownToBlocks("ㅇ 항목\n\n- 세부\n"), { gaejosik: true, consumeTitle: true, summaryFromQuote: true, listUnderMarker: true })
     assert.deepEqual(o.nodes.map((n) => n.kind === "item" ? n.depth : -1), [1, 2])
+  })
+
+  it("숫자 위계 원고(□·ㅇ 없이 1. → 1) → ①) — 갈래가 처음 나온 순서가 단계, 부호는 그대로", () => {
+    const src = "1. 추진근거\n\n1) 청년기본법 제4조\n\n① 전국 청년 고용률 하락\n\n- 체감실업률 15.6%\n\n2. 그간 추진경과\n"
+    const o = buildOutline(parseMarkdownToBlocks(src), { gaejosik: true, consumeTitle: true, summaryFromQuote: true, headingFrames: true, keepMarkers: true, numbered: true })
+    assert.equal(o.numbered, true)
+    assert.deepEqual(o.nodes.map((n) => n.kind === "item" ? [n.depth, n.marker ?? ""] : null), [[0, "1."], [1, "1)"], [2, "①"], [3, ""], [0, "2."]])
+  })
+
+  it("□·ㅇ 부호가 있거나 번호 갈래가 하나뿐이면 숫자 위계가 아니다", () => {
+    const opts = { gaejosik: true, consumeTitle: true, summaryFromQuote: true, headingFrames: true, keepMarkers: true, numbered: true }
+    assert.equal(buildOutline(parseMarkdownToBlocks("□ 추진배경\n\n1. 단계\n\n1) 세부\n"), opts).numbered, false)
+    assert.equal(buildOutline(parseMarkdownToBlocks("1. 첫째\n2. 둘째\n"), opts).numbered, false)
   })
 
   it("굵게가 부호를 감싼 줄·낫표가 붙은 ㅇ 도 항목 부호로 읽는다", () => {
@@ -106,6 +128,19 @@ describe("서울 방침서 — 골격", () => {
     assert.equal((s.match(/name="__kordoc_h3"/g) ?? []).length, 2)
     assert.match(head, /faceColor="#437FC1"/)
     assert.match(s, /<hp:t>❶ <\/hp:t>[\s\S]*<hp:t>❷ <\/hp:t>[\s\S]*<hp:t>❸ <\/hp:t>/)
+  })
+
+  it("장 상자 번호칸은 작성자 번호 — '## 1. ' → 1, '## 가. ' → 가 (제목칸과 같은 HY견고딕 20), 번호 없으면 Ⅰ", async () => {
+    const { sec: s } = await sec(md.replace("## 청년취업사관학교 1.0 운영성과", "## 가. 청년취업사관학교 1.0 운영성과").replace("## 세부 추진계획", "## 2. 세부 추진계획"))
+    assert.match(s, /<hp:t>가<\/hp:t>[\s\S]*<hp:t>청년취업사관학교 1\.0 운영성과<\/hp:t>[\s\S]*<hp:t>2<\/hp:t>[\s\S]*<hp:t>세부 추진계획<\/hp:t>/)
+    assert.ok(!s.includes("<hp:t>가. 청년취업사관학교"), "제목칸에 번호가 남지 않는다")
+    assert.ok(!/<hp:t>Ⅰ<\/hp:t>/.test(s))
+  })
+
+  it("숫자 위계 원고는 1. · 1) · ① 부호를 그대로 쓴다", async () => {
+    const { sec: s } = await sec("# 계획\n\n> 목적\n\n## 가. 추진개요\n\n1. 추진근거\n\n1) 청년기본법 제4조\n\n① 전국 청년 고용률 하락\n\n- 체감실업률 15.6%\n")
+    for (const t of ["1. 추진근거", "1) 청년기본법", "① 전국", "- 체감실업률"]) assert.ok(s.includes(`<hp:t>${t}`), t)
+    assert.ok(!/<hp:t>[□ㅇ] /.test(s))
   })
 
   it("▸ 는 부호 그대로 4단계, 캡션 줄 '< … >' 은 가운데", async () => {

@@ -15,7 +15,7 @@
 import { type MdBlock, generateParagraph, generateRuns } from "./md-runs.js"
 import { type ResolvedGongmun, GongmunNumberer, computeSuppression, mmToHwpunit } from "./gongmun.js"
 import { type Scheme, type LevelStyle, pickScheme, taHu } from "./gongmun-scheme.js"
-import { buildOutline, type Outline, type OutlineNode } from "./outline.js"
+import { buildOutline, CHAPTER_LABEL_RE, type Outline, type OutlineNode } from "./outline.js"
 import { StyleRegistry, inlineMapper } from "./style-registry.js"
 import { TableBfRegistry } from "./gen-table-bf.js"
 import { fitOneLine, fitParagraph, fitCharBreaks } from "./fit-line.js"
@@ -103,8 +103,8 @@ export function buildGongmunSectionV5(blocks: MdBlock[], gongmun: ResolvedGongmu
   // 1차 아웃라인(스킴 미정) — 본문 □ 부호 자동감지용. 업무보고는 h3~h6 을 서식 틀로, 인용문은 어디서나 요약박스로
   const pre = buildOutline(blocks, isMinistry
     ? { gaejosik: true, consumeTitle: true, summaryFromQuote: true, quoteBox: true, headingFrames: true, keepMarkers: true }
-    : { gaejosik: true, consumeTitle: true, summaryFromQuote: isReport, ...(isBangchim ? { headingFrames: true, keepMarkers: true } : {}) })
-  const scheme = pickScheme(g, pre.hasBoxMarkers)
+    : { gaejosik: true, consumeTitle: true, summaryFromQuote: isReport, ...(isBangchim ? { headingFrames: true, keepMarkers: true, numbered: true } : {}) })
+  const scheme = pickScheme(g, pre.hasBoxMarkers, pre.numbered)
   const gaejosik = scheme.kind === "gaejosik"
   const raw: Outline = gaejosik ? pre : buildOutline(blocks, { gaejosik: false, consumeTitle: true, summaryFromQuote: false })
   // 문자 다듬기(날짜·금액 묶음 빈칸, ‘’“”) — 폭 계산·방출이 같은 문자열을 보도록 조판 전에
@@ -348,7 +348,9 @@ export function buildGongmunSectionV5(blocks: MdBlock[], gongmun: ResolvedGongmu
     if (chapterStyle === "square") {
       sectionSeq = 0; subheadSeq = 0
       const before = prevKind === "start" || prevKind === "title" ? 0 : prevKind === "summary" ? BOX_GAP_AFTER_BAND : BAND_BEFORE_HU
-      const box = buildSquareChapter(chapterLabel(node.index, "roman").replace(/\.$/, ""), plain(node.text), frame, st, before)
+      // 번호칸은 작성자가 쓴 번호(Ⅰ·1·가) — 없으면 로마 숫자. "가. " 는 stripChapterNumber 가 남기므로 여기서 벗긴다
+      const title = node.label ? plain(node.text).replace(CHAPTER_LABEL_RE, "") : plain(node.text)
+      const box = buildSquareChapter(node.label ?? chapterLabel(node.index, "roman").replace(/\.$/, ""), title, frame, st, before)
       if (box.overflow) warnings.push(`장 제목이 한 줄에 담기지 않아 축소했습니다 — 제목을 줄이세요: "${node.text.slice(0, 30)}…"`)
       return box.xml
     }
