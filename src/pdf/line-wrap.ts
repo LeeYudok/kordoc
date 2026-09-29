@@ -78,6 +78,14 @@ export class WrapLexicon {
     return this.isWord(left + right) && !this.pairs.has(left + " " + right)
   }
 
+  /** 두 글자+두 글자 증거만 — 한 글자 쌍으로 물러서지 않는다 (표 칸 조각처럼 줄 꺾임이 아닌 자리에 쓸 때) */
+  evidence2(left: string, right: string): "" | " " | null {
+    const n = left.length
+    if (n < 2 || right.length < 2) return null
+    const k1 = pairKey(left.charCodeAt(n - 2), left.charCodeAt(n - 1)), k2 = pairKey(right.charCodeAt(0), right.charCodeAt(1))
+    return decideCounts(this.joined2.get(k1)?.get(k2) ?? 0, this.spaced2.get(k1)?.get(k2) ?? 0)
+  }
+
   /** 꺾인 자리 증거: "" 붙음 · " " 띄움 · null 모름 (두 글자 증거가 갈리거나 없으면 한 글자) */
   evidence(left: string, right: string): "" | " " | null {
     const n = left.length

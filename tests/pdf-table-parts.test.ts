@@ -8,6 +8,7 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 import { joinSplitParts, mergeCrossPageTables } from "../src/pdf/table-parts.js"
+import { WrapLexicon } from "../src/pdf/line-wrap.js"
 import { CLIP_TABLES, EMPTY_PARTS, FILLER_CELLS, TABLE_COLXS, CELL_LINES, recordCellLines } from "../src/pdf/table-meta.js"
 import { trimTrailingEmptyTableCols, markImageCell } from "../src/pdf/table-trim.js"
 import { buildClipCellGrids } from "../src/pdf/clip-cells.js"
@@ -668,6 +669,31 @@ describe("쪽 넘김 2차 — 합집합 격자 틈 열", () => {
 })
 
 describe("쪽 넘김 2차 — 쪽 경계에 걸친 세로 병합 칸", () => {
+  it("모든 칸이 경계에서 끝나도 두 조각 글이 문서 어휘로 어절 중간 이음이면 세로 병합 칸으로 잇는다 (\"시멘트안정처리 / 기층\", \"급속함수량측 / 정기 사용불가\")", () => {
+    // 문서 어휘에 "…측정기" 만 있고 "시멘트안정처리기층" 은 없다 — 한 열의 어절 중간 이음이 같은 경계의 다른 이름표 칸도 잇게 한다
+    const lex = new WrapLexicon()
+    lex.addLine("노상 및 기층 공사 급속함수량측정기 사용불가 조건")
+    const prev = grid(2, 3, [[0, 0, "종별"], [0, 1, "시험종목"], [0, 2, "비고"], [1, 0, "시멘트안정처리"], [1, 1, "밀도"], [1, 2, "급속함수량측"]])
+    const curr = grid(2, 3, [[0, 0, "기층", 1, 2], [0, 1, "함수비"], [1, 1, "다짐"], [0, 2, "정기 사용불가", 1, 2]])
+    lines(prev.cells[1][0], [[5, 95, 40]]) // 글이 바닥(30)에서 한 줄 위 — 바닥 근접 검사로는 새 칸
+    lines(prev.cells[1][2], [[305, 395, 40]])
+    const res = joinSplitParts(prev, [0, 100, 300, 400], curr, [0, 100, 300, 400], 0, 30, lex)
+    assert.ok(res && !res.split)
+    assert.equal(res.table.cells[1][0].text, "시멘트안정처리\n기층")
+    assert.equal(res.table.cells[1][0].rowSpan, 3)
+    assert.equal(res.table.cells[1][2].rowSpan, 3)
+    // 어휘 증거가 띄움이면(새 칸 이름) 종전대로 새 칸
+    const lex2 = new WrapLexicon()
+    lex2.addLine("시멘트안정처리 기층 공사 급속함수량측 정기 사용불가")
+    const prev2 = grid(2, 3, [[0, 0, "종별"], [0, 1, "시험종목"], [0, 2, "비고"], [1, 0, "시멘트안정처리"], [1, 1, "밀도"], [1, 2, "급속함수량측"]])
+    const curr2 = grid(2, 3, [[0, 0, "기층", 1, 2], [0, 1, "함수비"], [1, 1, "다짐"], [0, 2, "정기 사용불가", 1, 2]])
+    lines(prev2.cells[1][0], [[5, 95, 33]])
+    lines(prev2.cells[1][2], [[305, 395, 33]])
+    const res2 = joinSplitParts(prev2, [0, 100, 300, 400], curr2, [0, 100, 300, 400], 0, 30, lex2)
+    assert.ok(res2)
+    assert.equal(res2.table.cells[1][0].rowSpan, 1)
+  })
+
   it("세로 병합 이름표를 이은 뒤 그 행이 쪼개진 행이면 다시 잇는다 (규제영향분석서 \"일몰설정/예외기준\" + \"…되어야 / 하는 규제\")", () => {
     // 앞 쪽 끝: 일몰설정 | 1. 국제조약 … 되어야 | 미해당, 다음 쪽: 예외기준(2행) | 하는 규제 | (클립 없음) / 2. 국가의 … | 미해당
     const prev = grid(2, 3, [[0, 0, "대분류"], [0, 1, "소분류"], [0, 2, ""], [1, 0, "일몰설정"], [1, 1, "1. 국제조약 등에 따라 동일하게 적용 되어야"], [1, 2, "미해당"]])

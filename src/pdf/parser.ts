@@ -459,7 +459,7 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     // 쪽을 넘는 칸의 1칸 조각을 앞 쪽 표 그 칸에 붙인 뒤(행으로 갈리지 않게) 페이지 걸친 표 병합 —
     // 머리글/바닥글 제거 후 인접해진 표를 하나로 (ODL TableBorderProcessor.checkNeighborTables 포팅)
     mergeContinuedCells(blocks, pageHeights)
-    mergeCrossPageTables(blocks, pageHeights)
+    mergeCrossPageTables(blocks, pageHeights, wrapLexicon)
     // 괘선 상자 머리말·꼬리말(표 블록) — 쪽 넘김 표 병합 뒤라야 상자가 갈라 두던 이웃 쪽 표를 잇지 않는다 (block-detect.ts)
     if (options?.removeHeaderFooter !== false && parsedPageCount >= 3) {
       const boxes = removeHeaderFooterBlocks(blocks, pageHeights, warnings, noteMarks, true)

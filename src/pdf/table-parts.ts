@@ -13,7 +13,7 @@
 import type { IRBlock, IRCell, IRTable } from "../types.js"
 import { CELL_LINES, CLIP_TABLES, EMPTY_PARTS, FILLER_CELLS, IMAGE_CELLS, TABLE_COLXS } from "./table-meta.js"
 import { CONTACT_HEAD, CONTACT_ROLE } from "./contact-table.js"
-import { startsNewItem } from "./line-wrap.js"
+import { startsNewItem, type WrapLexicon } from "./line-wrap.js"
 
 /** 두 조각의 경계를 같은 것으로 보는 거리 (pt) — 클립 좌표 오차 0.05pt, 조각 간 반올림 여유 */
 const PART_COL_TOL = 1
@@ -67,7 +67,7 @@ const hasText = (t: string): boolean => t.replace(/\|/g, "") !== ""
  * @param prevBottom 앞 조각 밑변 y — 쪽 경계에 걸친 세로 병합 칸 글을 가린다 (mergeStraddlingCells)
  * @returns split — 경계 행을 쪼개진 행으로 보고 합쳤는지
  */
-export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx: number[], dx = 0, prevBottom?: number): { table: IRTable; colXs: number[]; split: boolean; header: boolean } | null {
+export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx: number[], dx = 0, prevBottom?: number, lex?: WrapLexicon): { table: IRTable; colXs: number[]; split: boolean; header: boolean } | null {
   if (pcx.length !== prev.cols + 1 || ccx.length !== curr.cols + 1) return null
   const U = unionCoords(pcx, ccx)
   const cols = U.length - 1
@@ -135,7 +135,7 @@ export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx:
   // 세로 병합 칸을 이은 뒤 다시 본다 — 뒤 조각 이름표가 여러 행을 덮어 쪼개진 행 판정에서 빠졌던 행("일몰설정 / 예외기준" 이름표 옆
   // "…적용 되어야 / 하는 규제", 규제영향분석서)은 이름표가 한 칸이 되면 칸 조각 이어짐으로 판정된다
   // (글 이어짐 증거만 — 이어 늘린 빈 칸 조각은 증거로 쓰지 않는다: 시험기준표 "KS M ISO 2507-1," / "KS M ISO 2507-2" 는 두 행)
-  if (rows > prev.rows && !split && prevBottom !== undefined && mergeStraddlingCells(table, owner, prev.rows, prevBottom)) split = mergeSplitRow(table, owner, prev.rows, U, true)
+  if (rows > prev.rows && !split && prevBottom !== undefined && mergeStraddlingCells(table, owner, prev.rows, prevBottom, lex)) split = mergeSplitRow(table, owner, prev.rows, U, true)
   // 머리 행 증거는 되풀이된 행에 글 있는 칸이 둘 이상일 때만 — 한 칸짜리 제목 행은 같은 제목의 상자를 쪽마다 새로 놓은 것과 구별이
   // 안 된다 (편람 기안문 "작성방법" 상자가 짝·홀 쪽에 하나씩 놓여 한 표로 이어졌다, HWPX 는 두 표)
   return { table, colXs: U, split, header: ca.filter(a => a.r < skip && a.cell.text.trim()).length >= 2 }
@@ -151,7 +151,7 @@ export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx:
  * 모든 칸이 경계에서 끝나면 다음 쪽 첫 행은 새 묶음이다 (연락처 표 되풀이된 "<공동>" 5건, 과제 목록 두 행 칸 "4-29" 한 줄이
  * 바닥 가까이 있어도 다음 쪽 "4-30" 은 새 과제)
  */
-function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first: number, prevBottom: number): boolean {
+function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first: number, prevBottom: number, lex?: WrapLexicon): boolean {
   const last = first - 1
   const straddles = owner[first].some((o, c) => o !== null && o === owner[last][c])
   // 뒤 조각 첫 행에서 글 있는 새 칸이 처음 나오는 열 — 빈 이어짐은 그보다 왼쪽(이름표 열)만 본다. 왼쪽 이름표 열에 새 묶음 이름이
@@ -160,6 +160,21 @@ function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first:
   for (let c = 0; c < table.cols; c++) {
     const d = owner[first][c]
     if (d && d.r === first && d !== owner[last][c] && hasContent(table.cells[d.r][d.c])) { firstNew = c; break }
+  }
+  // 두 조각 글이 문서 어휘로 어절 중간에서 갈린 열이 하나라도 있으면(줄 꺾임 이음 "") 쪽 경계가 세로 병합 칸들을 가로질러 자른
+  // 것이다 — 같은 모양(앞 조각 한 행 → 뒤 조각 여러 행)의 다른 이름표 칸도 글 위치(바닥 근접)와 무관하게 잇는다
+  // (시험기준표 "급속함수량측 / 정기 사용불가" 옆 "시멘트안정처리 / 기층", 문서 안 "…측정기")
+  let midWord = false
+  if (lex) for (let c = 0; c < table.cols && !midWord;) {
+    const u = owner[last][c], d = owner[first][c]
+    if (!u) { c++; continue }
+    c = u.c + u.cs
+    if (!d || d === u || u.r + u.rs - 1 !== last || d.r !== first || d.c !== u.c || d.cs !== u.cs) continue
+    // 쪽 경계 병합 모양(앞 조각 끝 행 한 칸 → 뒤 조각 여러 행)인 열에서, 두 글자+두 글자 문서 어휘 증거로만 (줄 꺾임 판정의 한 글자
+    // 쌍·조각 규칙은 칸 조각 쌍에 잡음이 많다 — "경도 / 체결 축력", "슬럼프 … / 공기량")
+    if (u.r !== last || d.rs < 2) continue
+    const tail = table.cells[u.r][u.c].text.trim().split(/\s+/).pop() ?? "", head = table.cells[first][d.c].text.trim().split(/\s+/)[0] ?? ""
+    if (/^[가-힣]{2,}$/.test(tail) && /^[가-힣]{2,}/.test(head) && lex.evidence2(tail, head) === "") midWord = true
   }
   let merged = false
   for (let c = 0; c < table.cols;) {
@@ -171,7 +186,7 @@ function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first:
     // 빈 이어짐 — 앞 조각에서 두 행 이상 덮은 이름표 칸 아래 뒤 조각 첫 칸이 비었으면 그 칸의 나머지다. 새 묶음이면 이름표가 있다
     // (aift 기업 현황 "자본잠식현황" 앞 쪽 2행 + 다음 쪽 빈 4행, "자본총계" 2행 + 빈 1행 — 모든 칸이 쪽 경계에서 끝나도)
     if (!(u.rs >= 2 && u.c + u.cs <= firstNew && hasContent(a) && !hasContent(b))) {
-      if (!straddles) continue
+      if (!straddles && !midWord) continue
       // 앞 조각에 끝 행 하나만 보인 칸도 뒤 조각 칸이 두 행 이상을 덮으면 쪽 경계에 걸친 병합 칸이다(성능시험 TRL 표 "제품화 / 단계",
       // 시험기준표 "플라이애시 / 시멘트(KS L 5211)") — 뒤 조각 한 행 칸은 새 칸일 수 있어 그대로 둔다
       if (u.r >= last && d.rs < 2) continue
@@ -179,7 +194,7 @@ function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first:
       if (!U?.length || U.length > STRADDLE_MAX_LINES || !hasContent(b)) continue
       const lu = U[U.length - 1]
       // 앞 조각에 한 행만 보인 칸은 글이 쪽 경계에 걸쳐야 한다(가운데 정렬 병합 칸 글이 바닥 반 줄 안) — 한 행짜리 새 칸 글은 행 가운데에 선다
-      if (lu.y - prevBottom > (u.r >= last ? STRADDLE_BOTTOM_ONE_ROW : STRADDLE_BOTTOM) * (lu.h || 10)) continue
+      if (!midWord && lu.y - prevBottom > (u.r >= last ? STRADDLE_BOTTOM_ONE_ROW : STRADDLE_BOTTOM) * (lu.h || 10)) continue
     }
     appendCell(a, b)
     a.rowSpan = first + d.rs - u.r
@@ -438,8 +453,8 @@ function sameHeadShape(a: IRCell[] | undefined, b: IRCell[] | undefined): boolea
   return tall
 }
 
-export function mergeCrossPageTables(blocks: IRBlock[], pageHeights?: Map<number, number>): void {
-  mergeColumnFlow(blocks, pageHeights)
+export function mergeCrossPageTables(blocks: IRBlock[], pageHeights?: Map<number, number>, lex?: WrapLexicon): void {
+  mergeColumnFlow(blocks, pageHeights, lex)
   for (let i = blocks.length - 2; i >= 0; i--) {
     const prev = blocks[i]
     if (prev.type !== "table" || !prev.table || !prev.bbox || !prev.pageNumber) continue
@@ -453,7 +468,7 @@ export function mergeCrossPageTables(blocks: IRBlock[], pageHeights?: Map<number
     // 단위 행이 양쪽에 다시 나타나면 각 쪽에서 새 표를 시작한 것이다.
     if (startsWithUnitRow(prev.table) && startsWithUnitRow(curr.table)) continue
     const joined = j === i + 1 || blocks.slice(i + 1, j).every(b => besideOwn(b, prev, curr) || insideTable(b, prev))
-      ? (looksContinued(prev, curr, pageHeights) && !restartsTable(blocks, i, curr.table, pageHeights) ? joinClipParts(prev, curr, pageHeights) ?? false : null)
+      ? (looksContinued(prev, curr, pageHeights) && !restartsTable(blocks, i, curr.table, pageHeights) ? joinClipParts(prev, curr, pageHeights, lex) ?? false : null)
       : null
     if (joined) {
       // 한컴 클립 표 조각 — 열 경계 합집합 격자로 이었다 (쪽마다 열 구성이 달라도)
@@ -520,7 +535,7 @@ export function mergeCrossPageTables(blocks: IRBlock[], pageHeights?: Map<number
  * 먼저 나오기도 해 순서와 무관하게 짝을 찾고, 이은 표는 두 자리 중 앞선 자리에 둔다. 이은 표의 bbox 는 x·윗변을 왼쪽 조각(열 경계
  * 좌표계)에서, 밑변을 오른쪽 조각(흐름의 끝)에서 가져온다 — 다음 쪽 이음은 흐름 끝이 쪽 바닥까지 찼는지 봐야 한다
  */
-function mergeColumnFlow(blocks: IRBlock[], pageHeights?: Map<number, number>): void {
+function mergeColumnFlow(blocks: IRBlock[], pageHeights?: Map<number, number>, lex?: WrapLexicon): void {
   if (!pageHeights) return
   for (let i = 0; i < blocks.length; i++) {
     const L = blocks[i]
@@ -543,7 +558,7 @@ function mergeColumnFlow(blocks: IRBlock[], pageHeights?: Map<number, number>): 
     const R = blocks[k]
     if (Math.abs(R.bbox!.width - L.bbox.width) > Math.max(R.bbox!.width, L.bbox.width) * NEIGHBOR_TABLE_EPSILON) continue
     if (!looksContinued(L, R) || restartsTable(blocks, i, R.table!, pageHeights)) continue
-    const joined = joinClipParts(L, R, pageHeights)
+    const joined = joinClipParts(L, R, pageHeights, lex)
     if (!joined) continue
     const top = L.bbox.y + L.bbox.height
     const at = Math.min(i, k)
@@ -558,7 +573,7 @@ function mergeColumnFlow(blocks: IRBlock[], pageHeights?: Map<number, number>): 
  * 쪽 넘김 기하(앞 조각이 쪽 밑까지, 뒤 조각이 쪽 위부터 — PAGE_EDGE_BAND)와 오른쪽 끝 일치·뒤 조각 왼쪽 끝이 앞 조각
  * 경계 위에 있음을 요구한다(뒤 쪽에 세로 병합 이어진 칸이 비어 왼쪽 열이 빠진 경우).
  */
-function joinClipParts(prev: IRBlock, curr: IRBlock, pageHeights?: Map<number, number>): IRTable | null {
+function joinClipParts(prev: IRBlock, curr: IRBlock, pageHeights?: Map<number, number>, lex?: WrapLexicon): IRTable | null {
   const pt = prev.table!, ct = curr.table!
   if (!CLIP_TABLES.has(pt) || !CLIP_TABLES.has(ct)) return null
   const px = TABLE_COLXS.get(pt), cx = TABLE_COLXS.get(ct)
@@ -581,7 +596,7 @@ function joinClipParts(prev: IRBlock, curr: IRBlock, pageHeights?: Map<number, n
     const inner = xs.slice(1, -1)
     foreign = inner.length > 0 && !inner.some(x => px.some(p => Math.abs(p - x) <= CONTINUATION_COL_TOL)) && headingRow(ct.cells[0] ?? [])
   }
-  const res = joinSplitParts(pt, px, ct, xs, dx, prev.bbox?.y)
+  const res = joinSplitParts(pt, px, ct, xs, dx, prev.bbox?.y, lex)
   if (!res || ((shifted || foreign) && !res.split && !res.header)) return null
   TABLE_COLXS.set(res.table, res.colXs)
   CLIP_TABLES.add(res.table)
