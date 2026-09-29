@@ -574,20 +574,25 @@ function joinClipParts(prev: IRBlock, curr: IRBlock, pageHeights?: Map<number, n
     dx = px[px.length - 1] - cx[cx.length - 1]
     if (Math.abs(dx) > CONTINUATION_COL_TOL) { xs = cx.map(x => x + dx); shifted = true } else dx = 0
     if (!px.some(x => Math.abs(x - xs[0]) <= CONTINUATION_COL_TOL)) return null
-    // 뒤 조각이 짧은 제목 한 칸으로 시작하고(첫 행에 글 있는 칸이 하나, 공백 뺀 8자 이하) 안쪽 열 경계가 앞 조각 경계 어디에도
-    // 맞물리지 않으면 새로 놓인 상자다 — 옮긴 조각처럼 쪼개진 행·글 있는 머리 행 되풀이가 있을 때만 잇는다 (서식 7열 표 뒤 다음 쪽
-    // "목 차" 3열 상자). 쪽마다 열 짜임을 바꾸며 이어지는 별표·서식은 첫 행이 여러 칸이거나 앞 쪽 비고의 이어진 문단("가. 제조(수입)
-    // 업무의 …", 과징금 산정기준)이거나 경계 일부가 맞물린다(규제영향분석서 12.규제일몰제)
+    // 뒤 조각이 절 제목 상자 꼴로 시작하고 안쪽 열 경계가 앞 조각 경계 어디에도 맞물리지 않으면 새로 놓인 상자다 — 옮긴 조각처럼
+    // 쪼개진 행·글 있는 머리 행 되풀이가 있을 때만 잇는다(서식 7열 표 뒤 다음 쪽 "목 차" 상자, "3 | 기대성과 및 기대효과"·"5 | 시험방법"
+    // 번호 머리 상자, "② 세미나, 포럼, 언론 활동" 제목 상자 — tac-img-02·pr-1674). 쪽마다 열 짜임을 바꾸며 이어지는 별표·서식은 첫 행이
+    // 앞 쪽 비고의 이어진 문단("가. 제조(수입)업무의 …", 과징금 산정기준)이거나 안쪽 경계 일부가 맞물린다(규제영향분석서)
     const inner = xs.slice(1, -1)
-    const heads = (ct.cells[0] ?? []).map(c => c.text.replace(/\s+/g, "")).filter(Boolean)
-    foreign = inner.length > 0 && !inner.some(x => px.some(p => Math.abs(p - x) <= CONTINUATION_COL_TOL))
-      && heads.length === 1 && heads[0].length <= 8
+    foreign = inner.length > 0 && !inner.some(x => px.some(p => Math.abs(p - x) <= CONTINUATION_COL_TOL)) && headingRow(ct.cells[0] ?? [])
   }
   const res = joinSplitParts(pt, px, ct, xs, dx, prev.bbox?.y)
   if (!res || ((shifted || foreign) && !res.split && !res.header)) return null
   TABLE_COLXS.set(res.table, res.colXs)
   CLIP_TABLES.add(res.table)
   return res.table
+}
+
+/** 절 제목 상자 꼴의 첫 행 — 짧은 제목 한 칸(공백 뺀 8자 이하), 원문자로 시작하는 제목 한 칸, 번호 칸 + 제목 칸 */
+function headingRow(row: IRCell[]): boolean {
+  const heads = row.map(c => c.text.replace(/\s+/g, "")).filter(Boolean)
+  if (heads.length === 1) return heads[0].length <= 8 || /^[①-⑳❶-❿]/.test(heads[0])
+  return heads.length === 2 && /^(?:\d{1,2}|[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+|[①-⑳❶-❿])$/.test(heads[0])
 }
 
 /** 붙임·참고·별지 등 첨부 머리표 — 쪽 첫머리에 이런 칸으로 시작하는 표는 앞 쪽 표의 이어짐이 아니다 */

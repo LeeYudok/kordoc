@@ -145,6 +145,13 @@ describe("mergeCrossPageTables — 클립 표 쪽 넘김 판정", () => {
     ]
     mergeCrossPageTables(blocks3, PAGE_H)
     assert.equal(blocks3.length, 1)
+    // 번호 칸 + 제목 칸 머리 상자("5 | 시험방법")도 새 상자다
+    const blocks4: IRBlock[] = [
+      clipBlock(grid(2, 7, [[0, 0, "구분"], [0, 5, "주관기관"], [0, 6, "참여기관"], [1, 0, "1"], [1, 5, "가"], [1, 6, "나"]]), form, 1, 70, 600),
+      clipBlock(grid(1, 2, [[0, 0, "5"], [0, 1, "시험방법"]]), [61, 90, 534], 2, 740, 30),
+    ]
+    mergeCrossPageTables(blocks4, PAGE_H)
+    assert.equal(blocks4.length, 2)
   })
 
   it("사이에 본문 폭 글이 있으면 잇지 않는다", () => {
