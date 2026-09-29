@@ -111,12 +111,13 @@ function ruledRows(t: IRTable, anchors: Anchor[], H: boolean[][], V: boolean[][]
 /** 표 띠 [r0, r1] → 새 표. 띠 안에서 시작하는 칸만, 띠 밖으로 나가는 병합은 자른다. 선 밖 빈 칸·안 쓰는 경계는 접는다 */
 function bandTable(t: IRTable, anchors: Anchor[], V: boolean[][], H: boolean[][], r0: number, r1: number): IRTable | null {
   let list = anchors.filter(a => a.r >= r0 && a.r <= r1).map(a => ({ ...a, rs: Math.min(a.rs, r1 - a.r + 1) }))
-  // 선 없이 붙은 빈 여백 행 — 그 행에서 시작하는 칸이 모두 비었고 윗선·아랫선이 표 폭 어디에도 없으면 그림에 행이 없다.
-  // 이웃 행에 접는다 (양곡관리법·에너지이용 합리화법 별표 여백 행, 근로기준법 [별표 6] 여백 행 10개 — 정답 그림 대조 42→48/50)
+  // 선 없이 붙은 빈 여백 행 — 그 행에서 시작하는 칸이 모두 비었고 윗선이나 아랫선이 표 폭 어디에도 없으면 그림에서 이웃 행과
+  // 한 행이다. 접는다 (양곡관리법·에너지이용 합리화법 별표 여백 행, 근로기준법 [별표 6] 여백 행 10개 — 정답 그림 대조 42→48/50.
+  // 윗선·아랫선 둘 다 없을 때만 접으면 에너지이용 합리화법 두 표가 안 접힌다)
   const blank = (a: Anchor): boolean => !a.cell.text.trim() && !a.cell.blocks?.length
   const drop: number[] = []
   for (let r = r0; r <= r1; r++) {
-    if (!H[r].some(Boolean) && !H[r + 1].some(Boolean) && list.filter(a => a.r === r).every(blank)) drop.push(r)
+    if ((!H[r].some(Boolean) || !H[r + 1].some(Boolean)) && list.filter(a => a.r === r).every(blank)) drop.push(r)
   }
   if (drop.length) {
     const shift = (y: number): number => y - drop.filter(d => d < y).length
