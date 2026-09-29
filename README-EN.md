@@ -577,6 +577,12 @@ import type {
 
 ## 📝 Recent Changes
 
+### v4.16.1
+- Seoul policy-plan preset `서울방침` — title table, chapter boxes, numbered outlines, cover, pre-review checklist and TOC (measured on 16 real approval documents)
+- Default PDF OCR now also reads text inside large images — ODL default 0.940 → 0.960
+- PDF tables 97.4% exact, text word F1 98.8%; OCR char recall 99.0% and precision 99.4%
+- Gaejosik chapter headers can fit the title cell to the text (`chapterFit`, #103)
+
 ### v4.16.0
 - More accurate PDF text and tables — char recall 99.8%, exact table match 97.0% against the original HWPX
 - Automatic OCR for pages without a text layer (when the model is cached; `ocr: false` turns it off)

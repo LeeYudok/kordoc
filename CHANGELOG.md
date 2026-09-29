@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.16.1] - 2026-09-29
+
+서울 방침서 프리셋(`서울방침`)과 공문서 생성 재현율 벤치를 더하고, PDF 기본값 자동 OCR 이 큰 그림 속 글도 읽는다(ODL 200 기본 0.940 → 0.960). PDF 글 정답 어절 F1 0.98713 → 0.98783·한국 PDF 표 exact 96.69% → 97.42%, OCR 글자 재현율 0.990·정밀도 0.994. 개조식 장 헤더 `chapterFit`(#103).
 
 ### Added
 
