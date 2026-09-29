@@ -11,7 +11,7 @@
  */
 
 import type { IRBlock, IRCell, IRTable } from "../types.js"
-import { CELL_LINES, CLIP_TABLES, EMPTY_PARTS, FILLER_CELLS, IMAGE_CELLS, TABLE_COLXS, TABLE_END } from "./table-meta.js"
+import { CELL_LINES, CLIP_TABLES, EMPTY_PARTS, FILLER_CELLS, IMAGE_CELLS, TABLE_COLXS, TABLE_ROWYS, TABLE_TAIL } from "./table-meta.js"
 import { CONTACT_HEAD, CONTACT_ROLE } from "./contact-table.js"
 import { startsNewItem, type WrapLexicon } from "./line-wrap.js"
 
@@ -76,10 +76,24 @@ export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx:
 
   // 반복 머리 행 — 한컴은 머리 칸이 있는 표만 조각마다 머리 행(여러 줄일 수 있음)을 되풀이한다. 표 첫 조각은 머리 행 위에
   // 제목 상자가 붙어 나올 수 있어(편람 [별표 4] "[별표4] <개정…>" 행) 앞 조각 두 행 아래까지 어긋나게 맞춰 본다 (어긋난 맞춤은 글 있는 행만)
-  let skip = 0
+  let skip = 0, head = 0
   while (skip < Math.min(3, curr.rows - 1, prev.rows) && rowText(ca, skip) !== "" && rowText(ca, skip) === rowText(pa, skip)) skip++
   for (let h = 1; h <= 2 && !skip; h++) {
+    head = h
     while (skip < Math.min(3, curr.rows - 1, prev.rows - h) && hasText(rowText(ca, skip)) && rowText(ca, skip) === rowText(pa, h + skip)) skip++
+  }
+  // 되풀이 머리 행은 원래 머리 행과 칸 자리(x 범위)까지 같다 — 한컴은 머리 행을 같은 칸 기하로 다시 그린다(짝·홀 쪽 여백만큼 통째로
+  // 옮겨질 뿐). 글만 같고 칸 자리가 다르면 같은 머리를 단 새 표다(경찰복제 특수복식 "경찰악대원" 11×5 다음 쪽 "도형 | 형태 및 규격 |
+  // 색상 및 재질" 11×5: 칸 경계가 2.8~8.5pt 어긋남, HWPX 두 표). 글 없는 행은 머리 행 증거가 아니라 거기서 되풀이를 끊는다
+  const sameSpans = (u: Anchor[], d: Anchor[]): boolean => {
+    if (u.length !== d.length || !u.length) return false
+    const shift = pcx[u[u.length - 1].c + u[u.length - 1].cs] - ccx[d[d.length - 1].c + d[d.length - 1].cs]
+    return u.every((a, n) => Math.abs(pcx[a.c] - ccx[d[n].c] - shift) <= CONTINUATION_COL_TOL && Math.abs(pcx[a.c + a.cs] - ccx[d[n].c + d[n].cs] - shift) <= CONTINUATION_COL_TOL)
+  }
+  for (let k = 0; k < skip; k++) {
+    if (sameSpans(pa.filter(a => a.r === head + k), ca.filter(a => a.r === k))) continue
+    if (hasText(rowText(ca, k))) return null
+    skip = k
   }
 
   const rows = prev.rows + curr.rows - skip
@@ -144,7 +158,7 @@ export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx:
   // 세로 병합 칸을 이은 뒤 다시 본다 — 뒤 조각 이름표가 여러 행을 덮어 쪼개진 행 판정에서 빠졌던 행("일몰설정 / 예외기준" 이름표 옆
   // "…적용 되어야 / 하는 규제", 규제영향분석서)은 이름표가 한 칸이 되면 칸 조각 이어짐으로 판정된다
   // (글 이어짐 증거만 — 이어 늘린 빈 칸 조각은 증거로 쓰지 않는다: 시험기준표 "KS M ISO 2507-1," / "KS M ISO 2507-2" 는 두 행)
-  if (rows > prev.rows && !split && prevBottom !== undefined && mergeStraddlingCells(table, owner, prev.rows, prevBottom, lex)) split = mergeSplitRow(table, owner, prev.rows, U, true)
+  if (rows > prev.rows && !split && prevBottom !== undefined && mergeStraddlingCells(table, owner, prev.rows, prevBottom, lex, U)) split = mergeSplitRow(table, owner, prev.rows, U, true)
   // 머리 행 증거는 되풀이된 행에 글 있는 칸이 둘 이상일 때만 — 한 칸짜리 제목 행은 같은 제목의 상자를 쪽마다 새로 놓은 것과 구별이
   // 안 된다 (편람 기안문 "작성방법" 상자가 짝·홀 쪽에 하나씩 놓여 한 표로 이어졌다, HWPX 는 두 표)
   return { table, colXs: U, split, header: ca.filter(a => a.r < skip && a.cell.text.trim()).length >= 2 }
@@ -160,7 +174,7 @@ export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx:
  * 모든 칸이 경계에서 끝나면 다음 쪽 첫 행은 새 묶음이다 (연락처 표 되풀이된 "<공동>" 5건, 과제 목록 두 행 칸 "4-29" 한 줄이
  * 바닥 가까이 있어도 다음 쪽 "4-30" 은 새 과제)
  */
-function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first: number, prevBottom: number, lex?: WrapLexicon): boolean {
+function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first: number, prevBottom: number, lex?: WrapLexicon, colXs?: number[]): boolean {
   const last = first - 1
   const straddles = owner[first].some((o, c) => o !== null && o === owner[last][c])
   // 뒤 조각 첫 행에서 글 있는 새 칸이 처음 나오는 열 — 빈 이어짐은 그보다 왼쪽(이름표 열)만 본다. 왼쪽 이름표 열에 새 묶음 이름이
@@ -185,6 +199,20 @@ function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first:
     const tail = table.cells[u.r][u.c].text.trim().split(/\s+/).pop() ?? "", head = table.cells[first][d.c].text.trim().split(/\s+/)[0] ?? ""
     if (/^[가-힣]{2,}$/.test(tail) && /^[가-힣]{2,}/.test(head) && lex.evidence2(tail, head) === "") midWord = true
   }
+  // 긴 글 칸도 글이 이어지면 쪽 경계에 걸친 칸이다 — 다른 열 칸이 경계를 넘어 이어지고(straddles) 앞 조각에서 여러 행을 덮은 칸의 끝줄이
+  // 칸 오른끝까지 차 문장이 다음 쪽 칸으로 넘어갔다(continuesAcross). 같은 모양(앞 조각 행 범위·뒤 조각 행 수)의 옆 칸도 줄 수·바닥 거리와
+  // 무관하게 같은 병합 칸의 나머지다 (경찰복제 특수복식 교통경찰관 17→18쪽: "…주머니를 작게 한" / "다. 나) 하의 …" 옆 색상 칸
+  // "가) 상의" / "(1) 아이보리화이트색" — HWPX 두 칸 모두 3행 병합). 끝줄이 짧게 끝난 긴 칸("라. 항공경찰관 점퍼" 12줄 → "마.")은 해당 없다
+  const crossed = new Set<string>()
+  const shape = (u: Anchor, d: Anchor): string => `${u.r}:${u.rs}:${d.rs}`
+  if (straddles && colXs) for (let c = 0; c < table.cols;) {
+    const u = owner[last][c], d = owner[first][c]
+    if (!u) { c++; continue }
+    c = u.c + u.cs
+    if (!d || d === u || u.r + u.rs - 1 !== last || d.r !== first || d.c !== u.c || d.cs !== u.cs || u.rs < 2) continue
+    const a = table.cells[u.r][u.c], b = table.cells[first][d.c]
+    if (hasContent(a) && hasContent(b) && continuesAcross(a, b, colXs[u.c], colXs[u.c + u.cs])) crossed.add(shape(u, d))
+  }
   let merged = false
   for (let c = 0; c < table.cols;) {
     const u = owner[last][c], d = owner[first][c]
@@ -193,8 +221,9 @@ function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first:
     if (!d || d === u || u.r + u.rs - 1 !== last || d.r !== first || d.c !== u.c || d.cs !== u.cs) continue
     const a = table.cells[u.r][u.c], b = table.cells[first][d.c]
     // 빈 이어짐 — 앞 조각에서 두 행 이상 덮은 이름표 칸 아래 뒤 조각 첫 칸이 비었으면 그 칸의 나머지다. 새 묶음이면 이름표가 있다
-    // (aift 기업 현황 "자본잠식현황" 앞 쪽 2행 + 다음 쪽 빈 4행, "자본총계" 2행 + 빈 1행 — 모든 칸이 쪽 경계에서 끝나도)
-    if (!(u.rs >= 2 && u.c + u.cs <= firstNew && hasContent(a) && !hasContent(b))) {
+    // (aift 기업 현황 "자본잠식현황" 앞 쪽 2행 + 다음 쪽 빈 4행, "자본총계" 2행 + 빈 1행 — 모든 칸이 쪽 경계에서 끝나도).
+    // 글이 이어진 칸과 같은 모양(crossed)이면 아래 짧은 글 조건을 보지 않는다
+    if (!crossed.has(shape(u, d)) && !(u.rs >= 2 && u.c + u.cs <= firstNew && hasContent(a) && !hasContent(b))) {
       if (!straddles && !midWord) continue
       // 앞 조각에 끝 행 하나만 보인 칸도 뒤 조각 칸이 두 행 이상을 덮으면 쪽 경계에 걸친 병합 칸이다(성능시험 TRL 표 "제품화 / 단계",
       // 시험기준표 "플라이애시 / 시멘트(KS L 5211)") — 뒤 조각 한 행 칸은 새 칸일 수 있어 그대로 둔다
@@ -438,12 +467,6 @@ function placeJoined(blocks: IRBlock[], i: number, j: number, table: IRTable): v
   if (k > i) blocks.splice(k, 0, blocks.splice(i, 1)[0])
 }
 
-/** 쪽 넘김 판정에 쓰는 표 블록 — 뒤 쪽 1칸 조각을 받아 흐름이 이어진 표(TABLE_END)는 쪽·밑변을 흐름 끝 조각 것으로 바꿔 본다 */
-function flowEnd(b: IRBlock): IRBlock {
-  const e = b.table && TABLE_END.get(b.table)
-  return e && b.bbox ? { ...b, pageNumber: e.page, bbox: { ...b.bbox, page: e.page, y: e.y, height: e.height } } : b
-}
-
 /** 같은 쪽에서 표 테두리 안에 든 블록 — 칸 안 예시 상자처럼 표 칸에 붙지 못하고 표 뒤에 따로 나온 조각 */
 function insideTable(b: IRBlock, t: IRBlock): boolean {
   if (!b.bbox || b.pageNumber !== t.pageNumber) return false
@@ -471,7 +494,7 @@ function sameHeadShape(a: IRCell[] | undefined, b: IRCell[] | undefined): boolea
 export function mergeCrossPageTables(blocks: IRBlock[], pageHeights?: Map<number, number>, lex?: WrapLexicon): void {
   mergeColumnFlow(blocks, pageHeights, lex)
   for (let i = blocks.length - 2; i >= 0; i--) {
-    const prev = flowEnd(blocks[i])
+    const prev = tailOf(blocks[i])
     if (prev.type !== "table" || !prev.table || !prev.bbox || !prev.pageNumber) continue
     // 다음 표 — 다음 쪽까지만 훑는다 (글만 긴 문서에서 블록마다 끝까지 훑지 않게). 앞 표 테두리 안에 든 표(칸 안 예시 상자가 따로 나온
     // 것)와 앞 표 왼쪽 단의 표(2단 지면)는 건너뛴다 — 편람 [별표 4] 서식 설계기준표는 "3. 쪽번호" 칸 안 예시 상자가 쪽 마지막 표가
@@ -615,11 +638,17 @@ function joinClipParts(prev: IRBlock, curr: IRBlock, pageHeights?: Map<number, n
     // 번호 머리 상자, "② 세미나, 포럼, 언론 활동" 제목 상자 — tac-img-02·pr-1674). 쪽마다 열 짜임을 바꾸며 이어지는 별표·서식은 첫 행이
     // 앞 쪽 비고의 이어진 문단("가. 제조(수입)업무의 …", 과징금 산정기준)이거나 안쪽 경계 일부가 맞물린다(규제영향분석서)
     const inner = xs.slice(1, -1)
-    foreign = inner.length > 0 && !inner.some(x => px.some(p => Math.abs(p - x) <= CONTINUATION_COL_TOL)) && headingRow(ct.cells[0] ?? [])
+    // 첫 행부터 칸이 셋 이상인 뒤 조각도 같다 — 제 열 짜임으로 시작한 새 표다. 한 표의 쪽 넘김이면 두 조각이 한 격자의 경계를 나눠
+    // 쓰는데, 안쪽 경계가 하나도 안 맞물리면 합집합 격자는 행마다 제 병합만 남은 짜깁기가 된다(안전보건표지 [별표 6] 1쪽 13열 표 →
+    // 2쪽 "4. | 401 녹십자표지 | …" 10열 표, 안쪽 경계 12개·9개 가운데 맞물림 0 — HWPX 두 표). 첫 행이 한 칸인 이어진 문단은 그대로 잇는다
+    foreign = inner.length > 0 && !inner.some(x => px.some(p => Math.abs(p - x) <= CONTINUATION_COL_TOL))
+      && (headingRow(ct.cells[0] ?? []) || px.length > FOREIGN_FIRST_ROW_CELLS && anchorsOf(ct).filter(a => a.r === 0).length >= FOREIGN_FIRST_ROW_CELLS)
   }
   const res = joinSplitParts(pt, px, ct, xs, dx, prev.bbox?.y, lex)
   if (!res || ((shifted || foreign || within) && !res.split && !res.header)) return null
   TABLE_COLXS.set(res.table, res.colXs)
+  const ys = TABLE_ROWYS.get(pt)
+  if (ys) TABLE_ROWYS.set(res.table, ys)
   CLIP_TABLES.add(res.table)
   return res.table
 }
@@ -653,13 +682,51 @@ const ANNEX_HEAD_RE = /^\s*[<\[(【]?\s*(?:붙\s*임|참\s*고|별\s*첨|별\s*�
  */
 function looksContinued(prev: IRBlock, curr: IRBlock, pageHeights?: Map<number, number>): boolean {
   const ph = pageHeights?.get(prev.pageNumber!), ch = pageHeights?.get(curr.pageNumber!)
-  if (ph && ch && (prev.bbox!.y > ph * PAGE_EDGE_BAND || curr.bbox!.y + curr.bbox!.height < ch * (1 - PAGE_EDGE_BAND))) return false
+  if (ph && ch && ((prev.bbox!.y > ph * PAGE_EDGE_BAND && !pushedLead(prev, curr)) || curr.bbox!.y + curr.bbox!.height < ch * (1 - PAGE_EDGE_BAND))) return false
   const firstRow = curr.table!.cells[0] ?? []
   const firstText = firstRow.find(c => c.text.trim())?.text ?? ""
   if (!ANNEX_HEAD_RE.test(firstText)) return true
   // 신구조문 대비표 행 — 현행·개정안 두 칸 이상에 같은 "[별표 2] …" 가 들면 첨부 머리표가 아니라 대비표 본문이다 (머리표는 제목 한 칸)
   const filled = firstRow.map(c => c.text.replace(/\s+/g, "")).filter(Boolean)
   return filled.length >= 2 && filled.every(t => t === filled[0])
+}
+
+/**
+ * 쪽 넘김으로 밀려난 그림 행 묶음 — 앞 조각이 쪽 끝 띠 위에서 끝났어도 뒤 조각 첫 행 묶음(첫 행에서 세로 병합으로 이어진 행들)에 그림 칸이
+ * 있고 그 높이가 앞 쪽 남은 자리(앞 조각 밑변에서 쪽 밑 끝까지)보다 높으면 그 자리에 들어갈 수 없어 다음 쪽으로 넘어간 것이다. 한컴은
+ * 칸 그림을 쪽 경계에서 쪼개지 않아 복장 도면 같은 큰 그림이 든 표는 앞 쪽 바닥이 크게 빈다(경찰복제 특수복식 80×27: 3쪽 밑변 142pt
+ * ← 4쪽 "방한외투 및 방한복" 세 행 187pt, 4쪽 258pt ← 5쪽 "상의" 여섯 행 387pt, 5쪽 152pt ← 6쪽 "하의" 세 행 245pt). 머리 행으로
+ * 시작하는 새 표는 첫 묶음이 그림 없는 한 행(21pt)이라 해당하지 않는다(같은 문서의 쪽마다 놓인 11×5 표들). 글만 든 행은 쪽 경계에서
+ * 쪼개질 수 있어 밀려남의 증거가 아니다 — 쪽 나누기로 다음 쪽에 새로 놓인 서식 표와 가르지 못한다
+ */
+function pushedLead(prev: IRBlock, curr: IRBlock): boolean {
+  if (!CLIP_TABLES.has(prev.table!) || !CLIP_TABLES.has(curr.table!)) return false
+  const lead = leadRows(curr.table!)
+  return lead.image && lead.height > prev.bbox!.y
+}
+
+/** 표 첫 행 묶음(첫 행에서 세로 병합 칸으로 이어진 행들)의 높이(첫 조각 행 경계로, 모르면 0)와 그림 칸이 들었는지 */
+function leadRows(t: IRTable): { height: number; image: boolean } {
+  const ys = TABLE_ROWYS.get(t)
+  if (!ys || ys.length < 2) return { height: 0, image: false }
+  const anchors = anchorsOf(t)
+  let end = 1, image = false
+  for (let r = 0; r < end; r++) {
+    for (const a of anchors) {
+      if (a.r !== r) continue
+      end = Math.max(end, r + a.rs)
+      if (IMAGE_CELLS.has(a.cell)) image = true
+    }
+  }
+  return { height: ys[0] - ys[Math.min(end, ys.length - 1)], image }
+}
+
+/** 표 끝 자리 — 마지막 행 칸이 다음 쪽으로 넘어가 그 조각을 붙인 표(TABLE_TAIL)는 그 쪽과 조각 밑변을, 아니면 블록 그대로. 쪽 넘김
+ *  잇기는 앞 표가 끝난 쪽·자리를 봐야 한다 — 위험물 안전관리자 교육 [별표 4] 틀 표는 2쪽 끝 칸이 3쪽을 통째로 채우고 4쪽 조각으로
+ *  이어지는데, 3쪽 조각을 2쪽 표에 붙인 뒤 표가 2쪽에 있는 것으로 보여 4쪽 조각과 잇지 못했다 (HWPX 19×7 한 표) */
+function tailOf(b: IRBlock): IRBlock {
+  const t = b.table && TABLE_TAIL.get(b.table)
+  return t && b.bbox ? { ...b, pageNumber: t.page, bbox: { ...b.bbox, page: t.page, y: t.y, height: t.height } } : b
 }
 
 /** 표 첫 행 앵커 — 열 경계 x 범위와 글 */
@@ -733,7 +800,7 @@ function chainHead(blocks: IRBlock[], i: number, pageHeights?: Map<number, numbe
     for (let q = p - 1; q >= 0 && blocks[q].pageNumber === blocks[p].pageNumber; q--) {
       if (blocks[q].type === "table" && blocks[q].bbox && insideTable(blocks[p], blocks[q])) { p = q; break }
     }
-    const pb = flowEnd(blocks[p])
+    const pb = tailOf(blocks[p])
     if (pb.pageNumber !== (cur.pageNumber ?? 0) - 1) break
     if (!blocks.slice(p + 1, k).every(b => besideOwn(b, pb, cur) || insideTable(b, pb))) break
     if (!looksContinued(pb, cur, pageHeights)) break
@@ -759,6 +826,9 @@ function rowTextsEqual(a: IRCell[], b: IRCell[]): boolean {
 
 /** 쪽 넘김 이음 판정 — 열 경계가 이 거리(pt) 안에서 전부 맞아야 같은 표 */
 const CONTINUATION_COL_TOL = 2
+/** 안쪽 열 경계가 앞 조각과 하나도 안 맞물리는 뒤 조각이 새 표 — 첫 행 칸이 이만큼 이상 (제 열 짜임으로 시작), 앞 조각도 열이 이만큼
+ *  이상. 1열 앞 조각(별표 제목 틀·서식 머리 칸)은 안쪽 경계가 없어 맞물림을 따질 수 없다 (과징금 부과기준 1쪽 4×1 → 2쪽 6×6, HWPX 한 표) */
+const FOREIGN_FIRST_ROW_CELLS = 3
 
 /** 두 조각의 열 경계가 같은가 — allowShift 면 모든 경계가 같은 거리만큼 옮겨진 것도 같다고 본다 (짝·홀 쪽 대칭 여백) */
 function shiftedSame(px: number[], cx: number[], allowShift = true): boolean {

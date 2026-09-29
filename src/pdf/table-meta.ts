@@ -9,6 +9,11 @@ import type { IRCell, IRTable } from "../types.js"
 export const CLIP_TABLES = new WeakSet<IRTable>()
 /** 표의 열 경계 x (그리드 좌표, 오름차순) */
 export const TABLE_COLXS = new WeakMap<IRTable, number[]>()
+/** 클립 표 첫 조각(첫 쪽)의 행 경계 y (위→아래 내림차순) — 쪽 넘김으로 밀려난 첫 행 묶음의 높이를 잰다 (table-parts) */
+export const TABLE_ROWYS = new WeakMap<IRTable, number[]>()
+/** 마지막 행 칸이 다음 쪽으로 넘어가 그 조각(CONT_PARTS)을 붙인 표 — 표가 실제로 끝나는 쪽과 그 쪽 조각의 밑변·높이
+ *  (cell-continuation 이 기록, 쪽 넘김 잇기가 표 끝 자리로 본다) */
+export const TABLE_TAIL = new WeakMap<IRTable, { page: number; y: number; height: number }>()
 /** 글 없는 클립 표 — 앞 쪽 표가 넘어온 조각일 수 있어(Q&A 상자 마지막 빈 행이 다음 쪽으로 넘어감) 쪽 넘김 잇기까지만
  *  두고, 잇지 못하면 버린다 (mergeCrossPageTables) */
 export const EMPTY_PARTS = new WeakSet<IRTable>()
@@ -19,9 +24,6 @@ export const IMAGE_CELLS = new WeakSet<IRCell>()
 export const FILLER_CELLS = new WeakSet<IRCell>()
 /** 앞 쪽 칸의 이어짐인 1칸 조각 → 그 앞 쪽 칸의 클립 사각형 (clip-cells 판정, cell-continuation 이 앞 쪽 표 그 칸에 붙인다) */
 export const CONT_PARTS = new WeakMap<IRTable, { x1: number; x2: number }>()
-/** 이어짐 1칸 조각을 받아 흐름이 뒤 쪽까지 간 표 → 흐름 끝 조각의 쪽·밑변·높이 (cell-continuation 이 적고, 쪽 넘김 잇기가 그 쪽 다음
- *  쪽 표와 견준다 — 표 블록의 쪽·bbox 는 첫 조각 것으로 둔다) */
-export const TABLE_END = new WeakMap<IRTable, { page: number; y: number; height: number }>()
 
 /** 칸 글줄 상자 (쪽 좌표, y 는 기준선) — 쪽 넘김 이음 행이 한 칸의 두 조각인지 가를 때 쓴다 (table-parts) */
 export interface LineBox { y: number; l: number; r: number; h: number }
