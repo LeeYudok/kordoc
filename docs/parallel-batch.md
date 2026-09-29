@@ -18,7 +18,7 @@ node bench/batch.mjs /path/to/documents/*.hwp
 # Optional: BATCH_JOBS=1,2,4 BATCH_REPS=3
 ```
 
-The default benchmark creates 24 synthetic Korean HWPX documents, each with 12,000 added paragraphs, and 24 synthetic PDFs, each with 40 pages containing text and ruled lines. It runs each setting three times, reports median wall time including CLI/worker startup, and compares SHA-256 hashes of all outputs against the first run. Images are disabled; OCR is not enabled. On Linux it samples summed RSS of the parent and descendants every 25 ms. Shared pages are counted for each process, so this is not unique physical memory.
+The default benchmark creates 24 copies of one synthetic Korean HWPX document with 12,000 added paragraphs, and 24 copies of one synthetic 40-page PDF containing text and ruled lines. This is two distinct generated documents, not 48 distinct real-world documents. It runs each setting three times, reports median wall time including CLI/worker startup, and compares SHA-256 hashes of all outputs against the first run. Images are disabled; OCR is not enabled. On Linux it samples summed RSS of the parent and descendants every 25 ms. Shared pages are counted for each process, so this is not unique physical memory.
 
 Measured 2026-09-29 on Linux/WSL, Node 22.23.2, Intel Core i7-10700 (8 cores / 16 logical CPUs):
 
@@ -87,3 +87,22 @@ Peak summed RSS across the 1/4/8-worker comparisons:
 | PDF | 234.6 | 683.4 | 1,194.2 |
 
 Four workers offer a more consistent speed/memory tradeoff for these larger synthetic batches. Eight can help the HWPX workload, but should be measured on actual inputs. The CLI default remains one worker, and the earlier small-file regression still applies.
+
+## PR validation against v4.17.1
+
+After rebasing onto upstream `2065b45` (v4.17.1), the conversion helper was checked against the current sequential CLI loop, including `scriptTags` and `layoutTables` option forwarding. Build and type checking passed; the full suite passed 2,694 tests with 11 skipped and no failures. The original checkout was not modified.
+
+A fresh benchmark on this rebased implementation used `BATCH_REPS=3 BATCH_JOBS=1,4,8 node bench/batch.mjs`, with no concurrent build or test run. Each row is a three-run median on the same two generated document contents (24 copies per format), with CLI/worker startup included. These results are separate from the historical v4.16.0 measurements above.
+
+| Workload | Jobs | Median seconds | Speedup vs sequential | Peak summed RSS (MiB) |
+| --- | ---: | ---: | ---: | ---: |
+| HWPX | 1 | 8.734 | 1.00× | 384.8 |
+| HWPX | 4 | 3.310 | 2.64× | 1,357.2 |
+| HWPX | 8 | 2.706 | 3.23× | 1,735.3 |
+| PDF | 1 | 4.412 | 1.00× | 217.3 |
+| PDF | 4 | 2.266 | 1.95× | 695.8 |
+| PDF | 8 | 2.227 | 1.98× | 1,199.9 |
+
+All output hashes matched in this fresh measurement. Eight workers again add little PDF throughput over four while using more memory; the repeated PDF slowdown recorded above remains part of the evidence, rather than being discarded.
+
+An independent subagent reproduced interrupted UUID partial-download accumulation, including persistence after successful and cached retries. This low-priority cleanup follow-up is tracked in [issue #109](https://github.com/chrisryugj/kordoc/issues/109); the feature does not claim to fix it.

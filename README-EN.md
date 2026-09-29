@@ -344,7 +344,7 @@ Signals: `textChars` · `hangulRatio` · `controlCharRatio` · `replacementCharR
 
 [Parallel batch benchmarks and limits](docs/parallel-batch.md)
 
-`--jobs N` runs whole-file conversions in parallel using N reusable processes (default: 1). Multiple inputs require `-d`; input filenames must have distinct stems, including across extensions. Failures do not stop other files, and any failure sets a nonzero exit status. Completion messages and failure JSON arrive in completion order. More workers use more memory; tiny files may be slower, and OCR already uses native CPU threads. This does not parallelize pages within one document or change the JavaScript/MCP APIs.
+`--jobs N` runs whole-file conversions in parallel using N reusable processes (default: 1). With `--jobs > 1`, multiple inputs require `-d` and distinct filename stems, including across extensions. Per-file failures do not stop other files, and any failure sets a nonzero exit status. Completion messages and failure JSON arrive in completion order. More workers use more memory; tiny files may be slower, and OCR already uses native CPU threads. This does not parallelize pages within one document or change the JavaScript/MCP APIs.
 
 ```bash
 # convert
