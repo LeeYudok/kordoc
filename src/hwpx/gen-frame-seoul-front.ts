@@ -156,7 +156,8 @@ export function buildSeoulChecklist(inp: ChecklistInput, ctx: FrameCtx): string 
 /**
  * 목차 — 정본(34906816)·상암 재창조(35753992) 같은 틀: "목    차" HY헤드라인M 29 기울임(왼쪽 3000·위 5000·줄간격 70%) +
  * 3열 표 w47450 [번호 3650 | 제목 39336 밑줄 0.12 | 쪽 4464 오른쪽·아래 0.12], 항목 사이 빈 행.
- * 번호 로마 숫자는 HY견명조 20 굵게 "Ⅰ.", 그 밖(1·가)은 HY견고딕 18. 제목 HY헤드라인M 18. 목차 있는 7건 모두 쪽번호를 적었지만
+ * 번호 로마 숫자는 HY견명조 20 굵게 "Ⅰ." + 제목 HY헤드라인M 18 양쪽(로마 번호 목차 4건 중 3), 그 밖(1·가)은 번호·제목 HY견고딕 18 +
+ * 제목 왼쪽(비로마 번호 목차 3건 중 2). 목차 있는 7건 모두 쪽번호를 적었지만
  * 쪽은 조판 전에 알 수 없어 칸만 둔다(업무보고 목차와 같은 방침) — 한글에서 조판 뒤 채운다.
  */
 export function buildBangchimToc(chapters: { label: string; title: string }[], ctx: FrameCtx): string[] {
@@ -175,11 +176,12 @@ export function buildBangchimToc(chapters: { label: string; title: string }[], c
     if (i > 0) { rows.push(spacer(rows.length, 3112)); h += 3112 }
     const roman = /^[Ⅰ-Ⅻ]+$/u.test(ch.label)
     const cNum = roman ? reg.char({ font: "HY견명조", pt: 20, bold: true }) : reg.char({ font: "HY견고딕", pt: 18 })
-    const fit = fitOneLine(ch.title, "HY헤드라인M", 18, cols[1] - 400, 15)
-    const cTitle = reg.char({ font: "HY헤드라인M", pt: fit.pt, ratio: fit.ratio, spacing: fit.spacing })
+    const titleFont = roman ? "HY헤드라인M" : "HY견고딕"
+    const fit = fitOneLine(ch.title, titleFont, 18, cols[1] - 400, 15)
+    const cTitle = reg.char({ font: titleFont, pt: fit.pt, ratio: fit.ratio, spacing: fit.spacing })
     const row = rows.length
-    rows.push(tc({ bf: none, row, col: 0, w: cols[0], h: 5859, paras: para(roman ? `${ch.label}.` : ch.label, pCenter(150), cNum) })
-      + tc({ bf: under, row, col: 1, w: cols[1], h: 5859, paras: para(ch.title, reg.para({ align: "JUSTIFY", lineSp: 160 }), cTitle) })
+    rows.push(tc({ bf: none, row, col: 0, w: cols[0], h: 5859, paras: para(roman ? `${ch.label}.` : ch.label, pCenter(roman ? 150 : 160), cNum) })
+      + tc({ bf: under, row, col: 1, w: cols[1], h: 5859, paras: para(ch.title, reg.para({ align: roman ? "JUSTIFY" : "LEFT", lineSp: 160 }), cTitle) })
       + tc({ bf: pageBox, row, col: 2, w: cols[2], h: 5859, paras: para("", pCenter(160), reg.char({ font: "HY견고딕", pt: 18 })) }))
     h += 5859
   })

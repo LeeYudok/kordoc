@@ -449,21 +449,22 @@ export function buildReportCover(inp: ReportCoverInput, ctx: FrameCtx): string[]
   const c12b = reg.char({ font: cv?.infoFont ?? "한컴돋움", pt: cv?.infoLabelPt ?? 12, bold: true })
   const cAppr = cv ? reg.char({ font: cv.infoFont, pt: cv.approvalPt }) : c12
   const center = reg.para({ align: "CENTER", lineSp: 100 })
+  const centerAt = (k: keyof NonNullable<typeof cv>["lineSp"]) => (cv ? reg.para({ align: "CENTER", lineSp: cv.lineSp[k] }) : center)
   const blank = (pt = 15) => para("", reg.para({ align: "LEFT", lineSp: 160 }), reg.char({ font: "한컴돋움", pt }))
   // 문서정보표 (4×2)
   const infoRows = [["문서번호", inp.docInfo?.docNum ?? ""], ["결재일자", inp.docInfo?.date ?? ""], ["공개여부", inp.docInfo?.disclosure ?? ""], ["방침번호", inp.docInfo?.policyNo ?? ""]]
   const infoW = Math.round(ctx.W * 0.36)
   const [lw, vw] = scale([4200, 12800], infoW)
   const infoXml = ftbl(infoRows.map(([l, v], r) =>
-    tc({ bf: bf.get({ t: r === 0 ? "thick" : "thin", b: r === 3 ? "thick" : "thin", l: "thick", r: "thin" }), row: r, col: 0, w: lw, h: 1850, paras: para(l, center, c12b) })
-    + tc({ bf: bf.get({ t: r === 0 ? "thick" : "thin", b: r === 3 ? "thick" : "thin", l: "thin", r: "thick" }), row: r, col: 1, w: vw, h: 1850, paras: para(v, center, c12) }),
+    tc({ bf: bf.get({ t: r === 0 ? "thick" : "thin", b: r === 3 ? "thick" : "thin", l: "thick", r: "thin" }), row: r, col: 0, w: lw, h: 1850, paras: para(l, centerAt("info"), c12b) })
+    + tc({ bf: bf.get({ t: r === 0 ? "thick" : "thin", b: r === 3 ? "thick" : "thin", l: "thin", r: "thick" }), row: r, col: 1, w: vw, h: 1850, paras: para(v, centerAt("info"), c12) }),
   ), infoW, 1850 * 4, 2)
   let line = infoXml
   if (inp.approval && inp.approval.length) {
     const n = inp.approval.length
     const colW = Math.min(7600, Math.floor((ctx.W * 0.5) / n))
     const edge = (row: number, col: number) => bf.get({ t: row === 0 ? "thick" : "thin", b: row === 1 ? "thick" : "thin", l: col === 0 ? "thick" : "thin", r: col === n - 1 ? "thick" : "thin" })
-    const top = inp.approval.map((l, c) => tc({ bf: edge(0, c), row: 0, col: c, w: colW, h: 1765, paras: para(l, center, cAppr) })).join("")
+    const top = inp.approval.map((l, c) => tc({ bf: edge(0, c), row: 0, col: c, w: colW, h: 1765, paras: para(l, centerAt("approval"), cAppr) })).join("")
     const sign = inp.approval.map((_, c) => tc({ bf: edge(1, c), row: 1, col: c, w: colW, h: 3600, paras: para("", center, c12b) })).join("")
     line += `</hp:run><hp:run charPrIDRef="${c12}"><hp:t> </hp:t></hp:run><hp:run charPrIDRef="${c12}">` + ftbl([top, sign], colW * n, 5365, n)
   }
@@ -479,15 +480,15 @@ export function buildReportCover(inp: ReportCoverInput, ctx: FrameCtx): string[]
   const barP = reg.para({ align: "CENTER", lineSp: 70 })
   const rows = [
     tc({ bf: bar, row: 0, col: 0, w, h: barH, paras: para("", barP, c1) }),
-    tc({ bf: BF_NONE, row: 1, col: 0, w, h: 6000, paras: para(inp.title, center, cT), name: "__kordoc_skip" }),
+    tc({ bf: BF_NONE, row: 1, col: 0, w, h: 6000, paras: para(inp.title, centerAt("title"), cT), name: "__kordoc_skip" }),
     tc({ bf: bar, row: 2, col: 0, w, h: barH, paras: para("", barP, c1) }),
   ]
   out.push(host(ftbl(rows, w, 6000 + 2 * barH, 1), reg.para({ align: "CENTER", lineSp: 100 }), cT))
   for (let i = 0; i < 2; i++) out.push(blank(20))
-  out.push(para(inp.date, center, reg.char(cv ? cv.date : { font: frame.titleFont, pt: 22, bold: true })))
+  out.push(para(inp.date, centerAt("date"), reg.char(cv ? cv.date : { font: frame.titleFont, pt: 22, bold: true })))
   for (let i = 0; i < 8; i++) out.push(blank(20))
-  if (inp.org) out.push(para(spacedOrgName(inp.org), center, reg.char(cv ? cv.org : { font: frame.titleFont, pt: 24, bold: true })))
-  if (inp.dept) out.push(para(`(${inp.dept.replace(/^\(|\)$/g, "")})`, center, reg.char(cv ? cv.dept : { font: "한컴돋움", pt: 22, bold: true })))
+  if (inp.org) out.push(para(spacedOrgName(inp.org), centerAt("org"), reg.char(cv ? cv.org : { font: frame.titleFont, pt: 24, bold: true })))
+  if (inp.dept) out.push(para(`(${inp.dept.replace(/^\(|\)$/g, "")})`, centerAt("dept"), reg.char(cv ? cv.dept : { font: "한컴돋움", pt: 22, bold: true })))
   return out
 }
 

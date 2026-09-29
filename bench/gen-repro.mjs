@@ -57,10 +57,12 @@ function frameRole(x) {
   if (t.rows === 1 && t.cols === 1 && t.id === frame.summary) return "요약"
   return null
 }
-/** 제목표 — 본문 시작 글(from)이 든 첫 표(2×1 제목/담당 또는 1×1 제목 상자), 요약박스 — 그 다음 첫 1×1 표. 그 밖의 2×1·1×1 상자는 표칸 */
+/** 본문 제목 자리 — 일반 문단 또는 제목표 모양(2×1 제목/담당·1×1 제목 상자). 표지의 3×1 띠 제목 표·겹표 속 제목은 아니다 */
+const titleShaped = x => x.ctx.length === 0 || (x.ctx.length === 1 && x.ctx[0].cols === 1 && x.ctx[0].rows <= 2)
+/** 제목표 — 본문 시작 글(from)이 든 첫 제목표, 요약박스 — 그 다음 첫 1×1 표. 그 밖의 2×1·1×1 상자는 표칸 */
 let frame = { title: -1, summary: -1 }
 function findFrame(arr, from) {
-  const ti = arr.findIndex(x => x.ctx.length === 1 && (!from || key(x.text).includes(key(from))))
+  const ti = arr.findIndex(x => x.ctx.length === 1 && titleShaped(x) && (!from || key(x.text).includes(key(from))))
   const title = ti >= 0 ? arr[ti].ctx[0].id : -1
   const s = arr.slice(Math.max(ti, 0)).find(x => x.ctx.length === 1 && x.ctx[0].id !== title && x.ctx[0].rows === 1 && x.ctx[0].cols === 1)
   return { title, summary: s ? s.ctx[0].id : -1 }
@@ -133,10 +135,23 @@ for (const set of sets) {
     const md = readFileSync(join(dir, c.md), "utf8")
     const gen = flatten(digest(Buffer.from(await markdownToHwpx(md, c.options ?? {}))))
     // 본문 시작 — from 글이 처음 나오는 본문·제목표 문단(표지 안 겹표의 같은 제목은 건너뛴다: 거기서 자르면 LCS 가 표지 제목과 짝을 맺어 제목표가 누락된다)
-    const cut = arr => { const i = c.from ? arr.findIndex(x => x.ctx.length <= 1 && key(x.text).includes(key(c.from))) : 0; return i < 0 ? arr : arr.slice(i) }
+    const start = arr => { const i = c.from ? arr.findIndex(x => titleShaped(x) && key(x.text).includes(key(c.from))) : 0; return Math.max(i, 0) }
     // 마스킹 줄(부분공개 "*****")은 정답 글이 아니다
     const live = x => key(x.text) && !/^\*{5,}$/.test(key(x.text))
-    const G = cut(gt).filter(live), H = cut(gen).filter(live)
+    const G = gt.slice(start(gt)).filter(live), H = gen.slice(start(gen)).filter(live)
+    // 앞장(표지·사전 검토 점검표·목차) — 본문 시작 앞 문단을 같은 방식으로 짝지어 전 속성 대조. 전자결재가 채우는 칸(결재자 이름·협조란)과
+    // 목차 쪽번호는 생성하지 않아 누락으로 남는다
+    const FG = gt.slice(0, start(gt)).filter(live), FH = gen.slice(0, start(gen)).filter(live)
+    const front = { gt: FG.length, gen: FH.length, matched: 0, ok: 0, n: 0, det: { ok: 0, n: 0 }, bad: [] }
+    for (const [i, j] of align(FG.map(x => key(x.text)), FH.map(x => key(x.text)))) {
+      front.matched++
+      for (const [p, fn] of Object.entries(PROPS)) {
+        const hit = fn(FG[i]) === fn(FH[j])
+        front.n++; front.ok += hit
+        if (!hit) front.bad.push(`${p}: 정답 ${JSON.stringify(fn(FG[i]))} ≠ 생성 ${JSON.stringify(fn(FH[j]))} — ${FG[i].text.trim().slice(0, 24)}`)
+        if (["글꼴", "크기", "굵기"].includes(p)) { front.det.n++; front.det.ok += hit }
+      }
+    }
     const fg = findFrame(G, c.from), fh = findFrame(H, c.from)
     const roleOf = (x, side) => { frame = side === "g" ? fg : fh; return role(x) }
     const pairs = align(G.map(x => key(x.text)), H.map(x => key(x.text)))
@@ -178,10 +193,13 @@ for (const set of sets) {
     console.log(`  결정적 ${pct(group.결정적)} · 손조정 ${pct(group.손조정)} (정답지 자체 상한 ${(100 * row.handCeiling).toFixed(1)}%) · 강조색 ${pct(group.강조색)}`)
     const byRole = {}
     for (const [k, s] of Object.entries(stat)) { const [r] = k.split("/"); (byRole[r] ??= { ok: 0, n: 0 }); byRole[r].ok += s.ok; byRole[r].n += s.n }
+    row.front = front
+    if (front.gt) console.log(`  앞장(표지·점검표·목차) 정답 ${front.gt} · 생성 ${front.gen} · 짝 ${front.matched} | 서식 일치 ${pct(front)} · 결정적 ${pct(front.det)}`)
     console.log("  역할별 " + Object.entries(byRole).map(([r, s]) => `${r} ${(100 * s.ok / s.n).toFixed(0)}%`).join(" · "))
     const worst = Object.entries(stat).filter(([, s]) => s.ok < s.n).sort((a, b) => (b[1].n - b[1].ok) - (a[1].n - a[1].ok)).slice(0, 12)
     console.log("  불일치 상위 " + worst.map(([k, s]) => `${k} ${s.n - s.ok}`).join(" · "))
     if (verbose) {
+      for (const b of front.bad.slice(0, 40)) console.log("    앞장 " + b)
       for (const b of bad.slice(0, 80)) console.log("    " + b)
       console.log("  누락: " + row.missingText.slice(0, 20).join(" / "))
       console.log("  잉여: " + row.extraText.slice(0, 20).join(" / "))
