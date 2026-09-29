@@ -368,7 +368,8 @@ function continuesAcross(u: IRCell, d: IRCell, x1: number, x2: number): boolean 
   // 시작한다. 가운데·오른쪽 정렬 칸도 짧은 뒷줄은 들어가 시작하므로, 뒤 첫 줄이 칸 폭 절반 넘게 차 오른끝을 같이 쓰거나(양쪽 맞춤 — 오른쪽
   // 정렬 짧은 글 "사무관" / "과장" 과 가른다) 오른끝이 짧게 끝나며 가운데가 어긋나야 한다(가운데 정렬은 두 줄 가운데가 같다)
   const d0 = D[0]
-  const hangStart = U.length === 1 && !newItem && d0.l - last.l >= HANGING_MIN * fs
+  // 뒤 쪽 둘째 줄부터가 첫 줄보다 나오면 첫 줄만 들여 쓴 새 문단이다 — 내어쓰기 이어짐이면 뒤 줄이 모두 그 자리 안쪽에 선다
+  const hangStart = U.length === 1 && !newItem && d0.l - last.l >= HANGING_MIN * fs && D.every(l => l.l >= d0.l - HANGING_TOL)
     && ((Math.abs(d0.r - last.r) <= HANGING_TOL && d0.r - d0.l >= FULL_LINE_MIN_FRAC * (x2 - x1))
       || (last.r - d0.r > SHORT_LINE_GAP * fs && Math.abs(d0.l + d0.r - last.l - last.r) / 2 >= HANGING_MIN * fs))
   return U.some(leftAligned) || D.some(leftAligned) || hanging || hangingHead || hangStart
