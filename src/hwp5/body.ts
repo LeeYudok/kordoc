@@ -2,7 +2,7 @@
 
 import { tidyScriptTags, type ScriptKind } from "../script-tags.js"
 import {
-  extractEquationText, createParaTextState, appendParaText, LEADER_TAB_MARK, LITERAL_DOLLAR_MARK, TAG_PARA_HEADER, TAG_PARA_TEXT, TAG_CHAR_SHAPE,
+  extractEquationText, createParaTextState, appendParaText, LITERAL_DOLLAR_MARK, TAG_PARA_HEADER, TAG_PARA_TEXT, TAG_CHAR_SHAPE,
   TAG_CTRL_HEADER, TAG_LIST_HEADER, TAG_TABLE, TAG_EQEDIT, TAG_SHAPE_COMPONENT, TAG_SHAPE_COMPONENT_CONTAINER,
   TAG_SHAPE_COMPONENT_PICTURE, type HwpRecord, type HwpDocInfo, type IndexedControlResolver,
 } from "./record.js"
@@ -260,7 +260,6 @@ function parseParagraph(records: HwpRecord[], start: number, end: number, ctx: H
 
   // 텍스트 렌더링 — 확장 컨트롤 인덱스 ↔ CTRL_HEADER 순서 매핑
   const state = createParaTextState()
-  state.leaderMark = true
   state.dollarMark = true
   state.scriptAt = scriptLookup(charShapeRuns, ctx.docInfo)
   const resolver: IndexedControlResolver = (idx, id) => {
@@ -299,14 +298,11 @@ function parseParagraph(records: HwpRecord[], start: number, end: number, ctx: H
       if (!ctrl.href) continue
       const href = sanitizeHref(ctrl.href)
       if (!href) continue
-      if (!anchor.trim() || anchor.includes(INLINE_TABLE_MARK) || anchor.includes(LEADER_TAB_MARK)) continue
+      if (!anchor.trim() || anchor.includes(INLINE_TABLE_MARK)) continue
       text = text.slice(0, r.start) + `[${anchor}](${href})` + text.slice(r.end)
       applied.push([r.start, r.end])
     }
   }
-  // 채움 탭 뒤(목차 쪽번호)는 버린다 — HWPX 파서의 리더 탭 절단 정책(bench leader-tab-cut)과 대칭
-  const leaderAt = text.indexOf(LEADER_TAB_MARK)
-  if (leaderAt >= 0) text = text.slice(0, leaderAt)
   // 리터럴 $ → \$ (필드 위치를 다 쓴 뒤라 이제 두 글자로 늘려도 된다, escapeLiteralDollar 규약)
   if (text.includes(LITERAL_DOLLAR_MARK)) text = text.replaceAll(LITERAL_DOLLAR_MARK, "\\$")
   // 글자마다 여닫은 첨자 태그 정리 — HWPX section-walker 와 같은 꼴로

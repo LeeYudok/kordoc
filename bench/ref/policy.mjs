@@ -27,7 +27,6 @@ export const CATEGORY_ELEMENTS = {
 // ─── 화이트리스트: 파서의 의도적 드롭/변형 (모수 제외 또는 참조에 동일 적용) ───
 // 항목 수가 비대해지면 그 자체가 품질 적신호 — 리포트에 노출
 export const WHITELIST = [
-  { id: "leader-tab-cut", desc: "목차 리더탭(leader≠0) 이후 페이지번호 절단 — 파서 \\x1F 정책과 동일 적용" },
   { id: "shape-alt-strip", desc: "도형/OLE 대체텍스트 패턴 제거 ('사각형입니다.', '그림입니다. 원본 그림의 이름…') — 참조에 동일 적용" },
   { id: "equation-presence", desc: "수식 hp:script ↔ LaTeX 문자 비교 불가 — presence 채점 분리" },
   { id: "trailing-col-trim", desc: "후행 빈 열 제거(builder trimAndReturn) — 참조 그리드에 동일 적용" },
@@ -80,7 +79,6 @@ export const GATES = {
 /** 정책 드롭 카운터 생성 — 문서별 리포트용 */
 export function newPolicyCounters() {
   return {
-    leaderTabChars: 0,    // 리더탭 이후 절단된 문자수
     shapeAltChars: 0,     // 대체텍스트 패턴으로 제거된 문자수
     excludedElements: {}, // 제외 요소 태그별 카운트
     nestedTables: 0,      // 중첩표 수 (v3.0: 부모 IRCell.blocks에 보존 — 전부 비교 대상)

@@ -391,8 +391,6 @@ export interface ParaTextState {
   ctrlIdx: number
   fieldStack: Array<{ start: number; ctrlIdx: number }>
   fieldRanges: HwpFieldRange[]
-  /** 채움(리더) 탭을 "\t" 대신 LEADER_TAB_MARK 로 — 본문 파서만 켠다(목차 쪽번호 절단, HWPX \x1F 정책과 대칭) */
-  leaderMark?: boolean
   /** 리터럴 "$" 를 LITERAL_DOLLAR_MARK 한 글자로 — 본문 파서만 켠다. 필드 범위가 글자 위치라
    *  두 글자 "\$" 를 바로 넣지 않고, 필드 처리 뒤 본문 파서가 "\$" 로 바꾼다(escapeLiteralDollar 규약) */
   dollarMark?: boolean
@@ -404,9 +402,6 @@ export interface ParaTextState {
   /** 앞 PARA_TEXT 레코드까지의 WCHAR 수 — 글자 모양 위치는 문단 전체 기준 */
   wpos?: number
 }
-
-/** 채움 탭 표지 — 뒤는 목차 쪽번호라 본문 파서가 문단 텍스트를 여기서 자른다 (HWPX section-walker 와 같은 문자) */
-export const LEADER_TAB_MARK = "\x1F"
 
 /** 리터럴 "$" 표지 (dollarMark) — 유니코드 비문자라 문서 글에 나오지 않는다 */
 export const LITERAL_DOLLAR_MARK = "\uFDD0"
@@ -497,9 +492,10 @@ export function appendParaText(state: ParaTextState, data: Buffer, resolveContro
       case CHAR_FIXED_WIDTH: result += " "; break  // 고정폭 공백
 
       // ── inline 타입 (2바이트 + 14바이트 확장) ──
-      // 확장 u16[7] 중 [2] 의 하위 바이트 = 채움 모양(0 없음·3 점선 …), 상위 = 탭 종류+1 (rhwp tab_extended 실측)
+      // 확장 u16[7] 중 [2] 의 하위 바이트 = 채움 모양(0 없음·3 점선 …), 상위 = 탭 종류+1 (rhwp tab_extended 실측).
+      // 채움 탭도 보통 탭 — 채움선은 글이 아니고 뒤 글(목차 쪽 번호 등)은 남긴다 (HWPX section-walker "tab" 과 같은 정책)
       case CHAR_TAB:
-        result += state.leaderMark && i + 14 <= data.length && data[i + 4] !== 0 ? LEADER_TAB_MARK : "\t"
+        result += "\t"
         if (i + 14 <= data.length) i += 14
         break
 

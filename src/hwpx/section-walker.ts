@@ -1042,16 +1042,11 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
       const tag = (child.tagName || child.localName || "").replace(/^[^:]+:/, "")
       switch (tag) {
         case "t": walk(child, depth + 1); break  // 자식 순회 (tab 등 하위 요소 처리)
-        case "tab": {
-          const leader = child.getAttribute("leader")
-          if (leader && leader !== "0") {
-            // 목차 리더 탭 (점선/실선 등) — 뒤에 페이지번호가 오므로 이후 텍스트 무시
-            text += "\x1F"  // 특수 마커: 이후 텍스트 제거용
-          } else {
-            text += "\t"
-          }
-          break
-        }
+        // 탭 — 채움(leader≠0, 목차 점선) 탭도 보통 탭. 채움선은 글이 아니라 내지 않고 뒤 글은 남긴다(PDF tab-leaders 가
+        // 점 채움을 탭 하나로 바꾸고 쪽 번호를 남기는 것과 같다). 종전엔 채움 탭 뒤를 쪽 번호로 보고 잘라, 목차 쪽 번호만이 아니라
+        // 일정표 "사용자 의견조사 ····· '26년 8~9월"(gate-fill 36646162)의 일정, 줄바꿈 뒤 다음 목차 항목
+        // "<참고2> 직종별사업체노동력조사 개요"(rhwp issue6044)까지 사라졌다
+        case "tab": text += "\t"; break
         case "br":
           if ((child.getAttribute("type") || "line") === "line") text += "\n"
           break
@@ -1148,7 +1143,7 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
           walk(child, depth + 1)
           if (script && linkRanges.length === nLinks && openFields.length === nOpen && runHasOnlyText(child)) {
             const added = text.slice(start)
-            if (added && !/[\x1E\x1F\n$]/.test(added)) text = text.slice(0, start) + wrapScript(added, script)
+            if (added && !/[\x1E\n$]/.test(added)) text = text.slice(0, start) + wrapScript(added, script)
           }
           break
         }
@@ -1160,7 +1155,7 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
   walk(para)
 
   // 하이퍼링크 extent 인라인 적용 — 시작 내림차순 치환(HWP5와 동일), 겹침 금지.
-  // anchor가 줄바꿈·리더마커·대괄호를 품으면 문법이 깨지므로 그 필드는 건너뛴다.
+  // anchor가 줄바꿈·표 경계 마커·대괄호를 품으면 문법이 깨지므로 그 필드는 건너뛴다.
   {
     const applied: Array<[number, number]> = []
     const closed = linkRanges
@@ -1169,16 +1164,13 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
     for (const r of closed) {
       if (applied.some(([s, e]) => r.start < e && r.end! > s)) continue
       const anchor = text.slice(r.start, r.end!)
-      if (!anchor.trim() || /[\n\x1F\x1E\[\]]/.test(anchor)) continue
+      if (!anchor.trim() || /[\n\x1E\[\]]/.test(anchor)) continue
       text = text.slice(0, r.start) + `[${anchor}](${r.url})` + text.slice(r.end!)
       applied.push([r.start, r.end!])
     }
     if (applied.length) href = undefined // 문단 전체 href 중복 방지
   }
 
-  // 목차 리더 마커(\x1F) 이후 텍스트(페이지번호) 제거
-  const leaderIdx = text.indexOf("\x1F")
-  if (leaderIdx >= 0) text = text.substring(0, leaderIdx)
   // run 마다 감싼 첨자 태그 정리(이웃 합치기·공백은 밖으로) — 링크 치환이 글 위치를 다 쓴 뒤
   text = tidyScriptTags(text)
 
