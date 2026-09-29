@@ -16,6 +16,7 @@ import { KordocError } from "../utils.js"
 import { parsePageRange, hasRequestedPagesAfter } from "../page-range.js"
 import { blocksToPages } from "../page-markdown.js"
 import { blocksToMarkdown, escapeLiteralDollar } from "../table/builder.js"
+import { unframeLayoutTables } from "../table/layout-frames.js"
 import { extractImageRegions, extractLines } from "./line-detector.js"
 import { mergeOcrImageRegions, type ImageRegion } from "./ocr-region-merge.js"
 import { createPdfImageState, extractPageImages, injectPageImageBlocks } from "./image-extract.js"
@@ -557,6 +558,24 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
       return b.bbox.y > h * 0.1 && b.bbox.y + b.bbox.height < h * 0.9
     })
     joinLatinCellWraps(outBlocks)
+    // 보이지 않는 틀 표 풀기 (v4.17.0, table/layout-frames) — 표 잇기(쪽 넘김·칸 이어짐)가 끝나 칸마다 보이는 변(cell-edges)이 제자리에
+    // 있고 쪽번호 거르기(bbox 없는 문단을 버린다)도 지난 뒤. 새로 짠 표에는 PDF 표 곁정보(table-meta)가 없지만 여기서부터는 그 곁정보를
+    // 보는 단계가 없다. 결과 blocks(쪽 넘김 잇기 뒤 원 목록)에도 같은 풀이를 쓴다 — 표 블록마다 한 번만 푼다(푸는 동안 칸을 제자리 고친다).
+    // 한컴 PDF 만 — 워드 등 다른 제작기도 칸마다 글 클립을 깔아 클립 격자가 서는데, 그 표는 테두리 없는 머리 행이 글로 풀려 표가 깨진다
+    // (ODL 064 "PORT | SHIPCALLS" 머리 행: 한컴 원본 그림이 아니라 이 규칙의 정답이 없다)
+    if (options?.layoutTables !== "keep" && await isHancomPdf(doc)) {
+      const shown = new Map<IRBlock, IRBlock[]>()
+      const visual = (bs: IRBlock[]): IRBlock[] => bs.flatMap(b => {
+        if (b.type !== "table") return [b]
+        let v = shown.get(b)
+        if (!v) shown.set(b, v = unframeLayoutTables([b]))
+        return v
+      })
+      outBlocks = visual(outBlocks)
+      const kept = visual(blocks)
+      blocks.length = 0
+      for (const b of kept) blocks.push(b) // 큰 문서(수십만 블록)는 펼침 인자 상한을 넘는다
+    }
 
     // blocksToMarkdown로 통일 — 헤딩 마크다운 반영 (HWP5/HWPX와 일관성)
     const finishMarkdown = (bs: IRBlock[]): string => mergeLinkRuns(cleanPdfText(blocksToMarkdown(bs), { keepLoneNumbers: true }))
@@ -598,6 +617,17 @@ async function extractPdfMetadata(doc: { getMetadata(): Promise<unknown> }, meta
     if (typeof info.ModDate === "string") metadata.modifiedAt = parsePdfDate(info.ModDate)
   } catch {
     // best-effort
+  }
+}
+
+/** 한컴 PDF — Producer "Hancom PDF 1.3.0.xxx" 또는 Creator "Hwp 2018·2020 …" (법령 별표 273건 271건·표 정답 세트 한컴 산출물 실측).
+ *  정보 사전을 못 읽거나 다른 제작기면 아니다 */
+async function isHancomPdf(doc: { getMetadata(): Promise<unknown> }): Promise<boolean> {
+  try {
+    const info = (await doc.getMetadata() as { info?: Record<string, unknown> } | null)?.info
+    return [info?.Producer, info?.Creator].some(v => typeof v === "string" && /^\s*(?:hancom\b|hwp\b)/i.test(v))
+  } catch {
+    return false
   }
 }
 

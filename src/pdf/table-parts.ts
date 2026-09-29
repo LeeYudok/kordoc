@@ -14,6 +14,8 @@ import type { IRBlock, IRCell, IRTable } from "../types.js"
 import { CELL_LINES, CLIP_TABLES, EMPTY_PARTS, FILLER_CELLS, IMAGE_CELLS, TABLE_COLXS } from "./table-meta.js"
 import { CONTACT_HEAD, CONTACT_ROLE } from "./contact-table.js"
 import { startsNewItem, type WrapLexicon } from "./line-wrap.js"
+import { NO_EDGES, joinCellEdges } from "./cell-edges.js"
+import { CELL_EDGES } from "../table/layout-frames.js"
 
 /** 두 조각의 경계를 같은 것으로 보는 거리 (pt) — 클립 좌표 오차 0.05pt, 조각 간 반올림 여유 */
 const PART_COL_TOL = 1
@@ -85,6 +87,8 @@ export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx:
   const rows = prev.rows + curr.rows - skip
   const grid: IRCell[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => ({ text: "", colSpan: 1, rowSpan: 1 })))
   const owner: (Anchor | null)[][] = Array.from({ length: rows }, () => new Array<Anchor | null>(cols).fill(null))
+  /** 보이는 변 곁정보(cell-edges)를 가진 칸을 놓았나 — 그러면 빈 자리 채움 칸도 자기 테두리 없는 칸으로 둔다 */
+  let edged = false
   const place = (a: Anchor, x: number[], rowOff: number, shift = 0): boolean => {
     const c1 = indexOf(U, x[a.c]), c2 = indexOf(U, x[a.c + a.cs])
     if (c1 < 0 || c2 <= c1) return false
@@ -98,6 +102,8 @@ export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx:
     const lines = CELL_LINES.get(a.cell)
     if (lines) CELL_LINES.set(grid[r][c1], shift ? lines.map(l => ({ ...l, l: l.l + shift, r: l.r + shift })) : lines)
     if (IMAGE_CELLS.has(a.cell)) IMAGE_CELLS.add(grid[r][c1])
+    const edges = CELL_EDGES.get(a.cell)
+    if (edges) { CELL_EDGES.set(grid[r][c1], edges); edged = true }
     return true
   }
   // 채움 칸(클립 없던 자리)은 놓지 않는다 — 빈 자리로 남아 아래 세로 병합 잇기가 채운다
@@ -130,6 +136,8 @@ export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx:
 
   // 아무 칸도 덮지 않은 자리는 채움 칸으로 남긴다 — 이 표가 다시 앞 쪽 조각과 이어질 때(세 쪽 넘게) 빈 자리로 보고 세로 병합을 잇게
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (owner[r][c] === null) FILLER_CELLS.add(grid[r][c])
+  // 채움 칸은 자기 테두리가 없다 — 곁정보 없는 칸은 layout-frames 가 네 변 다 보이는 칸으로 본다 (둘레 칸의 변이 선을 댄다)
+  if (edged) for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (owner[r][c] === null) CELL_EDGES.set(grid[r][c], NO_EDGES)
   const table: IRTable = { rows, cols, cells: grid, hasHeader: prev.hasHeader, ...(prev.caption ? { caption: prev.caption } : {}) }
   let split = rows > prev.rows && mergeSplitRow(table, owner, prev.rows, U)
   // 세로 병합 칸을 이은 뒤 다시 본다 — 뒤 조각 이름표가 여러 행을 덮어 쪼개진 행 판정에서 빠졌던 행("일몰설정 / 예외기준" 이름표 옆
@@ -298,6 +306,7 @@ function appendCell(a: IRCell, b: IRCell): void {
     a.blocks = [...asBlocks(a), ...asBlocks(b)]
   }
   if (b.text.trim()) a.text = a.text.trim() ? a.text + "\n" + b.text : b.text
+  joinCellEdges(a, b)
 }
 
 /** 칸에 내용이 있나 — 글·블록·그림 (그림은 PDF 에서 칸 글과 따로 뽑혀 text 가 빈다) */
