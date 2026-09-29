@@ -26,6 +26,8 @@ import { markImageCell } from "./table-trim.js"
 import { mergeSliverColumns } from "./table-trim.js"
 import { headerLineAbove } from "./grid-header-line.js"
 import { CLIP_TABLES, CONT_PARTS, EMPTY_PARTS, FILLER_CELLS, TABLE_COLXS, recordCellLines } from "./table-meta.js"
+import { NO_EDGES, recordClipCellEdges, takeClipCellEdges } from "./cell-edges.js"
+import { CELL_EDGES } from "../table/layout-frames.js"
 import { WrapLexicon } from "./line-wrap.js"
 import { isPageFrameGrid } from "./page-frame.js"
 import { closeOpenTableEnds } from "./open-table-ends.js"
@@ -81,6 +83,8 @@ export function extractPageBlocksWithLines(
     : { grids: [], containers: [], page: undefined }
   if (carry) { carry.page = pageNum; carry.clip = clipResult.page }
   const clipGrids = clipResult.grids
+  // 클립 격자 칸의 보이는 변 — 합성 테두리를 더하기 전의 추출 선(짧은 조각 포함)으로 (보이지 않는 틀 표 풀기, cell-edges)
+  recordClipCellEdges(clipGrids, horizontals.concat(extracted.shortH), verticals.concat(extracted.shortV), extracted.nonRules)
   // 짧은 괘선 조각 잇기는 칸 클립 격자가 없는 쪽에서만 (line-extract chainShortSegments) — 칸마다 클립이 있는 쪽은 잇기가
   // 필요 없고, 한컴 조직도 박스 조각을 이으면 여러 클립 표를 가로지르는 큰 선 격자가 생겨 클립 격자 틈으로 살아남는다
   // (rhwp multi-table-002 조직도 17x19 빈 격자가 부서명을 삼킴). 예산서(부천·속초)·MS Print To PDF 글자 클립 쪽은 잇는다
@@ -494,6 +498,7 @@ function extractBlocksWithGrids(
         irGrid[cell.row][cell.col] = { text: built.text, colSpan: cell.colSpan, rowSpan: cell.rowSpan, blocks: built.blocks }
         // 틀 칸 자기 글의 글줄 — 쪽을 넘은 틀 칸의 글 이어짐 판정(table-parts)이 본다 (과제 명세서 "□ 개념" 칸이 다음 쪽 상자 칸으로 이어짐)
         if (cellItems.length) recordCellLines(irGrid[cell.row][cell.col], cellItems)
+        takeClipCellEdges(cell, irGrid[cell.row][cell.col])
         continue
       }
       irGrid[cell.row][cell.col] = {
@@ -509,6 +514,7 @@ function extractBlocksWithGrids(
       }
       if (cell.filler && !cellItems.length) FILLER_CELLS.add(irGrid[cell.row][cell.col])
       if (grid.cells && cellItems.length) recordCellLines(irGrid[cell.row][cell.col], cellItems)
+      takeClipCellEdges(cell, irGrid[cell.row][cell.col])
     }
 
     // 과소분할 표 재구성 (ODL TableStructureNormalizer):
@@ -564,6 +570,8 @@ function extractBlocksWithGrids(
       const inset = line.length ? grid.bbox.x2 - (line[line.length - 1].x + line[line.length - 1].w) : 0
       if (line.length && /^\s*\(\s*단위\s*[:：]/.test(text) && inset >= 4.6 && inset <= 5.6) {
         finalGrid.unshift(Array.from({ length: numCols }, (_, c) => ({ text: c === 0 ? cleanCellText(text) : "", colSpan: c === 0 ? numCols : 1, rowSpan: 1 })))
+        // 클립 격자 위 단위 줄은 자기 테두리가 없다 — 곁정보 없는 칸은 layout-frames 가 보이는 칸으로 본다
+        if (grid.cells) for (const u of finalGrid[0]) CELL_EDGES.set(u, NO_EDGES)
         finalRows++
         for (const item of line) usedItems.add(item)
       }
