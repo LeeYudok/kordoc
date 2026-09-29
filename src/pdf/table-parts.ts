@@ -149,20 +149,33 @@ export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx:
  */
 function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first: number, prevBottom: number): void {
   const last = first - 1
-  if (!owner[first].some((o, c) => o !== null && o === owner[last][c])) return
+  const straddles = owner[first].some((o, c) => o !== null && o === owner[last][c])
+  // 뒤 조각 첫 행에서 글 있는 새 칸이 처음 나오는 열 — 빈 이어짐은 그보다 왼쪽(이름표 열)만 본다. 왼쪽 이름표 열에 새 묶음 이름이
+  // 있으면 그 행은 새 묶음이고 오른쪽 빈 칸(비고)은 새 칸이다(시험기준표 "드레인보드" 행 비고 칸)
+  let firstNew = table.cols
+  for (let c = 0; c < table.cols; c++) {
+    const d = owner[first][c]
+    if (d && d.r === first && d !== owner[last][c] && hasContent(table.cells[d.r][d.c])) { firstNew = c; break }
+  }
   for (let c = 0; c < table.cols;) {
     const u = owner[last][c], d = owner[first][c]
     if (!u) { c++; continue }
     c = u.c + u.cs
-    // 앞 조각에 끝 행 하나만 보인 칸도 뒤 조각 칸이 두 행 이상을 덮으면 쪽 경계에 걸친 병합 칸이다(성능시험 TRL 표 "제품화 / 단계",
-    // 시험기준표 "플라이애시 / 시멘트(KS L 5211)") — 뒤 조각 한 행 칸은 새 칸일 수 있어 그대로 둔다
-    if (!d || d === u || (u.r >= last && d.rs < 2) || u.r + u.rs - 1 !== last || d.r !== first || d.c !== u.c || d.cs !== u.cs) continue
+    if (!d || d === u || u.r + u.rs - 1 !== last || d.r !== first || d.c !== u.c || d.cs !== u.cs) continue
     const a = table.cells[u.r][u.c], b = table.cells[first][d.c]
-    const U = CELL_LINES.get(a)
-    if (!U?.length || U.length > STRADDLE_MAX_LINES || !hasContent(b)) continue
-    const lu = U[U.length - 1]
-    // 앞 조각에 한 행만 보인 칸은 글이 쪽 경계에 걸쳐야 한다(가운데 정렬 병합 칸 글이 바닥 반 줄 안) — 한 행짜리 새 칸 글은 행 가운데에 선다
-    if (lu.y - prevBottom > (u.r >= last ? STRADDLE_BOTTOM_ONE_ROW : STRADDLE_BOTTOM) * (lu.h || 10)) continue
+    // 빈 이어짐 — 앞 조각에서 두 행 이상 덮은 이름표 칸 아래 뒤 조각 첫 칸이 비었으면 그 칸의 나머지다. 새 묶음이면 이름표가 있다
+    // (aift 기업 현황 "자본잠식현황" 앞 쪽 2행 + 다음 쪽 빈 4행, "자본총계" 2행 + 빈 1행 — 모든 칸이 쪽 경계에서 끝나도)
+    if (!(u.rs >= 2 && u.c + u.cs <= firstNew && hasContent(a) && !hasContent(b))) {
+      if (!straddles) continue
+      // 앞 조각에 끝 행 하나만 보인 칸도 뒤 조각 칸이 두 행 이상을 덮으면 쪽 경계에 걸친 병합 칸이다(성능시험 TRL 표 "제품화 / 단계",
+      // 시험기준표 "플라이애시 / 시멘트(KS L 5211)") — 뒤 조각 한 행 칸은 새 칸일 수 있어 그대로 둔다
+      if (u.r >= last && d.rs < 2) continue
+      const U = CELL_LINES.get(a)
+      if (!U?.length || U.length > STRADDLE_MAX_LINES || !hasContent(b)) continue
+      const lu = U[U.length - 1]
+      // 앞 조각에 한 행만 보인 칸은 글이 쪽 경계에 걸쳐야 한다(가운데 정렬 병합 칸 글이 바닥 반 줄 안) — 한 행짜리 새 칸 글은 행 가운데에 선다
+      if (lu.y - prevBottom > (u.r >= last ? STRADDLE_BOTTOM_ONE_ROW : STRADDLE_BOTTOM) * (lu.h || 10)) continue
+    }
     appendCell(a, b)
     a.rowSpan = first + d.rs - u.r
     table.cells[first][d.c] = { text: "", colSpan: 1, rowSpan: 1 }
