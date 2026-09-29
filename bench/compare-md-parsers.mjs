@@ -11,7 +11,8 @@
 //   글    : 참조 문단·셀·글상자 글을 markdown 평문에 정렬(align.mjs) — 재현율(빠진 글), 가짜 글 비율(참조에 없는 본문 문자),
 //           읽기 순서(고유 본문 유닛 위치의 최장 증가 부분열 비율)
 //   표    : markdown 의 파이프 표·HTML 표(colspan·rowspan·중첩)를 같은 파서로 격자화해 score.mjs 와 같은 scoreTables 로 대조 —
-//           표 완전 일치(칸 짜임)·칸 F1. 1열 표(1×1 포함)는 양쪽 모두 뺀다(꾸밈 틀 — 문단/표는 표현 선택, --include-single-col 로 포함)
+//           표 완전 일치(칸 짜임)·칸 F1. 1열 표(1×1 포함)는 양쪽 모두 뺀다(꾸밈 틀 — 문단/표는 표현 선택, --include-single-col 로 포함).
+//           정답 표는 보이는 표(v4.17.0 채점 기준 변경, ref/visible-tables.mjs) — 선이 안 보이는 틀 표는 글, 칸 분수는 수식이라 글 모수 밖
 // 출력: bench/out/compare-<name>.json + 콘솔 요약
 
 import { readdir, readFile, writeFile, mkdir } from "node:fs/promises"

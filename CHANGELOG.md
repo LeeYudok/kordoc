@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 채점 기준 변경 (2026-09-29)
+
+- **표 정답 = 원본 한글 문서에서 보이는 표**: 독립 정답 추출기(bench/ref/hwpx-ref.mjs)가 hp:tbl 을 전부 표로 세던 것을, 칸 테두리(header.xml borderFill, type≠NONE·색≠흰색)가 그리는 모습대로 나눈다(bench/ref/visible-tables.mjs, 파서와 코드 공유 0%). 행의 단위 세로 변이 하나라도 보이거나 칸 둘 이상이 덮고 윗·아랫 가로선이 온 폭에 보이면 표 행, 이어진 표 행 묶음이 보이는 표 하나, 나머지 행은 글(칸 글은 글 재현율 유닛 그대로, 표 순서 채점에서만 빠짐). 묶음 밖으로 나가는 rowSpan 은 자르고, 보이는 변 밖 빈 들여쓰기 칸은 버리고, 유령 격자선은 접는다. 칸 안 표는 같은 정의를 재귀로, 칸 안 틀 표에서 풀린 글(통째로 풀리면 캡션까지)은 부모 칸 글. 칸 두 개와 가로선으로 조립한 분수(할부거래법 시행령 [별표 1])는 수식 — 글 모수에서 빼고 수식 존재(eqPresence) 모수에 1개. 후행 빈 열 트림은 원본 표 격자에 먼저. HWPX 2,286문서 원본 hp:tbl 13,041 → 보이는 표 9,896·칸 분수 20.
+- 같은 빌드(visual 파서 85a06d9)에서 종전 정답 → 새 정답: HWPX 표 완전 일치 0.513 → 0.994·칸 F1 0.569 → 0.996·칸 글 NED 0.509 → 0.998, 법령 별표(annex-gt) HWP 표 75/289 → 346/347. annex-gt 가 정답·출력 양쪽을 따로 접던 유령 격자선 접기는 정답 정의로 흡수해 뺐다(출력 쪽 접기가 가리던 것은 HWP 1표뿐) — 출력은 compare-md-parsers 처럼 그대로 잰다. annex-gt 에 수식 개수 대조(보고만)를 더했다.
+
 ## [4.16.3] - 2026-09-29
 
 MCP `generate_document` 가 이미지 폴더 안 심링크를 따라 `KORDOC_ROOT` 밖 파일을 생성 HWPX 에 실을 수 있던 것을 막는다(#101). MCP 도 한글·URL 인코딩 이름 그림을 싣는다.

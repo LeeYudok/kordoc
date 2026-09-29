@@ -3,9 +3,13 @@
 // XML 을 독립 추출기(ref/hwpx-ref.mjs, 파서와 코드 공유 0%)로 읽은 정답에 대조한다. 법령 MCP·lexdiff 가 별표를 이 두 경로로 읽는다.
 //   글 : 재현율(빠진 글)·가짜 글 비율·읽기 순서 — compare-md-parsers 와 같은 정렬 채점
 //   표 : 마크다운 표(파이프·HTML)를 격자화해 scoreTables 로 표 완전 일치·칸 F1. 1열 꾸밈 틀은 뺀다(compare-md-parsers 와 같음)
-//        어느 칸 모서리도 놓이지 않은 행·열 경계(유령 격자선)는 정답·출력 양쪽에서 접는다 — 한글 편집기 격자에만 있는 선이라
-//        화면에서 같은 표인데 열 수만 다르다(장사법 시행령 [별표 6] 과징금표: 보이는 3열, HWPX 격자 7열 중 4개 경계를 어느 칸도 안 씀)
+//        정답 표는 보이는 표다(v4.17.0 채점 기준 변경, ref/visible-tables.mjs) — 선이 안 보이는 틀 행은 글, 유령 격자선(어느 칸
+//        모서리도 안 쓰는 행·열 경계, 장사법 시행령 [별표 6] 과징금표: 보이는 3열·HWPX 격자 7열)은 정답 정의가 접는다. 종전엔 이 벤치가
+//        정답·출력 양쪽을 따로 접었는데 정의로 흡수해 뺐다 — 출력은 compare-md-parsers 처럼 그대로 잰다
+//   수식: 칸 두 개와 가로선으로 조립한 분수(정답 specials.fractions)는 글이 아니라 수식 — 출력 $…$ 개수와 대조(보고만)
 // 기준선 (2026-09-29 v4.16.3): HWP 272문서 표 289/289·칸 F1 1.000·글 100% | PDF 표 236/289(81.7%)·칸 F1 0.955·글 99.95%
+// 채점 기준 변경 뒤 (2026-09-29, 보이는 표 정답·visual 파서 85a06d9): HWP 표 346/347·칸 F1 0.997·글 100%·수식 11/11 |
+//   PDF 표 67/347(19.3%)·칸 F1 0.556·글 99.95%·수식 2/11 — PDF 경로가 아직 틀 표를 안 푼다. 플로어(GATES)는 종전 그대로
 //
 // 사용법: node bench/annex-gt.mjs [--gate] [--doc=부분문자열] [--verbose]
 // 산출: bench/out/annex.json. --gate: 플로어(GATES) 미달 시 exit 1 (부분 실행 --doc 은 보고만)
@@ -33,23 +37,9 @@ const GATES = {
   minDocs: 272,
 }
 
-/** 유령 격자선 접기 — 칸 모서리가 하나도 놓이지 않은 행·열 경계를 없앤 격자. cells 키는 정답(cells)·출력(anchors)이 다르다 */
-function foldGrid(g, key) {
-  const cells = g[key]
-  if (!cells?.length) return g
-  const colUsed = new Set([0, g.cols]), rowUsed = new Set([0, g.rows])
-  for (const a of cells) { colUsed.add(a.c); colUsed.add(a.c + a.cs); rowUsed.add(a.r); rowUsed.add(a.r + a.rs) }
-  const cx = [...colUsed].sort((x, y) => x - y), rx = [...rowUsed].sort((x, y) => x - y)
-  if (cx.length - 1 === g.cols && rx.length - 1 === g.rows) return g
-  const ci = x => cx.indexOf(x), ri = y => rx.indexOf(y)
-  return {
-    ...g, rows: rx.length - 1, cols: cx.length - 1,
-    [key]: cells.map(a => ({ ...a, r: ri(a.r), c: ci(a.c), rs: ri(a.r + a.rs) - ri(a.r), cs: ci(a.c + a.cs) - ci(a.c) })),
-  }
-}
-
 function scoreMd(md, ref) {
-  const mdKey = normKey(mdToPlain(md).text)
+  const { text: plain, eqCount } = mdToPlain(md)
+  const mdKey = normKey(plain)
   const units = ref.units.map(u => ({ id: u.id, kind: u.kind, text: normKey(u.text), tableIdx: u.tableIdx }))
   const { perUnit, buf } = alignUnits(units, mdKey)
   let matched = 0, total = 0
@@ -70,11 +60,12 @@ function scoreMd(md, ref) {
     positions.push(r.pos)
   }
   const multi = t => t.cols > 1
-  const refTables = ref.tables.map(t => foldGrid(t, "cells")).filter(multi)
-  const tbl = scoreTables(refTables, collectIrGrids(mdTables(md)).map(g => foldGrid(g, "anchors")).filter(multi))
+  const refTables = ref.tables.filter(multi)
+  const tbl = scoreTables(refTables, collectIrGrids(mdTables(md)).filter(multi))
   return {
     refChars: total, matchedChars: matched, phantomChars: phantom, mdChars: mdKey.length,
     order: positions.length ? lisLength(positions) / positions.length : 1,
+    eqRef: ref.specials.equations, eqHit: Math.min(eqCount, ref.specials.equations),
     tables: refTables.length, tableExact: tbl.exactCount, cellF1: tbl.cellF1,
     missed: tbl.details.filter(d => !d.exact).map(d => `${d.refDims}→${d.irDims ?? "-"}`),
   }
@@ -113,6 +104,7 @@ function summarize(list) {
     tables: sum("tables"), tableExactCount: sum("tableExact"),
     tableExact: +(sum("tableExact") / Math.max(1, sum("tables"))).toFixed(5),
     cellF1: +(withTables.reduce((s, r) => s + r.cellF1, 0) / Math.max(1, withTables.length)).toFixed(5),
+    eqRef: sum("eqRef"), eqHit: sum("eqHit"),
   }
 }
 const summary = { hwp: summarize(rows.filter(r => r.ext === "hwp")), pdf: summarize(rows.filter(r => r.ext === "pdf")) }
@@ -126,7 +118,7 @@ const pass = Object.values(gates).every(g => g.pass)
 
 for (const ext of ["hwp", "pdf"]) {
   const x = summary[ext]
-  console.log(`${ext.toUpperCase()} ${x.docs}문서: 표 완전 일치 ${x.tableExactCount}/${x.tables} (${(x.tableExact * 100).toFixed(2)}%) · 칸 F1 ${x.cellF1} · 글 재현율 ${x.recall} · 가짜 글 ${x.phantom} · 순서 ${x.order}`)
+  console.log(`${ext.toUpperCase()} ${x.docs}문서: 표 완전 일치 ${x.tableExactCount}/${x.tables} (${(x.tableExact * 100).toFixed(2)}%) · 칸 F1 ${x.cellF1} · 글 재현율 ${x.recall} · 가짜 글 ${x.phantom} · 순서 ${x.order} · 수식 ${x.eqHit}/${x.eqRef}`)
 }
 for (const [k, g] of Object.entries(gates)) if (!g.pass) console.log(`  ❌ ${k} ${g.value} (기준 ${g.threshold})`)
 await mkdir(join(root, "out"), { recursive: true })
