@@ -176,7 +176,7 @@ export async function parseHwpxDocument(buffer: ArrayBuffer, options?: ParseOpti
   const images = await extractImagesFromZip(zip, blocks, decompressed, warnings, !options?.pages)
 
   // 보이지 않는 틀 표 풀기 (v4.17.0) — 헤딩 감지 전에: 틀에서 나온 문단도 제목 후보
-  const shown = options?.layoutTables === "keep" ? blocks : unframeLayoutTables(blocks)
+  const shown = options?.layoutTables === "keep" ? blocks : unframeLayoutTables(blocks, !!options?.keepTrailingEmptyCols)
 
   // 스타일 기반 헤딩 감지
   detectHwpxHeadings(shown, styleMap)

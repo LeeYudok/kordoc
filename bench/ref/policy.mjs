@@ -59,11 +59,14 @@ export const BLACKLIST = [
 // 2026-07-17 전 지표 만점 잠금: 꼬리 결함 전량 수리(페이지번호 꼬리말·수식 whitelist
 // 대칭·중첩표 캡션 순서·하이퍼링크 extent·href 괄호 인코딩)로 HWPX 347건 전 지표 1.0,
 // HWP5쌍 유사도/커버 1.0 도달 — 새 플로어가 기준 (회귀 절대 불가).
+// 2026-09-30 v4.17.0 채점 기준 변경: 표 정답이 원본에서 보이는 표(visible-tables.mjs)로 바뀌어 표 4지표를 새 정답 실측으로 다시 잠근다
+// (원본 hp:tbl 13,041 → 보이는 표 9,865, 파서 9,829 일치). 남은 36표(21문서)는 서식의 1칸 상자·칸 테두리로 그린 도식처럼 정답 정의와
+// 파서 구현이 가장자리에서 갈리는 경우다. 글·순서·수식 지표는 그대로 1
 export const GATES = {
   hwpx: {
     recallMicro: 1, recallDoc: 1, missRun: 20,
     phantom: 0, blacklistHits: 0,
-    tableExact: 1, cellF1: 1, contentNED: 1, cellExact: 1,
+    tableExact: 0.9963, cellF1: 0.9976, contentNED: 0.9995, cellExact: 0.9995,
     orderDoc: 1, orderAvg: 1,
     eqPresence: 1, footnotePresence: 1, headerViolations: 0,
   },

@@ -18,7 +18,7 @@
 //  4. 보이는 표 = 그 묶음 안에서 시작하는 칸만(묶음 밖으로 나가는 rowSpan 은 묶음 끝에서 자름). 보이는 변이 닿는 열 범위 밖에
 //     놓인 빈 칸(들여쓰기 칸)은 버리고, 어느 칸 모서리도 안 쓰는 행·열 경계(유령 격자선)는 접는다.
 //     A1: 그 행에서 시작하는 칸이 모두 비었고(글·개체 없음) 그 행의 윗선 또는 아랫선이 표 폭 어디에도 안 보이면, 선 없이 붙은
-//     여백 행이라 이웃 행에 접는다(행으로 세지 않음 — 윗선이 없으면 위 행에, 아니면 아래 행에). 쪽 나눔·여백용 빈 행이다:
+//     여백 행이라 행으로 세지 않는다(그 행을 없애고 지나는 칸은 한 행 줄인다). 쪽 나눔·여백용 빈 행이다:
 //     근로기준법 시행령 [별표 6] 은 등급 사이 여백 행 10개가 그림에 없다(25행 → 15행). 법령 별표 한컴 PDF 그림 대조 표본
 //     (무작위 25 + 틀 표 10문서, 보이는 표 50개) 일치 42 → 48/50 — 양곡관리법·에너지이용 합리화법(2표)·야생생물법·군예식령·
 //     군인사법. 남은 둘은 이어쓰기 행(방송법 진단요령)·테두리 상자 안 공식(건축법 [별표 8])
@@ -107,23 +107,32 @@ export function visibleTables(grid, { borderOf, isFracPart, isEmpty }) {
     for (let y = r0; y <= r1 + 1; y++) for (let c = 0; c < cols; c++) if (hEdge(y, c)) { xmin = Math.min(xmin, c); xmax = Math.max(xmax, c + 1) }
     let keep = members.filter(v => v.frac || !isEmpty(v.a) || (v.c + v.cs > xmin && v.c < xmax))
     if (!keep.length) continue
-    // A1: 선 없이 붙은 빈 여백 행 — 그 행 빈 칸을 버리고 이웃 행에 접는다. 표 폭 = 남은 칸 열 범위
+    // A1: 선 없이 붙은 빈 여백 행 — 그 행 빈 칸을 버리고 행을 없앤다(그 행을 지나는 칸은 한 행 줄고 아래 칸은 한 행 올라온다).
+    // 표 폭 = 남은 칸 열 범위. 이웃 행으로 "접는" 방향을 따지지 않는다 — 위에서 내려온 병합 칸이 그 행 아랫경계에서 끝나 아래로 접을 수
+    // 없던 행을 남기면 그림에 없는 행이 생겼다(보도자료 156775997 "최근 사고사례" 상자: 그림은 머리·사진·설명 3행, 정답 4행 — 2026-09-30
+    // 한컴 PDF 그림 대조). 여백 행의 판정 자체(빈 칸만 시작, 윗선 또는 아랫선이 표 폭 어디에도 없음)는 그대로
     const xs = Math.min(...keep.map(v => v.c)), xe = Math.max(...keep.map(v => v.c + v.cs))
     const lineAt = y => { for (let c = xs; c < xe; c++) if (hEdge(y, c)) return true; return false }
+    const drop = []
     for (let r = r0; r <= r1; r++) {
       const starts = keep.filter(v => v.r === r)
       if (!starts.length || starts.some(v => v.frac || !isEmpty(v.a))) continue
-      const rest = keep.filter(v => !starts.includes(v))
-      if (r > r0 && !lineAt(r)) {
-        // 위 행에 접기 — r 에서 끝나던 칸이 이 행까지 덮는다
-        for (const v of rest) if (v.r + v.rs === r) v.rs++
-      } else if (r < r1 && !lineAt(r + 1) && !rest.some(v => v.r < r && v.r + v.rs === r + 1)) {
-        // 아래 행에 접기 — r+1 에서 시작하던 칸이 이 행부터 덮는다 (위에서 내려와 r+1 에서 끝나는 칸이 있으면 접을 수 없다)
-        for (const v of rest) if (v.r === r + 1) { v.r = r; v.rs++ }
-      } else continue
-      keep = rest
+      if (lineAt(r) && lineAt(r + 1)) continue
+      drop.push(r)
+    }
+    if (drop.length) {
+      const at = y => y - drop.filter(d => d < y).length
+      keep = keep.filter(v => !drop.includes(v.r)).map(v => ({ ...v, r: at(v.r), rs: at(v.r + v.rs) - at(v.r) })).filter(v => v.rs > 0)
     }
     if (!keep.length) continue
+    // 후행 빈 열 — 보이는 표에서 오른쪽 끝 열이 비면 자른다. 원본 표 격자에 거는 트림(builder trimAndReturn 미러, 마크다운 가독성 정책)을
+    // 보이는 표에도 똑같이 건다 — 표 전체로는 글이 있어 남은 열이 한 묶음에서만 비는 경우 (2026-09-30, 생성 왕복 게이트와 같은 정책)
+    for (let right = Math.max(...keep.map(v => v.c + v.cs)); right > 1;) {
+      const starts = keep.filter(v => v.c === right - 1)
+      if (!starts.length || starts.some(v => v.frac || !isEmpty(v.a))) break
+      keep = keep.filter(v => v.c !== right - 1).map(v => (v.c + v.cs === right ? { ...v, cs: v.cs - 1 } : v))
+      right--
+    }
     const cx = [...new Set(keep.flatMap(v => [v.c, v.c + v.cs]))].sort((p, q) => p - q)
     const rx = [...new Set(keep.flatMap(v => [v.r, v.r + v.rs]))].sort((p, q) => p - q)
     const ci = x => cx.indexOf(x), ri = y => rx.indexOf(y)

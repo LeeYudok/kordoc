@@ -112,7 +112,7 @@ function ruledRows(t: IRTable, anchors: Anchor[], H: boolean[][], V: boolean[][]
 }
 
 /** 표 띠 [r0, r1] → 새 표. 띠 안에서 시작하는 칸만, 띠 밖으로 나가는 병합은 자른다. 선 밖 빈 칸·안 쓰는 경계는 접는다 */
-function bandTable(t: IRTable, anchors: Anchor[], V: boolean[][], H: boolean[][], r0: number, r1: number): IRTable | null {
+function bandTable(t: IRTable, anchors: Anchor[], V: boolean[][], H: boolean[][], r0: number, r1: number, keepEmptyCols: boolean): IRTable | null {
   let list = anchors.filter(a => a.r >= r0 && a.r <= r1).map(a => ({ ...a, rs: Math.min(a.rs, r1 - a.r + 1) }))
   // 선 없이 붙은 빈 여백 행 — 그 행에서 시작하는 칸이 모두 비었고 윗선이나 아랫선이 표 폭 어디에도 없으면 그림에서 이웃 행과
   // 한 행이다. 접는다 (양곡관리법·에너지이용 합리화법 별표 여백 행, 근로기준법 [별표 6] 여백 행 10개 — 정답 그림 대조 42→48/50.
@@ -136,6 +136,15 @@ function bandTable(t: IRTable, anchors: Anchor[], V: boolean[][], H: boolean[][]
   }
   if (lo < hi) list = list.filter(a => a.c < hi && a.c + a.cs > lo || a.cell.text.trim() || a.cell.blocks?.length)
   if (!list.length) return null
+  // 후행 빈 열 — 띠에서 오른쪽 끝 열이 비면 자른다. 원래 표를 만들 때 builder 가 하는 트림(마크다운 가독성)을 띠 표에도 똑같이:
+  // 표 전체로는 글이 있어 남은 열이 한 띠에서만 비는 경우다(결재문서 점검표 "□ | ■ | (빈 칸)" — 생성 → 재파싱 왕복이 어긋났다).
+  // keepTrailingEmptyCols(#47 서식 입력란)면 builder 처럼 두고
+  for (let right = keepEmptyCols ? 0 : Math.max(...list.map(a => a.c + a.cs)); right > 1;) {
+    const starts = list.filter(a => a.c === right - 1)
+    if (!starts.length || !starts.every(blank)) break
+    list = list.filter(a => a.c !== right - 1).map(a => (a.c + a.cs === right ? { ...a, cs: a.cs - 1 } : a))
+    right--
+  }
   const colB = new Set<number>(), rowB = new Set<number>()
   for (const a of list) { colB.add(a.c); colB.add(a.c + a.cs); rowB.add(a.r); rowB.add(a.r + a.rs) }
   const cx = [...colB].sort((x, y) => x - y), rx = [...rowB].sort((x, y) => x - y)
@@ -152,7 +161,7 @@ function bandTable(t: IRTable, anchors: Anchor[], V: boolean[][], H: boolean[][]
 }
 
 /** 글 띠 행 → 문단. 칸이 하나면 칸 안 줄마다, 여럿이면 칸 글을 공백으로 이은 한 문단. 칸 블록은 재귀로 푼다 */
-function textRow(row: Anchor[], out: IRBlock[], pageNumber: number | undefined): void {
+function textRow(row: Anchor[], out: IRBlock[], pageNumber: number | undefined, keepEmptyCols: boolean): void {
   const parts: string[] = []
   const flush = (): void => {
     if (!parts.length) return
@@ -167,7 +176,7 @@ function textRow(row: Anchor[], out: IRBlock[], pageNumber: number | undefined):
   for (const a of row) {
     if (a.cell.blocks?.length) {
       flush()
-      out.push(...unframeLayoutTables(a.cell.blocks))
+      out.push(...unframeLayoutTables(a.cell.blocks, keepEmptyCols))
       continue
     }
     if (a.cell.text.trim()) parts.push(a.cell.text.trim())
@@ -176,7 +185,7 @@ function textRow(row: Anchor[], out: IRBlock[], pageNumber: number | undefined):
 }
 
 /** 표 하나 → 풀어낸 블록. 바꿀 게 없으면 null (원래 표 그대로) */
-function unframeTable(t: IRTable, pageNumber: number | undefined): IRBlock[] | null {
+function unframeTable(t: IRTable, pageNumber: number | undefined, keepEmptyCols: boolean): IRBlock[] | null {
   let anchors = anchorsOf(t)
   if (!anchors.some(a => CELL_EDGES.has(a.cell))) return null
   let { H, V } = ruleGrids(t, anchors)
@@ -188,7 +197,7 @@ function unframeTable(t: IRTable, pageNumber: number | undefined): IRBlock[] | n
   if (ruled.every(Boolean)) {
     // 표 전체가 표 띠여도 안 쓰는 격자선·선 밖 빈 칸·빈 여백 행은 접는다(한글 편집기 격자에만 있는 선, 86712 규제영향분석서 10×8 → 10×5).
     // 모양이 그대로면 원래 표 객체(sourceId·캡션·곁정보)를 둔다
-    const whole = bandTable(t, anchors, V, H, 0, t.rows - 1)
+    const whole = bandTable(t, anchors, V, H, 0, t.rows - 1, keepEmptyCols)
     if (!whole || (whole.rows === t.rows && whole.cols === t.cols)) return null
     return [{ type: "table", table: { ...t, rows: whole.rows, cols: whole.cols, cells: whole.cells }, pageNumber }]
   }
@@ -198,27 +207,28 @@ function unframeTable(t: IRTable, pageNumber: number | undefined): IRBlock[] | n
     if (ruled[r]) {
       let r1 = r
       while (r1 + 1 < t.rows && ruled[r1 + 1]) r1++
-      const sub = bandTable(t, anchors, V, H, r, r1)
+      const sub = bandTable(t, anchors, V, H, r, r1, keepEmptyCols)
       if (sub) out.push({ type: "table", table: sub, pageNumber })
       r = r1 + 1
       continue
     }
-    textRow(anchors.filter(a => a.r === r).sort((x, y) => x.c - y.c), out, pageNumber)
+    textRow(anchors.filter(a => a.r === r).sort((x, y) => x.c - y.c), out, pageNumber, keepEmptyCols)
     r++
   }
   return out
 }
 
-/** 블록 목록의 보이지 않는 틀 표를 푼다 (표 띠에 남은 칸 안 블록까지). 새 배열을 돌려준다 */
-export function unframeLayoutTables(blocks: IRBlock[]): IRBlock[] {
+/** 블록 목록의 보이지 않는 틀 표를 푼다 (표 띠에 남은 칸 안 블록까지). 새 배열을 돌려준다.
+ *  keepEmptyCols = ParseOptions.keepTrailingEmptyCols (띠 표의 후행 빈 열을 자르지 않는다) */
+export function unframeLayoutTables(blocks: IRBlock[], keepEmptyCols = false): IRBlock[] {
   const out: IRBlock[] = []
   for (const b of blocks) {
     if (b.type !== "table" || !b.table) { out.push(b); continue }
-    const flat = unframeTable(b.table, b.pageNumber)
+    const flat = unframeTable(b.table, b.pageNumber, keepEmptyCols)
     const kept = flat ?? [b]
     for (const k of kept) {
       if (k.type === "table" && k.table) {
-        for (const row of k.table.cells) for (const cell of row) if (cell.blocks?.length) cell.blocks = unframeLayoutTables(cell.blocks)
+        for (const row of k.table.cells) for (const cell of row) if (cell.blocks?.length) cell.blocks = unframeLayoutTables(cell.blocks, keepEmptyCols)
       }
       out.push(k)
     }

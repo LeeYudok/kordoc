@@ -576,7 +576,7 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
       const visual = (bs: IRBlock[]): IRBlock[] => bs.flatMap(b => {
         if (b.type !== "table") return [b]
         let v = shown.get(b)
-        if (!v) { markContent([b]); shown.set(b, v = unframeLayoutTables([b])) }
+        if (!v) { markContent([b]); shown.set(b, v = unframeLayoutTables([b], !!options?.keepTrailingEmptyCols)) }
         return v
       })
       outBlocks = visual(outBlocks)

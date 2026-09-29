@@ -127,9 +127,11 @@ for (const f of files) {
 
   const pages = clean.join(",")
   // 머리글/바닥글 제거는 텍스트층 y-클러스터 기반이라 OCR 경로와 비대칭 — 양쪽 다 끔
-  const gt = await parse(buf(), { pages, removeHeaderFooter: false, ocr: false })
+  // 양쪽 모두 원본 표 구조 그대로(layoutTables keep) — 텍스트층은 한컴 칸 클립·획으로 보이지 않는 틀을 풀지만 OCR 은 그림에서 칸 테두리를
+  // 못 가려 틀을 못 푼다. OCR 인식 정확도를 재는 벤치라 틀 풀기와 무관하게 같은 조건에서 대조한다 (v4.17.0 채점 기준 변경)
+  const gt = await parse(buf(), { pages, removeHeaderFooter: false, ocr: false, layoutTables: "keep" })
   const t0 = performance.now()
-  const ocr = await parse(buf(), { pages, removeHeaderFooter: false, ocr: "force" })
+  const ocr = await parse(buf(), { pages, removeHeaderFooter: false, ocr: "force", layoutTables: "keep" })
   const ocrMs = performance.now() - t0
   if (!gt.success || !ocr.success) { rows.push({ doc: f, skip: `재파싱 실패: ${gt.error ?? ocr.error ?? "?"}` }); continue }
   if (!ocr.warnings?.some(w => w.code === "OCR_APPLIED")) {
