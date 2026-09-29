@@ -20,6 +20,9 @@ export interface Edges { t: boolean; b: boolean; l: boolean; r: boolean }
 
 /** IR 칸 → 보이는 변. 공개 IR 에는 나가지 않는 곁정보 (파서가 채움) */
 export const CELL_EDGES = new WeakMap<IRCell, Edges>()
+/** 글·블록 없이도 내용이 있는 칸 — PDF 는 칸 그림을 칸 글과 따로 뽑아 그림 칸의 text·blocks 가 빈다. 빈 여백 행 접기가 그림 행을
+ *  접지 않게 파서가 표시한다 (경찰복제 [별표] 특수복식 도면 행) */
+export const CONTENT_CELLS = new WeakSet<IRCell>()
 
 /** 분수 칸 글 상한(자) — 분자·분모는 식 조각이다. 문장 칸이 가로선 하나로 나뉜 것과 가른다 */
 const FRACTION_MAX_CHARS = 40
@@ -114,7 +117,7 @@ function bandTable(t: IRTable, anchors: Anchor[], V: boolean[][], H: boolean[][]
   // 선 없이 붙은 빈 여백 행 — 그 행에서 시작하는 칸이 모두 비었고 윗선이나 아랫선이 표 폭 어디에도 없으면 그림에서 이웃 행과
   // 한 행이다. 접는다 (양곡관리법·에너지이용 합리화법 별표 여백 행, 근로기준법 [별표 6] 여백 행 10개 — 정답 그림 대조 42→48/50.
   // 윗선·아랫선 둘 다 없을 때만 접으면 에너지이용 합리화법 두 표가 안 접힌다)
-  const blank = (a: Anchor): boolean => !a.cell.text.trim() && !a.cell.blocks?.length
+  const blank = (a: Anchor): boolean => !a.cell.text.trim() && !a.cell.blocks?.length && !CONTENT_CELLS.has(a.cell)
   const drop: number[] = []
   for (let r = r0; r <= r1; r++) {
     if ((!H[r].some(Boolean) || !H[r + 1].some(Boolean)) && list.filter(a => a.r === r).every(blank)) drop.push(r)

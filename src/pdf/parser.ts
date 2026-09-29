@@ -16,7 +16,8 @@ import { KordocError } from "../utils.js"
 import { parsePageRange, hasRequestedPagesAfter } from "../page-range.js"
 import { blocksToPages } from "../page-markdown.js"
 import { blocksToMarkdown, escapeLiteralDollar } from "../table/builder.js"
-import { unframeLayoutTables } from "../table/layout-frames.js"
+import { unframeLayoutTables, CONTENT_CELLS } from "../table/layout-frames.js"
+import { IMAGE_CELLS } from "./table-meta.js"
 import { extractImageRegions, extractLines } from "./line-detector.js"
 import { mergeOcrImageRegions, type ImageRegion } from "./ocr-region-merge.js"
 import { createPdfImageState, extractPageImages, injectPageImageBlocks } from "./image-extract.js"
@@ -565,10 +566,17 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     // (ODL 064 "PORT | SHIPCALLS" 머리 행: 한컴 원본 그림이 아니라 이 규칙의 정답이 없다)
     if (options?.layoutTables !== "keep" && await isHancomPdf(doc)) {
       const shown = new Map<IRBlock, IRBlock[]>()
+      // 그림 칸(IMAGE_CELLS)은 글이 비어도 내용이 있다 — 빈 여백 행으로 접히지 않게 (칸 안 표까지)
+      const markContent = (bs: IRBlock[] | undefined): void => {
+        for (const b of bs ?? []) if (b.table) for (const row of b.table.cells) for (const c of row) {
+          if (IMAGE_CELLS.has(c)) CONTENT_CELLS.add(c)
+          markContent(c.blocks)
+        }
+      }
       const visual = (bs: IRBlock[]): IRBlock[] => bs.flatMap(b => {
         if (b.type !== "table") return [b]
         let v = shown.get(b)
-        if (!v) shown.set(b, v = unframeLayoutTables([b]))
+        if (!v) { markContent([b]); shown.set(b, v = unframeLayoutTables([b])) }
         return v
       })
       outBlocks = visual(outBlocks)
