@@ -7,7 +7,7 @@ import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 import JSZip from "jszip"
 import { markdownToHwpx } from "../src/index.js"
-import { resolveGongmun, PRESET_ALIAS } from "../src/hwpx/gongmun.js"
+import { resolveGongmun, PRESET_ALIAS, incompatibleGongmunWarnings } from "../src/hwpx/gongmun.js"
 import { buildOutline, parseLeadingMarker } from "../src/hwpx/outline.js"
 import { parseMarkdownToBlocks } from "../src/hwpx/md-runs.js"
 import { pickScheme } from "../src/hwpx/gongmun-scheme.js"
@@ -141,6 +141,41 @@ describe("서울 방침서 — 골격", () => {
     const { sec: s } = await sec("# 계획\n\n> 목적\n\n## 가. 추진개요\n\n1. 추진근거\n\n1) 청년기본법 제4조\n\n① 전국 청년 고용률 하락\n\n- 체감실업률 15.6%\n")
     for (const t of ["1. 추진근거", "1) 청년기본법", "① 전국", "- 체감실업률"]) assert.ok(s.includes(`<hp:t>${t}`), t)
     assert.ok(!/<hp:t>[□ㅇ] /.test(s))
+  })
+
+  it("사전 검토항목 점검표 — 14문항 고정 서식, na 문항만 해당없음 ■·나머지 검토완료 ■, true 는 빈 서식", async () => {
+    const gen = async (checklist: unknown) => {
+      const z = await JSZip.loadAsync(await markdownToHwpx(md, { gongmun: { preset: "서울방침", cover: true, checklist } as never }))
+      return flatSec(await z.file("Contents/section0.xml")!.async("text"))
+    }
+    const s = await gen({ na: [6, 7], notes: { 7: "교육" } })
+    assert.match(s, /사전 검토항목 점검 사항/)
+    assert.equal((s.match(/◆/g) ?? []).length, 14)
+    assert.equal((s.match(/<hp:t>■<\/hp:t>/g) ?? []).length, 14)
+    assert.match(s, /<hp:t>교육<\/hp:t>/)
+    assert.match(s, /<hp:t>단순지원\/사다리지원<\/hp:t>/, "비고 안내 글은 그대로")
+    // 표지 → 점검표 → 제목표 가 쪽을 넘긴다
+    assert.ok(/<hp:p pageBreak="1"[^>]*><hp:run[^>]*>(?:(?!<\/hp:run>)[\s\S])*?사전 검토항목|<hp:p pageBreak="1"[\s\S]*?☑ 사전 검토항목/.test(s))
+    const blank = await gen(true)
+    assert.equal((blank.match(/<hp:t>■<\/hp:t>/g) ?? []).length, 0)
+    assert.equal((blank.match(/<hp:t>□<\/hp:t>/g) ?? []).length, 28)
+  })
+
+  it("목차(toc) — '목    차' + 장마다 번호·제목·빈 쪽 칸, 표지 글꼴은 간이기안 실측(굴림체·HY견명조 21 날짜·그라데이션 띠)", async () => {
+    const z = await JSZip.loadAsync(await markdownToHwpx(md, { gongmun: { preset: "서울방침", cover: { date: "2025. 11.", org: "경제실", dept: "일자리정책과" }, docInfo: { docNum: "일자리정책과-1" }, toc: true } }))
+    const s = flatSec(await z.file("Contents/section0.xml")!.async("text"))
+    const head = await z.file("Contents/header.xml")!.async("text")
+    assert.match(s, /<hp:t>목    차<\/hp:t>[\s\S]*<hp:t>Ⅰ\.<\/hp:t>[\s\S]*<hp:t>청년취업사관학교 1\.0 운영성과<\/hp:t>[\s\S]*<hp:t>Ⅱ\.<\/hp:t>/)
+    assert.match(head, /face="굴림체"/)
+    assert.match(head, /<hc:color value="#3057B9"\/><hc:color value="#A0B4E6"\/>/)
+  })
+
+  it("점검표 옵션 검증 — 문항 번호 범위, 서울 보고서형 밖 프리셋은 경고 후 무시", () => {
+    assert.throws(() => resolveGongmun({ preset: "bangchim", checklist: { na: [15] } }), /between 1 and 14/)
+    assert.equal(resolveGongmun({ preset: "official", checklist: true }).checklist, null)
+    assert.ok(incompatibleGongmunWarnings({ preset: "official", checklist: true }).some((w) => w.includes("checklist")))
+    const c = resolveGongmun({ preset: "bangchim", checklist: { na: [6] } }).checklist!
+    assert.deepEqual([c.marks.get(1), c.marks.get(6), c.marks.size], ["done", "na", 14])
   })
 
   it("▸ 는 부호 그대로 4단계, 캡션 줄 '< … >' 은 가운데", async () => {

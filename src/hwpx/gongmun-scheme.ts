@@ -59,6 +59,21 @@ export interface FrameSpec {
   summaryFont: string
   summaryPt: number
   summaryFill: string
+  /** 간이기안 표지 — 없으면 서울 보고서 기본(문서정보 한컴돋움 12·단색 파랑 띠·날짜 22b·기관 24b·부서 한컴돋움 22b) */
+  cover?: CoverSpec
+}
+
+export interface CoverSpec {
+  /** 문서정보표·결재선표 글꼴과 크기(이름칸·값칸·결재선) */
+  infoFont: string
+  infoLabelPt: number
+  infoValuePt: number
+  approvalPt: number
+  /** 제목 위아래 띠 — 2색 세로 그라데이션, 높이(HWPUNIT) */
+  bar: { gradient: [string, string]; h: number }
+  date: { font: string; pt: number; bold: boolean }
+  org: { font: string; pt: number; bold: boolean }
+  dept: { font: string; pt: number; bold: boolean }
 }
 
 export interface Scheme {
@@ -193,6 +208,15 @@ export const BANGCHIM_FRAME: FrameSpec = {
   titleFont: "HY헤드라인M", titlePt: 26,
   contactFont: "휴먼명조", contactPt: 12,
   summaryFont: "한컴돋움", summaryPt: 15, summaryFill: "#DFE6F7",
+  // 간이기안 표지 — 방침서 16건: 문서정보 굴림체(16건) 이름칸 10 굵게(11건)·값칸 9, 결재선 굴림체 9(15건 중 11)·8,
+  // 제목 띠 그라데이션 #3057B9→#A0B4E6(15건) 높이 663(11건), 날짜 HY견명조 21b(13건), 기관 HY헤드라인M 26b(11건), 부서 HY견명조 22(14건 중 12)
+  cover: {
+    infoFont: "굴림체", infoLabelPt: 10, infoValuePt: 9, approvalPt: 9,
+    bar: { gradient: ["#3057B9", "#A0B4E6"], h: 663 },
+    date: { font: "HY견명조", pt: 21, bold: true },
+    org: { font: "HY헤드라인M", pt: 26, bold: true },
+    dept: { font: "HY견명조", pt: 22, bold: false },
+  },
 }
 
 export function seoulBangchimScheme(bodyPt = 15, lineSp = 190): Scheme {

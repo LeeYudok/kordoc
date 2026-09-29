@@ -38,6 +38,7 @@ export function registerGenerateCommands(program: Command): void {
     .option("--summary <text>", "보고서 요약 박스 (제목표 아래 음영 상자 — 마크다운 제목 직후 인용문(>)으로도 지정)")
     .option("--doc-info <spec>", "보고서 표지 문서정보표: docNum=스마트도시과-123,date=2026. 9. 6.,disclosure=공개,policyNo= (--cover와 함께)")
     .option("--dept <name>", "표지 부서명 (기관명 아래 괄호)")
+    .option("--checklist [na]", "서울 사전 검토항목 점검표(보고서·계획서·서울방침) — 값 없으면 빈 서식, 해당없음 문항 번호를 주면(6,7,8) 나머지는 검토완료")
     .option("--cover-label <text>", "표지 우상단 취급 표시 — '대외주의'·'비공개' 빨간 테두리 박스 (업무보고 프리셋 실측)")
     .option("--fonts <spec>", "요소별 글꼴 오버라이드: body=나눔명조,heading=나눔고딕,ref=한양중고딕,table=맑은 고딕")
     .option("--sizes <spec>", "개조식 요소별 크기(pt): dae=16,cham=13,table=12,coverTitle=30 …")
@@ -139,6 +140,7 @@ export function registerGenerateCommands(program: Command): void {
             reportInfo: opts.reportInfo ? String(opts.reportInfo) : undefined,
             summary: opts.summary ? String(opts.summary) : undefined,
             docInfo: opts.docInfo ? parseKv(String(opts.docInfo), "--doc-info") : undefined,
+            checklist: opts.checklist === undefined ? undefined : opts.checklist === true ? true : { na: String(opts.checklist).split(",").map((x) => Number(x.trim())).filter((x) => x !== 0) },
             dept: opts.dept ? String(opts.dept) : undefined,
             coverLabel: opts.coverLabel ? String(opts.coverLabel) : undefined,
             noticeHead: opts.noticeHead ? parseKv(String(opts.noticeHead), "--notice-head") : undefined,

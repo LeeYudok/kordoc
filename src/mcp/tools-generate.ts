@@ -66,6 +66,8 @@ export function registerGenerateTools(server: McpServer): void {
       band_text_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe("띠 제목 번호 글자색 #RRGGBB (기본 #FFFFFF)"),
       summary: z.string().optional().describe("보고서 요약 박스 — 제목표 아래 #DFE6F7 음영 상자(서울 실결재 관행). 마크다운 제목 직후 인용문(> …)으로도 지정 가능"),
       doc_info: z.object(Object.fromEntries(DOC_INFO_KEYS.map(k => [k, z.string().optional()]))).optional().describe("보고서 표지 문서정보표 — docNum=문서번호/date=결재일자/disclosure=공개여부/policyNo=방침번호 (cover=true와 함께)"),
+      checklist: z.union([z.boolean(), z.object({ na: z.array(z.number().int()).optional(), notes: z.record(z.string(), z.string()).optional() })]).optional()
+        .describe("서울 사전 검토항목 점검표(표지 다음 쪽, 보고서·계획서·서울방침) — true=표시 없는 빈 서식, {na:[6,7,…]}=적은 문항(1~14)은 해당없음·나머지 검토완료, notes={\"7\":\"교육\"}=비고"),
       dept: z.string().optional().describe("표지 부서명 — 기관명 아래 '(스마트도시과)' (cover와 함께)"),
       cover_label: z.string().optional().describe("표지 우상단 취급 표시 — '대외주의'·'비공개' 빨간 테두리 박스 (업무보고 프리셋 실측, cover와 함께)"),
       fonts: z.object(Object.fromEntries(FONT_ROLE_KEYS.map(k => [k, z.string().optional()])))
@@ -95,7 +97,7 @@ export function registerGenerateTools(server: McpServer): void {
       footer: z.string().optional().describe("꼬리말 텍스트 — 모든 쪽 하단 (v4.5.0)"),
       image_dir: z.string().optional().describe("마크다운 이미지 참조(![](x.png))를 이 디렉토리에서 읽어 실데이터 임베드 (v4.5.0, PNG/JPEG/GIF/BMP). 미지정 시 참조만 placeholder로 보존"),
     },
-    async ({ markdown, output_path, profile_path, preset, font, body_pt, line_spacing, org, date, toc, cover, approval, page_numbers, end_mark, body_title_box, h2_marker, band_color, band_text_color, summary, doc_info, dept, cover_label, fonts, sizes, levels, bullet2, suppress_single, doc_head, doc_foot, report_info, notice_head, press, paper, landscape, columns, header, footer, image_dir }) => {
+    async ({ markdown, output_path, profile_path, preset, font, body_pt, line_spacing, org, date, toc, cover, approval, page_numbers, end_mark, body_title_box, h2_marker, band_color, band_text_color, summary, doc_info, checklist, dept, cover_label, fonts, sizes, levels, bullet2, suppress_single, doc_head, doc_foot, report_info, notice_head, press, paper, landscape, columns, header, footer, image_dir }) => {
       try {
         // 조립은 gongmun-surface SSOT(buildGongmunOptions) — CLI와 의미론 공유 (v4.0.4)
         let gongmun: GongmunOptions | undefined
@@ -107,6 +109,7 @@ export function registerGenerateTools(server: McpServer): void {
             h2Marker: h2_marker, bandColor: band_color, bandTextColor: band_text_color, fonts, sizes, levels, bullet2, suppressSingle: suppress_single,
             docHead: doc_head, docFoot: doc_foot, reportInfo: report_info,
             noticeHead: notice_head, press, summary, docInfo: doc_info, dept, coverLabel: cover_label,
+            checklist: checklist && typeof checklist === "object" ? { na: checklist.na, notes: checklist.notes && Object.fromEntries(Object.entries(checklist.notes).map(([k, v]) => [Number(k), v])) } : checklist,
           })
         }
         // 서식 프로필 (이슈 #41) — 경로 검증(realpath + .json) 후 경계 zod 검증 (CLI --profile과 공유 스키마)

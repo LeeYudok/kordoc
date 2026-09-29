@@ -12,6 +12,7 @@
 import { charWidthEm1000, SPACE_EM_FIXED } from "./text-metrics.js"
 import { gaejosikMarker, gaejosikLevelIndent, type GaejosikSizeOverrides } from "./gaejosik.js"
 import { KordocError } from "../utils.js"
+import { CHECKLIST_ITEMS } from "./gen-frame-seoul-front.js"
 import { hangulOrdinal, circledNumber, circledHangul } from "../shared/numbering.js"
 
 // ─── 옵션 타입 ──────────────────────────────────────
@@ -146,6 +147,11 @@ export interface GongmunOptions {
   summary?: string
   /** 보고서 표지 문서정보표 — 문서번호·결재일자·공개여부·방침번호 (cover와 함께) */
   docInfo?: { docNum?: string; date?: string; disclosure?: string; policyNo?: string }
+  /**
+   * 서울 사전 검토항목 점검표(표지 다음 쪽 — 서울 시장방침 16건 모두 실측) — 보고서·계획서·방침서 전용.
+   * true = 표시 없는 빈 서식. 객체면 na 에 적은 문항(1~14)은 해당없음 ■, 나머지는 검토완료 ■, notes = 문항 번호별 비고 글
+   */
+  checklist?: boolean | { na?: number[]; notes?: Record<number, string> }
   /** 업무보고 우상단 보고정보 행 — "(보고일시, 보고자, 연락처)" (실측 t3: 휴먼명조 12pt RIGHT) */
   reportInfo?: string
   /** 공고문 두문·결문 — 공고번호(본문 위)·날짜·발신명의(본문 아래 우측, 실측 바이오헬스 공고) */
@@ -174,6 +180,8 @@ export interface ResolvedGongmun {
   summary: string | null
   /** 보고서 표지 문서정보표 */
   docInfo: NonNullable<GongmunOptions["docInfo"]> | null
+  /** 사전 검토항목 점검표 — 문항 번호(1부터)별 표시·비고, null 이면 없음 */
+  checklist: { marks: Map<number, "done" | "na">; notes: Map<number, string> } | null
   /** 목차 자동 생성 여부 (개조식 프리셋 기본 true) */
   toc: boolean
   /** 요소별 글꼴 오버라이드 (GongmunOptions.fonts) */
@@ -330,6 +338,12 @@ function validateGongmunOptions(opts: GongmunOptions): void {
   if (opts.approval && opts.approval.length > 6) {
     throw new KordocError("approval must contain at most 6 labels")
   }
+  if (opts.checklist && typeof opts.checklist === "object") {
+    const nums = [...(opts.checklist.na ?? []), ...Object.keys(opts.checklist.notes ?? {}).map(Number)]
+    for (const n of nums) {
+      if (!Number.isInteger(n) || n < 1 || n > CHECKLIST_ITEMS) throw new KordocError(`checklist: item number must be an integer between 1 and ${CHECKLIST_ITEMS} (got ${n})`)
+    }
+  }
   if (opts.levels) {
     for (const [key, st] of Object.entries(opts.levels)) {
       const depth = Number(key)
@@ -380,6 +394,7 @@ export function incompatibleGongmunWarnings(opts: GongmunOptions): string[] {
   if (opts.docFoot && preset !== "official") warns.push(`doc_foot(결문)는 기안문(official) 전용 — '${preset}' 프리셋에서 무시됨`)
   if (opts.noticeHead && preset !== "notice") warns.push(`notice_head(공고번호·발신명의)는 통지(notice) 전용 — '${preset}' 프리셋에서 무시됨`)
   if (opts.press && preset !== "press") warns.push(`press(머리박스·부제·담당)는 보도자료(press) 전용 — '${preset}' 프리셋에서 무시됨`)
+  if (opts.checklist && !SEOUL_REPORT_PRESETS.has(preset)) warns.push(`checklist(사전 검토항목 점검표)는 보고서·계획서·방침서 전용 — '${preset}' 프리셋에서 무시됨`)
   if (preset === "press" && (opts.cover === true || typeof opts.cover === "object" || opts.toc === true)) {
     warns.push("보도자료는 머리박스 서식과 양립 불가라 표지·목차가 무시됨")
   }
@@ -390,6 +405,20 @@ export function incompatibleGongmunWarnings(opts: GongmunOptions): string[] {
     warns.push(`suppress_single(단일 형제 부호 생략)은 법정 번호(standard) 전용 — '${preset}' 프리셋(불릿 체계)에서 무동작`)
   }
   return warns
+}
+
+/** 서울 보고서형 골격(제목표·간이기안 표지·사전 검토 점검표)을 쓰는 프리셋 */
+const SEOUL_REPORT_PRESETS = new Set<GongmunPreset>(["report", "plan", "bangchim"])
+
+function resolveChecklist(c: GongmunOptions["checklist"], preset: GongmunPreset): ResolvedGongmun["checklist"] {
+  if (!c || !SEOUL_REPORT_PRESETS.has(preset)) return null
+  const marks = new Map<number, "done" | "na">(), notes = new Map<number, string>()
+  if (typeof c === "object") {
+    const na = new Set(c.na ?? [])
+    for (let i = 1; i <= CHECKLIST_ITEMS; i++) marks.set(i, na.has(i) ? "na" : "done")
+    for (const [k, v] of Object.entries(c.notes ?? {})) notes.set(Number(k), String(v))
+  }
+  return { marks, notes }
 }
 
 /** `#RRGGBB` 색 옵션 검증·대문자 정규화 — 미지정은 undefined(기본값은 호출부) */
@@ -434,6 +463,7 @@ export function resolveGongmun(opts: GongmunOptions): ResolvedGongmun {
     bodyFontExplicit: opts.bodyFont !== undefined,
     summary: opts.summary?.trim() || null,
     docInfo: opts.docInfo ?? null,
+    checklist: resolveChecklist(opts.checklist, preset),
     toc: preset !== "press" && (opts.toc ?? (gaejosik || ministry)),
     fonts: opts.fonts ?? {},
     sizes: opts.sizes ?? {},

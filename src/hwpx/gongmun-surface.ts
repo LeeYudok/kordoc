@@ -96,6 +96,8 @@ export interface GongmunSurfaceInput {
   summary?: string
   /** 보고서 표지 문서정보표 (v5) */
   docInfo?: NonNullable<GongmunOptions["docInfo"]>
+  /** 서울 사전 검토항목 점검표 */
+  checklist?: NonNullable<GongmunOptions["checklist"]>
   /** 표지 부서명 (v5 — cover와 함께) */
   dept?: string
   /** 표지 우상단 취급 표시 — "대외주의" 등 (업무보고 프리셋, cover와 함께) */
@@ -146,6 +148,7 @@ export function buildGongmunOptions(input: GongmunSurfaceInput): GongmunOptions 
   if (input.press) g.press = input.press
   if (input.summary) g.summary = input.summary
   if (input.docInfo) g.docInfo = input.docInfo
+  if (input.checklist !== undefined) g.checklist = input.checklist
   return g
 }
 

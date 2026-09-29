@@ -16,6 +16,7 @@ import { type MdBlock, generateParagraph, generateRuns } from "./md-runs.js"
 import { type ResolvedGongmun, GongmunNumberer, computeSuppression, mmToHwpunit } from "./gongmun.js"
 import { type Scheme, type LevelStyle, pickScheme, taHu } from "./gongmun-scheme.js"
 import { buildOutline, CHAPTER_LABEL_RE, type Outline, type OutlineNode } from "./outline.js"
+import { buildSeoulChecklist, buildBangchimToc } from "./gen-frame-seoul-front.js"
 import { StyleRegistry, inlineMapper } from "./style-registry.js"
 import { TableBfRegistry } from "./gen-table-bf.js"
 import { fitOneLine, fitParagraph, fitCharBreaks } from "./fit-line.js"
@@ -182,6 +183,24 @@ export function buildGongmunSectionV5(blocks: MdBlock[], gongmun: ResolvedGongmu
       pendingPageBreak = true
     } else if (g.approval) {
       paras.push(buildApprovalSeoul(g.approval, null, frame))
+    }
+    // 사전 검토항목 점검표 — 표지 다음 쪽(실측 16건), 쪽번호 없는 쪽
+    if (g.checklist) {
+      let xml = buildSeoulChecklist(g.checklist, frame)
+      if (g.pageNumbers) xml = xml.replace(/<hp:run charPrIDRef="(\d+)">/, `<hp:run charPrIDRef="$1">${pageHidingCtrl()}`)
+      paras.push(pendingPageBreak ? xml.replace(/^<hp:p /, `<hp:p pageBreak="1" `) : xml)
+      pendingPageBreak = true
+    }
+    // 방침서 목차 — 점검표 다음 쪽(실측 16건 중 7), 쪽번호 칸은 비움
+    if (isBangchim && g.toc && outline.chapters > 0) {
+      const chs = outline.nodes.filter((n): n is Extract<OutlineNode, { kind: "chapter" }> => n.kind === "chapter")
+        .map((n) => ({ label: n.label ?? chapterLabel(n.index, "roman").replace(/\.$/, ""), title: n.label ? plain(n.text).replace(CHAPTER_LABEL_RE, "") : plain(n.text) }))
+      const toc = buildBangchimToc(chs, frame)
+      if (g.pageNumbers) toc[0] = toc[0].replace(/<hp:run charPrIDRef="(\d+)">/, `<hp:run charPrIDRef="$1">${pageHidingCtrl()}`)
+      if (pendingPageBreak) toc[0] = toc[0].replace(/^<hp:p /, `<hp:p pageBreak="1" `)
+      paras.push(...toc)
+      warnings.push("목차 쪽번호 칸은 비워 둡니다 — 쪽은 조판 뒤에 정해지므로 한글에서 채우세요")
+      pendingPageBreak = true
     }
     if (docTitle) {
       const t = isBangchim ? buildBangchimTitleTable(docTitle, bangchimSub, reportInfo ?? bangchimContact, frame) : buildReportTitleTable(docTitle, reportInfo, frame)

@@ -444,8 +444,10 @@ export interface ReportCoverInput {
 export function buildReportCover(inp: ReportCoverInput, ctx: FrameCtx): string[] {
   const { reg, bf, frame } = ctx
   const out: string[] = []
-  const c12 = reg.char({ font: "한컴돋움", pt: 12 })
-  const c12b = reg.char({ font: "한컴돋움", pt: 12, bold: true })
+  const cv = frame.cover
+  const c12 = reg.char({ font: cv?.infoFont ?? "한컴돋움", pt: cv?.infoValuePt ?? 12 })
+  const c12b = reg.char({ font: cv?.infoFont ?? "한컴돋움", pt: cv?.infoLabelPt ?? 12, bold: true })
+  const cAppr = cv ? reg.char({ font: cv.infoFont, pt: cv.approvalPt }) : c12
   const center = reg.para({ align: "CENTER", lineSp: 100 })
   const blank = (pt = 15) => para("", reg.para({ align: "LEFT", lineSp: 160 }), reg.char({ font: "한컴돋움", pt }))
   // 문서정보표 (4×2)
@@ -461,7 +463,7 @@ export function buildReportCover(inp: ReportCoverInput, ctx: FrameCtx): string[]
     const n = inp.approval.length
     const colW = Math.min(7600, Math.floor((ctx.W * 0.5) / n))
     const edge = (row: number, col: number) => bf.get({ t: row === 0 ? "thick" : "thin", b: row === 1 ? "thick" : "thin", l: col === 0 ? "thick" : "thin", r: col === n - 1 ? "thick" : "thin" })
-    const top = inp.approval.map((l, c) => tc({ bf: edge(0, c), row: 0, col: c, w: colW, h: 1765, paras: para(l, center, c12) })).join("")
+    const top = inp.approval.map((l, c) => tc({ bf: edge(0, c), row: 0, col: c, w: colW, h: 1765, paras: para(l, center, cAppr) })).join("")
     const sign = inp.approval.map((_, c) => tc({ bf: edge(1, c), row: 1, col: c, w: colW, h: 3600, paras: para("", center, c12b) })).join("")
     line += `</hp:run><hp:run charPrIDRef="${c12}"><hp:t> </hp:t></hp:run><hp:run charPrIDRef="${c12}">` + ftbl([top, sign], colW * n, 5365, n)
   }
@@ -469,22 +471,23 @@ export function buildReportCover(inp: ReportCoverInput, ctx: FrameCtx): string[]
   for (let i = 0; i < 4; i++) out.push(blank(20))
   // 파랑 띠 제목
   const w = ctx.W - 1200
-  const bar = bf.get({ t: "none", b: "none", l: "none", r: "none", fill: "#1F2FD6" })
+  const bar = bf.get({ t: "none", b: "none", l: "none", r: "none", fill: cv ? { gradient: [...cv.bar.gradient], type: "LINEAR", angle: 90 } : "#1F2FD6" })
+  const barH = cv?.bar.h ?? 200
   const fit = fitOneLine(inp.title, frame.titleFont, 27, w - 800, 22)
   const cT = reg.char({ font: frame.titleFont, pt: fit.pt, bold: true, ratio: fit.ratio, spacing: fit.spacing })
   const c1 = reg.char({ font: "한컴돋움", pt: 1 })
   const barP = reg.para({ align: "CENTER", lineSp: 70 })
   const rows = [
-    tc({ bf: bar, row: 0, col: 0, w, h: 200, paras: para("", barP, c1) }),
+    tc({ bf: bar, row: 0, col: 0, w, h: barH, paras: para("", barP, c1) }),
     tc({ bf: BF_NONE, row: 1, col: 0, w, h: 6000, paras: para(inp.title, center, cT), name: "__kordoc_skip" }),
-    tc({ bf: bar, row: 2, col: 0, w, h: 200, paras: para("", barP, c1) }),
+    tc({ bf: bar, row: 2, col: 0, w, h: barH, paras: para("", barP, c1) }),
   ]
-  out.push(host(ftbl(rows, w, 6400, 1), reg.para({ align: "CENTER", lineSp: 100 }), cT))
+  out.push(host(ftbl(rows, w, 6000 + 2 * barH, 1), reg.para({ align: "CENTER", lineSp: 100 }), cT))
   for (let i = 0; i < 2; i++) out.push(blank(20))
-  out.push(para(inp.date, center, reg.char({ font: frame.titleFont, pt: 22, bold: true })))
+  out.push(para(inp.date, center, reg.char(cv ? cv.date : { font: frame.titleFont, pt: 22, bold: true })))
   for (let i = 0; i < 8; i++) out.push(blank(20))
-  if (inp.org) out.push(para(spacedOrgName(inp.org), center, reg.char({ font: frame.titleFont, pt: 24, bold: true })))
-  if (inp.dept) out.push(para(`(${inp.dept.replace(/^\(|\)$/g, "")})`, center, reg.char({ font: "한컴돋움", pt: 22, bold: true })))
+  if (inp.org) out.push(para(spacedOrgName(inp.org), center, reg.char(cv ? cv.org : { font: frame.titleFont, pt: 24, bold: true })))
+  if (inp.dept) out.push(para(`(${inp.dept.replace(/^\(|\)$/g, "")})`, center, reg.char(cv ? cv.dept : { font: "한컴돋움", pt: 22, bold: true })))
   return out
 }
 
