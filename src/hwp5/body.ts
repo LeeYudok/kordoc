@@ -13,6 +13,7 @@ import {
   INLINE_TABLE_MARK, blocksPlainText, buildAddressedTable, cellTextFromBlocks, emitParagraphBlocks,
 } from "./ir-assemble.js"
 import type { CellContext, IRBlock, IRTable, ParseOptions, ParseWarning, InlineStyle } from "../types.js"
+import type { Edges } from "../table/layout-frames.js"
 import { sanitizeHref } from "../utils.js"
 
 /** 중첩표/글상자 재귀 깊이 상한 — 표 "중첩 단계" 기준.
@@ -558,6 +559,8 @@ function hyperlinkUrlFromCommand(command: string): string | null {
 interface Hwp5Cell extends CellContext {
   blocks?: IRBlock[]
   isHeader?: boolean
+  /** 칸의 보이는 변 (LIST_HEADER borderFillId u16@32 → DocInfo BORDER_FILL) */
+  edges?: Edges
   /** 칸 높이가 A4 용지보다 크다 — 여러 쪽에 걸친 칸 */
   pageSpanning?: boolean
 }
@@ -686,6 +689,10 @@ function parseCell(records: HwpRecord[], lhIdx: number, end: number, ctx: Hwp5Ct
   if (hasStructure && blocks.length > 0) cell.blocks = blocks
   if (isHeader) cell.isHeader = true
   if (rec.data.length >= 24 && rec.data.readUInt32LE(20) > A4_HEIGHT) cell.pageSpanning = true
+  if (rec.data.length >= 34) {
+    const edges = ctx.docInfo?.borderEdges?.[rec.data.readUInt16LE(32) - 1]
+    if (edges) cell.edges = edges
+  }
   return cell
 }
 
