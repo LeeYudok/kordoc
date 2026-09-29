@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **위·아래첨자 표기 `<sup>`·`<sub>` (`scriptTags`, CLI `--script-tags`·`--no-script-tags`, MCP `script_tags`)**: 첨자를 평문으로 펴 "10⁴ m²" 가 "104 m2", "10⁻³" 이 "10-3", "F_st" 가 "Fst", "H₂O" 가 "H2O" 로 값이 바뀌던 것 — HWPX `hh:supscript`·`hh:subscript`, HWP5 글자 모양 bit 15·16(위치표로 글자마다), DOCX `w:vertAlign` 을 읽어 인라인 HTML `<sup>`·`<sub>` 로 감싼다(밑줄 `<u>` 와 같은 방식, 이웃 조각은 합치고 공백은 태그 밖으로). PDF 는 한 시각 줄에서 본문보다 작은(0.85배 이하) 조각이 왼쪽 글자에 붙어(0.35em 안) 기준선이 0.15em 넘게 뜨면 위, 0.08em 넘게 가라앉으면 아래로 보고, 줄 이음·칸 줄 병합 판정(평문)을 다 한 뒤에 넣는다. 기본값: HWPX·HWP·DOCX 켬(글자 모양에 적힌 첨자, 계량법 별표 HWPX·HWP 같은 출력), PDF 끔(기하 추정이고 ODL 정답이 첨자를 평문으로 적는다 — 켜면 ODL 기본 약 0.960 → 0.957, 논문·수식 PDF 는 켜기 권장). OCR 로 읽은 글은 늘 평문. `plain: true` 는 값이 남게 `10^4`·`H_2O`·`x^(n+1)` 로 편다. 양식 채우기 이름표 매칭은 태그를 걷고 맞춘다. 코퍼스 HWPX 1,993건 중 339건·ODL PDF 200건 중 62건이 첨자를 쓴다.
+
+### Fixed
+
+- **PDF 2단 논문 저자 줄 소속 표시**: "Dahyun Kim∗, Chanjun Park∗†" 의 ∗† (본문보다 0.36em 뜬 8pt)가 단 경계에서 좌·우 조각 줄로 갈려 이름 위에 "∗ ∗†" / "∗† ∗†" 로 따로 서고 이름 줄엔 "Kim , " 빈자리가 남던 것 — 단 경계를 넘는 줄에 그 줄 글자 오른끝에 붙은 작은 첨자 조각(위 0.6em·아래 0.35em 안)을 붙이고, 첨자 줄 병합은 옆 줄 글자에 붙은 짧은 기호 여럿(각 3자 이하)도 조각으로 본다(글자 위에 얹힌 수식 ∑ 극한은 제외). ODL 185 0.974 → 0.979(기본값 0.96012 → 0.96014·최고값 0.97279 → 0.97282, 하락 0, PDF 글·표·OCR 출력 그대로).
+
+### 채점 기준 변경 (2026-09-29)
+
+- 벤치 정규화(bench/lib/normalize `mdToPlain`·`normText`, ocr-lib)가 `<sup>`·`<sub>` 태그를 걷는다 — `<u>` 와 같은 서식 표지이고 정답(원본 글)은 첨자를 편 글이다. `mdToPlain` 에서 걷지 않으면 HWPX 정답 글자 수·PDF 텍스트층 커버리지 모수 판정에 태그 글자가 들어가 PDF 글 744쌍 중 11쌍이 모수에서 빠졌다.
+
 ## [4.16.1] - 2026-09-29
 
 서울 방침서 프리셋(`서울방침`)과 공문서 생성 재현율 벤치를 더하고, PDF 기본값 자동 OCR 이 큰 그림 속 글도 읽는다(ODL 200 기본 0.940 → 0.960). PDF 글 정답 어절 F1 0.98713 → 0.98783·한국 PDF 표 exact 96.69% → 97.42%, OCR 글자 재현율 0.990·정밀도 0.994. 개조식 장 헤더 `chapterFit`(#103).
