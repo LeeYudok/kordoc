@@ -32,6 +32,7 @@ export function registerGenerateCommands(program: Command): void {
     .option("--end-mark", "본문 끝 '끝.' 표시 강제 켜기")
     .option("--no-end-mark", "'끝.' 표시 끄기 (기안문 기본 켜짐)")
     .option("--no-body-title-box", "본문 첫 페이지 제목 반복 박스 끄기 (개조식+표지 기본 켜짐)")
+    .option("--chapter-fit", "개조식 장 헤더 제목 칸을 글자 폭에 맞춤 (기본: 본문 폭까지)")
     .option("--h2-marker <type>", "h2 장 제목 표기: band(로마자 채움 칸 + 제목 띠 표 — 보고서·계획서 기본)·roman(Ⅰ. 텍스트)·number(1. — 통지 기본)·box(장 없이 □ 대항목)·none")
     .option("--band-color <hex>", "띠 제목 번호칸 채움색 #RRGGBB (기본 #003366 — 실측 최다. 교육청형 밝은 띠: #DFE6F7)")
     .option("--band-text-color <hex>", "띠 제목 번호 글자색 #RRGGBB (기본 #FFFFFF — 밝은 띠면 #000000)")
@@ -124,6 +125,7 @@ export function registerGenerateCommands(program: Command): void {
             pageNumbers: opts.pageNumbers, endMark: opts.endMark,
             // --no-body-title-box 단독 플래그 — commander 기본 true는 "미지정"으로 정돈
             bodyTitleBox: opts.bodyTitleBox === false ? false : undefined,
+            chapterFit: opts.chapterFit,
             h2Marker: enumCheck("--h2-marker", opts.h2Marker, H2_MARKERS),
             bandColor: opts.bandColor, bandTextColor: opts.bandTextColor,
             fonts: opts.fonts ? parseKv(String(opts.fonts), "--fonts") : undefined,

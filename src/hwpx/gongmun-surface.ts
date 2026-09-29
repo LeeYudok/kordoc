@@ -78,6 +78,7 @@ export interface GongmunSurfaceInput {
   pageNumbers?: boolean
   endMark?: boolean
   bodyTitleBox?: boolean
+  chapterFit?: boolean
   h2Marker?: (typeof H2_MARKERS)[number]
   /** 띠 제목 번호칸 채움색·글자색 (#RRGGBB) */
   bandColor?: string
@@ -133,6 +134,7 @@ export function buildGongmunOptions(input: GongmunSurfaceInput): GongmunOptions 
   if (input.pageNumbers !== undefined) g.pageNumbers = input.pageNumbers
   if (input.endMark !== undefined) g.endMark = input.endMark
   if (input.bodyTitleBox !== undefined) g.bodyTitleBox = input.bodyTitleBox
+  if (input.chapterFit !== undefined) g.chapterFit = input.chapterFit
   if (input.h2Marker) g.h2Marker = input.h2Marker
   if (input.bandColor) g.bandColor = input.bandColor
   if (input.bandTextColor) g.bandTextColor = input.bandTextColor
