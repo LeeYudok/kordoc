@@ -131,8 +131,11 @@ export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx:
   // 아무 칸도 덮지 않은 자리는 채움 칸으로 남긴다 — 이 표가 다시 앞 쪽 조각과 이어질 때(세 쪽 넘게) 빈 자리로 보고 세로 병합을 잇게
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (owner[r][c] === null) FILLER_CELLS.add(grid[r][c])
   const table: IRTable = { rows, cols, cells: grid, hasHeader: prev.hasHeader, ...(prev.caption ? { caption: prev.caption } : {}) }
-  const split = rows > prev.rows && mergeSplitRow(table, owner, prev.rows, U)
-  if (rows > prev.rows && !split && prevBottom !== undefined) mergeStraddlingCells(table, owner, prev.rows, prevBottom)
+  let split = rows > prev.rows && mergeSplitRow(table, owner, prev.rows, U)
+  // 세로 병합 칸을 이은 뒤 다시 본다 — 뒤 조각 이름표가 여러 행을 덮어 쪼개진 행 판정에서 빠졌던 행("일몰설정 / 예외기준" 이름표 옆
+  // "…적용 되어야 / 하는 규제", 규제영향분석서)은 이름표가 한 칸이 되면 칸 조각 이어짐으로 판정된다
+  // (글 이어짐 증거만 — 이어 늘린 빈 칸 조각은 증거로 쓰지 않는다: 시험기준표 "KS M ISO 2507-1," / "KS M ISO 2507-2" 는 두 행)
+  if (rows > prev.rows && !split && prevBottom !== undefined && mergeStraddlingCells(table, owner, prev.rows, prevBottom)) split = mergeSplitRow(table, owner, prev.rows, U, true)
   // 머리 행 증거는 되풀이된 행에 글 있는 칸이 둘 이상일 때만 — 한 칸짜리 제목 행은 같은 제목의 상자를 쪽마다 새로 놓은 것과 구별이
   // 안 된다 (편람 기안문 "작성방법" 상자가 짝·홀 쪽에 하나씩 놓여 한 표로 이어졌다, HWPX 는 두 표)
   return { table, colXs: U, split, header: ca.filter(a => a.r < skip && a.cell.text.trim()).length >= 2 }
@@ -148,7 +151,7 @@ export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx:
  * 모든 칸이 경계에서 끝나면 다음 쪽 첫 행은 새 묶음이다 (연락처 표 되풀이된 "<공동>" 5건, 과제 목록 두 행 칸 "4-29" 한 줄이
  * 바닥 가까이 있어도 다음 쪽 "4-30" 은 새 과제)
  */
-function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first: number, prevBottom: number): void {
+function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first: number, prevBottom: number): boolean {
   const last = first - 1
   const straddles = owner[first].some((o, c) => o !== null && o === owner[last][c])
   // 뒤 조각 첫 행에서 글 있는 새 칸이 처음 나오는 열 — 빈 이어짐은 그보다 왼쪽(이름표 열)만 본다. 왼쪽 이름표 열에 새 묶음 이름이
@@ -158,6 +161,7 @@ function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first:
     const d = owner[first][c]
     if (d && d.r === first && d !== owner[last][c] && hasContent(table.cells[d.r][d.c])) { firstNew = c; break }
   }
+  let merged = false
   for (let c = 0; c < table.cols;) {
     const u = owner[last][c], d = owner[first][c]
     if (!u) { c++; continue }
@@ -182,7 +186,9 @@ function mergeStraddlingCells(table: IRTable, owner: (Anchor | null)[][], first:
     table.cells[first][d.c] = { text: "", colSpan: 1, rowSpan: 1 }
     const grown: Anchor = { ...u, rs: a.rowSpan }
     for (let rr = u.r; rr < u.r + grown.rs; rr++) for (let dc = u.c; dc < u.c + u.cs; dc++) owner[rr][dc] = grown
+    merged = true
   }
+  return merged
 }
 
 /** 끝줄이 칸 글 폭 오른끝에 이만큼(글자 크기 배) 안이면 꽉 찬 줄 */
@@ -254,12 +260,16 @@ function outlineContinues(u: IRCell, d: IRCell): boolean {
 }
 
 /** 한 줄로 끝난 왼쪽 정렬 칸 — 오른쪽에 남은 자리(왼쪽 안쪽 여백만큼 뺀)가 글자 크기의 LABEL_ROOM 배 이상이라 다음 어절이 들어갈 수 있었다.
- *  가운데 정렬 칸은 좌우 여백이 같아 해당하지 않는다 */
-function lineEnded(c: IRCell, x1: number, x2: number): boolean {
+ *  다음 조각 첫 어절을 알면 그 폭(한글·한자 1em, 나머지 0.55em)도 들어가야 한다 — "…적용 되어야" 뒤 1.5em 남짓한 자리에 "하는"(2em)은
+ *  안 들어가 줄이 바뀐 것이다(규제영향분석서 12.규제일몰제). 가운데 정렬 칸은 좌우 여백이 같아 해당하지 않는다 */
+function lineEnded(c: IRCell, x1: number, x2: number, next = ""): boolean {
   const L = CELL_LINES.get(c)
   if (!L || L.length !== 1) return false
-  const l = L[0]
-  return (x2 - l.r) - (l.l - x1) >= LABEL_ROOM * (l.h || 10)
+  const l = L[0], h = l.h || 10
+  const word = next.trim().split(/\s+/)[0] ?? ""
+  let units = 0
+  for (const ch of word) units += /[가-힣\u3400-\u9fff]/.test(ch) ? 1 : 0.55
+  return (x2 - l.r) - (l.l - x1) >= Math.max(LABEL_ROOM, units) * h
 }
 
 /**
@@ -291,8 +301,8 @@ const hasContent = (cell: IRCell): boolean => !!cell.text.trim() || !!cell.block
  *     글 있는 열 쌍이 둘 이상이면 세로 병합 칸만 이어지고 행은 새로 시작하는 경우(시험기준표 "플라이애시 / 시멘트")와
  *     섞여 쓰지 않는다. 위에서 내려온 세로 병합 칸이 클립 없이 넘어간 것은 새 행에서도 똑같아 증거가 아니다
  */
-/** 문장 중간에서 끊긴 끝 어절 — 받침에 맞는 목적격 조사(받침 뒤 "을"·모음 뒤 "를" — "마을" 은 아니다)나 관형형·연결 어미 */
-const CLAUSE_OPEN_ENDING = /(?:하는|되는|하고|하며|하여|되어|되고|되며|이며|으며)$/
+/** 문장 중간에서 끊긴 끝 어절 — 받침에 맞는 목적격 조사(받침 뒤 "을"·모음 뒤 "를" — "마을" 은 아니다)나 관형형·연결 어미(뒤에 서술어가 와야 하는 -어야 포함) */
+const CLAUSE_OPEN_ENDING = /(?:하는|되는|하고|하며|하여|되어|되고|되며|이며|으며|어야|아야|여야)$/
 const batchim = (ch: string): boolean => { const k = ch.charCodeAt(0) - 0xac00; return k >= 0 && k < 11172 && k % 28 !== 0 }
 /**
  * 글 이어짐(문장) — 앞 쪽 칸 글이 문장 중간에서 끊기고 뒤 쪽 칸이 새 항목 머리가 아닌 한글로 시작한다. 가운데 정렬 칸은 끝줄이 오른끝에
@@ -311,7 +321,7 @@ function outlineOnly(pairs: Array<[Anchor, Anchor]>, cell: (a: Anchor) => IRCell
   return filled.length === 1 && outlineContinues(cell(filled[0][0]), cell(filled[0][1]))
 }
 
-function mergeSplitRow(table: IRTable, owner: (Anchor | null)[][], first: number, colXs: number[]): boolean {
+function mergeSplitRow(table: IRTable, owner: (Anchor | null)[][], first: number, colXs: number[], textOnly = false): boolean {
   const last = first - 1
   // 열마다 앞 행 칸과 뒤 행 칸을 맞춘다 — 두 행을 다 덮는 세로 병합 칸(앞 쪽에서 넘어와 이어 늘린 칸)은 그대로 두고,
   // 나머지는 앞 행에서 끝나는 칸과 뒤 행에서 시작하는 칸의 열 범위가 같아야 한다
@@ -333,7 +343,7 @@ function mergeSplitRow(table: IRTable, owner: (Anchor | null)[][], first: number
   }
   // 뒤 쪽 칸 조각의 글 없는 클립은 증거가 아니다 — 한컴 PDF 판(1.3.0.546·538)과 칸에 따라 이어진 빈 조각에도 클립을 깐다
   // (법령 별표 쪼개진 행 17건에 있음). 앞 쪽 빈 칸 뒤에 글이 오는 것만 새 칸 증거다 (글은 칸 위에서부터 흐른다)
-  const carriedSplit = carried && pairs.filter(([u, d]) => hasContent(u.cell) && hasContent(d.cell)).length <= 1
+  const carriedSplit = !textOnly && carried && pairs.filter(([u, d]) => hasContent(u.cell) && hasContent(d.cell)).length <= 1
     && !pairs.some(([u, d]) => !hasContent(u.cell) && hasContent(d.cell))
   // 글줄은 격자에 놓은 복사본 칸에서 본다 — 옮겨 맞댄 뒤 조각(짝·홀 쪽·단 넘김)은 복사본에만 옮긴 글줄이 있다
   const cell = (a: Anchor): IRCell => table.cells[a.r][a.c]
@@ -343,7 +353,7 @@ function mergeSplitRow(table: IRTable, owner: (Anchor | null)[][], first: number
     // "8. 글자 | …꽉 찬 끝줄" 다음 쪽 "9. 한글과 함께 적는 외국글자 | 가. 단어를 …", 시험기준표 "액성한계·소성한계 | KS F 2303" 다음 쪽
     // "세립토 비율 | KS F 2309"). 같은 글이면 문단마다 붙는 표지다 (신구조문 대비표 "<신 설>" 이 큰 행 두 조각에 하나씩)
     const norm = (c: IRCell): string => c.text.replace(/\s+/g, "")
-    if (pairs.some(([u, d]) => hasContent(d.cell) && norm(cell(d)) !== norm(cell(u)) && lineEnded(cell(u), colXs[u.c], colXs[u.c + u.cs]))) return false
+    if (pairs.some(([u, d]) => hasContent(d.cell) && norm(cell(d)) !== norm(cell(u)) && lineEnded(cell(u), colXs[u.c], colXs[u.c + u.cs], cell(d).text))) return false
     if (!outlineOnly(pairs, cell) && !pairs.some(([u, d]) => continuesAcross(cell(u), cell(d), colXs[u.c], colXs[u.c + u.cs]))
       && !pairs.some(([u, d]) => clauseContinues(cell(u), cell(d)))) return false
   }
