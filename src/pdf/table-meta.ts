@@ -14,6 +14,8 @@ export const TABLE_ROWYS = new WeakMap<IRTable, number[]>()
 /** 마지막 행 칸이 다음 쪽으로 넘어가 그 조각(CONT_PARTS)을 붙인 표 — 표가 실제로 끝나는 쪽과 그 쪽 조각의 밑변·높이
  *  (cell-continuation 이 기록, 쪽 넘김 잇기가 표 끝 자리로 본다) */
 export const TABLE_TAIL = new WeakMap<IRTable, { page: number; y: number; height: number }>()
+/** 쪽 넘김으로 이은 클립 표의 첫 조각 열 경계 — 이은 표의 TABLE_COLXS 는 모든 조각의 합집합이다 (table-parts) */
+export const PART_COLXS = new WeakMap<IRTable, number[]>()
 /** 글 없는 클립 표 — 앞 쪽 표가 넘어온 조각일 수 있어(Q&A 상자 마지막 빈 행이 다음 쪽으로 넘어감) 쪽 넘김 잇기까지만
  *  두고, 잇지 못하면 버린다 (mergeCrossPageTables) */
 export const EMPTY_PARTS = new WeakSet<IRTable>()

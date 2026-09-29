@@ -53,17 +53,13 @@ export function mergeContinuedCells(blocks: IRBlock[], pageHeights?: Map<number,
     const at = cell.blocks || add.blocks ? cellBlocks(cell, prev.pageNumber).length : -1
     if (cell.blocks || add.blocks) cell.blocks = [...cellBlocks(cell, prev.pageNumber), ...cellBlocks(add, part.pageNumber)]
     cell.text = [cell.text, add.text].filter(s => s.trim()).join("\n")
+    // 표는 이 조각이 놓인 쪽에서 끝난다 — 다음 쪽 표 조각이 이 칸의 나머지로 시작하면(세 쪽에 걸친 칸) 쪽 넘김 잇기가 여기서 잇는다.
+    // 칸 글줄도 이어 붙여 끝줄이 이 조각의 끝줄이 되게 한다 (글 이어짐 판정)
+    const lines = CELL_LINES.get(add)
+    if (lines?.length) CELL_LINES.set(cell, [...(CELL_LINES.get(cell) ?? []), ...lines])
+    if (part.pageNumber && part.bbox) TABLE_TAIL.set(prev.table, TABLE_TAIL.get(part.table) ?? { page: part.pageNumber, y: part.bbox.y, height: part.bbox.height })
     // 앞 쪽 조각이 빈 칸뿐이던 표(쪽 끝에 머리 행만 남은 칸)도 이어진 글을 받았으면 더는 빈 조각이 아니다 — 쪽 넘김 잇기가 버리지 않게
     if (cell.text.trim() || cell.blocks?.length) EMPTY_PARTS.delete(prev.table)
-    // 조각이 쪽 바닥까지 차면 표는 조각이 놓인 쪽에서 끝난다 — 다음 쪽 표와의 쪽 넘김 잇기가 그 쪽·조각 밑변과, 조각의 끝 글줄(쪽 바닥까지
-    // 찬 줄)을 본다. 쪽 중간에서 끝난 조각 바로 아래 표는 같은 쪽에서 이어지는 행들이라 종전처럼 앞 표 쪽의 다음 쪽 첫머리 표로 잇는다
-    const ph = pageHeights?.get(part.pageNumber ?? 0)
-    const tail = TABLE_TAIL.get(part.table)
-    if (tail || (part.pageNumber && part.bbox && ph && part.bbox.y <= ph * CONTINUED_TABLE_PAGE_BAND)) {
-      TABLE_TAIL.set(prev.table, tail ?? { page: part.pageNumber!, y: part.bbox!.y, height: part.bbox!.height })
-      const lines = CELL_LINES.get(add)
-      if (lines?.length) CELL_LINES.set(cell, lines)
-    }
     blocks.splice(j, 1)
     // 칸 안에서 쪽 경계로 갈린 표 (반제품 아이스팩 기준 틀의 2×2 계산 예시: 첫 행만 앞 쪽에 남은 것)
     if (cell.blocks && at > 0) {
