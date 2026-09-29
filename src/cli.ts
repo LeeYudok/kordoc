@@ -37,6 +37,7 @@ program
   .option("--image-refs", "--format json 에서 이미지 바이트를 인라인하지 않고 파일 참조(images/<문서 이름>/<파일명>)만 남김 (#65 — 이미지가 수백 장인 문서의 직렬화 한계 회피, -o/-d 와 함께 사용)")
   .option("--password <pw>", "암호로 보호된 문서의 열기 암호 (#59, HWPX·HWP3·HWP5. 한컴 DRM 문서는 해당 없음)")
   .option("--html-tables", "모든 표를 HTML 로 — 파이프 표도 HTML 표로, 태그마다 한 줄씩 들여써 냄")
+  .option("--keep-layout-tables", "테두리가 안 보이는 틀 표도 원본 표 구조 그대로 (기본: 보이는 대로 — 틀은 글, 칸으로 조립한 분수는 수식). patch 로 되돌릴 편집본은 이 옵션으로 뽑는다")
   .option("--script-tags", "위·아래첨자를 <sup>·<sub> 로 표기 — PDF 는 기본 끔(논문·수식 PDF 에 권장), HWPX·HWP·DOCX 는 기본 켬")
   .option("--no-script-tags", "첨자 표기 끄기 — 모든 형식에서 평문(\"104 m2\")")
   .option("--plain", "평문 Markdown — 그림 자리 표시·링크 URL·밑줄/굵게 표기를 빼고 글만 (제목·목록·표 구조는 유지, 색인·RAG 용)")
@@ -92,6 +93,7 @@ program
         if (opts.plain) parseOptions.plain = true
         if (opts.scriptTags !== undefined) parseOptions.scriptTags = opts.scriptTags as boolean
         if (opts.htmlTables) parseOptions.htmlTables = true
+        if (opts.keepLayoutTables) parseOptions.layoutTables = "keep"
         if (!opts.silent) {
           parseOptions.onProgress = (current: number, total: number) => {
             process.stderr.write(`\r[kordoc] ${filePrefix}${fileName} (${format}) [${current}/${total}]`)

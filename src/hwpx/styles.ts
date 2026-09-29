@@ -9,6 +9,7 @@ import type { IRBlock, ParseWarning } from "../types.js"
 import { HEADING_RATIO_H1, HEADING_RATIO_H2, HEADING_RATIO_H3 } from "../types.js"
 import { createXmlParser, findChildByLocalName, MAX_DECOMPRESS_SIZE } from "./parser-shared.js"
 import type { ScriptKind } from "../script-tags.js"
+import type { Edges } from "../table/layout-frames.js"
 
 // ─── HWPX 스타일 정보 ──────────────────────────────
 
@@ -66,6 +67,7 @@ export interface HwpxStyleMap {
   bullets: Map<string, string>           // bullet id → 글머리 문자
   paraHeadings: Map<string, ParaHeadingRef>  // paraPr id → heading 참조
   paraIndents: Map<string, { left: number; intent: number }>  // paraPr id → 들여쓰기(HWPUNIT, v4.0.4)
+  borderEdges: Map<string, Edges>        // borderFill id → 보이는 변 (보이지 않는 틀 표 풀기, v4.17.0)
 }
 
 /** head.xml 또는 header.xml에서 스타일 정보 추출 */
@@ -77,6 +79,7 @@ export async function extractHwpxStyles(zip: JSZip, decompressed?: { total: numb
     bullets: new Map(),
     paraHeadings: new Map(),
     paraIndents: new Map(),
+    borderEdges: new Map(),
   }
 
   const headerPaths = ["Contents/header.xml", "header.xml", "Contents/head.xml", "head.xml"]
@@ -105,6 +108,7 @@ export async function extractHwpxStyles(zip: JSZip, decompressed?: { total: numb
       parseBullets(domDoc, result.bullets)
       parseParaHeadings(domDoc, result.paraHeadings)
       parseParaIndents(domDoc, result.paraIndents)
+      parseBorderEdges(domDoc, result.borderEdges)
       break
     } catch { continue }
   }
@@ -262,6 +266,31 @@ function parseParaIndents(doc: Document, map: Map<string, { left: number; intent
       const left = readHu("left")
       const intent = readHu("intent")
       if (left !== 0 || intent !== 0) map.set(id, { left, intent })
+    }
+    if (map.size > 0) break
+  }
+}
+
+/**
+ * header.xml의 hh:borderFill 파싱 — id → 네 변이 보이는지 (v4.17.0, 보이지 않는 틀 표 풀기).
+ * 선 종류 NONE 이거나 흰색(#FFFFFF — 흰 바탕에 안 보임)이면 안 보이는 변이다. 대각선·채우기는 보지 않는다.
+ */
+function parseBorderEdges(doc: Document, map: Map<string, Edges>): void {
+  const tagNames = ["hh:borderFill", "borderFill"]
+  for (const tagName of tagNames) {
+    const elements = doc.getElementsByTagName(tagName)
+    for (let i = 0; i < elements.length; i++) {
+      const el = elements[i]
+      const id = el.getAttribute("id") || ""
+      if (!id) continue
+      const seen = (name: string): boolean => {
+        const b = findChildByLocalName(el, name)
+        if (!b) return false
+        const type = b.getAttribute("type") || "NONE"
+        const color = (b.getAttribute("color") || "#000000").toUpperCase()
+        return type !== "NONE" && color !== "#FFFFFF"
+      }
+      map.set(id, { t: seen("topBorder"), b: seen("bottomBorder"), l: seen("leftBorder"), r: seen("rightBorder") })
     }
     if (map.size > 0) break
   }

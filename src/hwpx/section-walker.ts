@@ -161,6 +161,8 @@ function walkSection(
         if (tableCtx) {
           tableCtx.cell = { text: "", colSpan: 1, rowSpan: 1 }
           if (el.getAttribute("header") === "1" || el.getAttribute("header") === "true") tableCtx.cell.isHeader = true
+          const edges = ctx.styleMap?.borderEdges.get(el.getAttribute("borderFillIDRef") ?? "")
+          if (edges) tableCtx.cell.edges = edges
           walkSection(el, blocks, tableCtx, tableStack, ctx, depth + 1)
           if (tableCtx.cell) {
             tableCtx.currentRow.push(tableCtx.cell)

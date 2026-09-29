@@ -368,7 +368,8 @@ export async function fillForm(
   }
 
   // 일반 경로: parse → IRBlock → fill → output
-  const parsed = await parse(buffer)
+  // 양식 칸은 원본 표 구조 그대로 — 보이지 않는 틀 표를 풀면 라벨·값 칸 짝이 흩어진다
+  const parsed = await parse(buffer, { layoutTables: "keep" })
   if (!parsed.success) {
     throw new Error(`서식 파싱 실패: ${parsed.error}`)
   }

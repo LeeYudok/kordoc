@@ -3,6 +3,7 @@
 import type { ScriptKind } from "../script-tags.js"
 import { inflateRawSync, inflateSync } from "zlib"
 import { KordocError } from "../utils.js"
+import type { Edges } from "../table/layout-frames.js"
 
 // ─── 레코드 태그 상수 ────────────────────────────────
 
@@ -23,6 +24,7 @@ export const TAG_EQEDIT = 0x0058
 
 // DocInfo 태그 (스타일 정보 해석용) — HWPTAG_BEGIN(0x0010) 기준
 export const TAG_ID_MAPPINGS = 0x0011      // HWPTAG_BEGIN + 1
+export const TAG_BORDER_FILL = 0x0014      // HWPTAG_BEGIN + 4
 export const TAG_BIN_DATA = 0x0012         // HWPTAG_BEGIN + 2
 export const TAG_FACE_NAME = 0x0013        // HWPTAG_BEGIN + 3
 export const TAG_DOC_CHAR_SHAPE = 0x0015   // HWPTAG_BEGIN + 5
@@ -196,6 +198,8 @@ export interface HwpDocInfo {
   numberings: HwpNumbering[]
   /** BULLET 정의 (1-based bulletId → bullets[id-1]) */
   bullets: HwpBullet[]
+  /** BORDER_FILL 의 보이는 변 (1-based borderFillId → borderEdges[id-1]) — 보이지 않는 틀 표 풀기 (v4.17.0) */
+  borderEdges: Edges[]
 }
 
 /** length-prefixed UTF-16LE 문자열 읽기 (HWP WCHAR 배열) */
@@ -216,8 +220,19 @@ export function parseDocInfo(records: HwpRecord[]): HwpDocInfo {
   const binData: HwpBinDataItem[] = []
   const numberings: HwpNumbering[] = []
   const bullets: HwpBullet[] = []
+  const borderEdges: Edges[] = []
 
   for (const rec of records) {
+    // BORDER_FILL — 속성 u16@0 · 변 4개(왼/오/위/아래) @2+6k = 종류 u8(0 없음) · 굵기 u8 · COLORREF u32 (render/hwp5-scene 과 같은 해독).
+    // 흰 선(0xFFFFFF)은 흰 바탕에 안 보인다
+    if (rec.tagId === TAG_BORDER_FILL) {
+      const seen = (k: number): boolean => {
+        const o = 2 + 6 * k
+        return rec.data.length >= o + 6 && rec.data[o] !== 0 && (rec.data.readUInt32LE(o + 2) & 0xffffff) !== 0xffffff
+      }
+      borderEdges.push({ l: seen(0), r: seen(1), t: seen(2), b: seen(3) })
+    }
+
     // PARA_SHAPE — 문단 모양 (rhwp doc_info.rs parse_para_shape)
     // attr1(u32@0) 비트 팩: bits 23-24 = 머리 종류, bits 25-27 = 문단 수준
     // numberingId: u16@30 (attr1 4 + 여백/간격 i32*6 = 24 + tabDefId 2 → offset 30)
@@ -345,7 +360,7 @@ export function parseDocInfo(records: HwpRecord[]): HwpDocInfo {
     }
   }
 
-  return { charShapes, paraShapes, styles, binData, numberings, bullets }
+  return { charShapes, paraShapes, styles, binData, numberings, bullets, borderEdges }
 }
 
 // ─── UTF-16LE 텍스트 추출 (21가지 제어문자 처리) ─────
