@@ -105,6 +105,8 @@ export interface GongmunOptions {
   approval?: string[]
   /** 본문 첫 페이지 제목 박스(개조식) — 목차 뒤 본문 시작에 제목 반복(실측 관행). 기본: 표지 있으면 켜짐 */
   bodyTitleBox?: boolean
+  /** 개조식 장 헤더 제목 칸을 글자 폭에 맞춤. 기본: 꺼짐(제목 칸이 본문 폭까지) */
+  chapterFit?: boolean
   /**
    * h2 장 제목 표기 (v5): 'band'=로마자 채움 칸 + 제목 띠 표(보고서·계획서 기본 — 계획서 장르 실측 37~39%) /
    * 'roman'=Ⅰ. Ⅱ. 텍스트 / 'number'=1. 2. (통지 기본) / 'box'=장 없이 □ 대항목으로 / 'none'=번호 없음 /
@@ -192,6 +194,8 @@ export interface ResolvedGongmun {
   approval: string[] | null
   /** 본문 첫 페이지 제목 박스(개조식, 실측 GT3 표④) — 표지 있을 때 기본 켜짐 */
   bodyTitleBox: boolean
+  /** 개조식 장 헤더 제목 칸 글자 폭 맞춤 — 기본 꺼짐 */
+  chapterFit: boolean
   /** h2 장 제목 표기 — 보고서·계획서 'roman', 통지·공고 'number' (v5) */
   h2Marker: "band" | "roman" | "box" | "number" | "none" | "square"
   /** 띠 제목 번호칸 채움색·글자색 (#RRGGBB, 대문자 정규화) */
@@ -451,6 +455,7 @@ export function resolveGongmun(opts: GongmunOptions): ResolvedGongmun {
     approval: opts.approval && opts.approval.length > 0 ? opts.approval : null,
     // 본문 제목박스 — 실측(GT3·GT12): 목차 뒤 본문 시작에 제목 반복. 표지 켜진 개조식 기본
     bodyTitleBox: opts.bodyTitleBox ?? (gaejosik && coverOn),
+    chapterFit: opts.chapterFit ?? false,
     // h2 말머리 — 실측: 보고서 양식 □ 대항목(QA-2), 공고문 아라비아("1. 사업개요", 바이오헬스 실측)
     // v5 라운드 3: 보고서·계획서 기본 band(띠 표) — 서울 plan 7/19·교육청 7/18 실측, 실무자 요청
     h2Marker: opts.h2Marker ?? (preset === "report" || preset === "plan" ? "band" : preset === "bangchim" ? "square" : preset === "notice" ? "number" : "none"),

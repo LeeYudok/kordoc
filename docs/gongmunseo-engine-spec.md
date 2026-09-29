@@ -267,6 +267,7 @@ REFERENCE 2.7 실측: 법정 8단계는 본문과 동일(기본값 무변경), �
 
 - `fonts: { body, heading, ref, table }` — 역할별 글꼴명 오버라이드. gaejosik fontfaces의 id 3(heading)/4(body)/5(ref)/7(table)을 치환. 개조식 외 프리셋은 body만(bodyFont보다 우선). CLI `--fonts "body=나눔명조,heading=나눔고딕"`, MCP generate_document `fonts`.
 - `sizes: { dae, cham, chapter, coverTitle, coverSub, tocLabel, tocRoman, tocItem, table }` — 요소별 pt 절대값 오버라이드(미지정은 bodyPt 비례). 들여쓰기·표 측정·표지 축소 판정에도 일관 반영. CLI `--sizes "dae=16,table=12"`, MCP `sizes`.
+- `chapterFit` — 장 헤더 제목 칸을 글자 실폭(`fonts.heading` 글꼴 폭표·`sizes.chapter` 반영, 앞 공백만큼 뒤 여백 + 셀 여백·조판 여유 582)에 맞춘다. 기본 꺼짐(제목 칸이 본문 폭까지). 본문 폭을 넘는 제목은 종전 폭에서 멈추고, 좌우 바깥 여백은 본문 폭 표 기준을 따라 왼쪽 끝이 그대로다. CLI `--chapter-fit`, MCP `chapter_fit`.
 
 ### 표 (공문서 모드 공통 — gen-table.ts)
 

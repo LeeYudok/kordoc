@@ -61,6 +61,7 @@ export function registerGenerateTools(server: McpServer): void {
       page_numbers: z.boolean().optional().describe("쪽번호(하단 중앙 '- 1 -', 표지·목차 카운트 제외). 미지정 시 개조식·보고서·계획서 켜짐"),
       end_mark: z.boolean().optional().describe("본문 끝 '끝.' 표시 (행정업무규정). 미지정 시 기안문만 켜짐, 본문이 이미 '끝.'으로 끝나면 중복 생성 안 함"),
       body_title_box: z.boolean().optional().describe("본문 첫 페이지 제목 반복 박스 (개조식 실측 관행). 미지정 시 개조식+표지 조합에서 켜짐"),
+      chapter_fit: z.boolean().optional().describe("개조식 장 헤더 제목 칸을 글자 폭에 맞춤. 미지정 시 제목 칸이 본문 폭까지"),
       h2_marker: z.enum(H2_MARKERS).optional().describe("h2 장 제목 표기: band=로마자 채움 칸+제목 띠 표(보고서·계획서 기본), roman='Ⅰ. 제목' 텍스트, number='1. 제목'(통지 기본), box=장 없이 □ 대항목으로, none=번호 없음. 기안문 본문의 h2는 항상 법정 '1.' 항목"),
       band_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe("띠 제목 번호칸 채움색 #RRGGBB (기본 #003366 실측 최다. 교육청형 밝은 띠는 #DFE6F7 + band_text_color #000000)"),
       band_text_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe("띠 제목 번호 글자색 #RRGGBB (기본 #FFFFFF)"),
@@ -95,7 +96,7 @@ export function registerGenerateTools(server: McpServer): void {
       footer: z.string().optional().describe("꼬리말 텍스트 — 모든 쪽 하단 (v4.5.0)"),
       image_dir: z.string().optional().describe("마크다운 이미지 참조(![](x.png))를 이 디렉토리에서 읽어 실데이터 임베드 (v4.5.0, PNG/JPEG/GIF/BMP). 미지정 시 참조만 placeholder로 보존"),
     },
-    async ({ markdown, output_path, profile_path, preset, font, body_pt, line_spacing, org, date, toc, cover, approval, page_numbers, end_mark, body_title_box, h2_marker, band_color, band_text_color, summary, doc_info, dept, cover_label, fonts, sizes, levels, bullet2, suppress_single, doc_head, doc_foot, report_info, notice_head, press, paper, landscape, columns, header, footer, image_dir }) => {
+    async ({ markdown, output_path, profile_path, preset, font, body_pt, line_spacing, org, date, toc, cover, approval, page_numbers, end_mark, body_title_box, chapter_fit, h2_marker, band_color, band_text_color, summary, doc_info, dept, cover_label, fonts, sizes, levels, bullet2, suppress_single, doc_head, doc_foot, report_info, notice_head, press, paper, landscape, columns, header, footer, image_dir }) => {
       try {
         // 조립은 gongmun-surface SSOT(buildGongmunOptions) — CLI와 의미론 공유 (v4.0.4)
         let gongmun: GongmunOptions | undefined
@@ -103,7 +104,7 @@ export function registerGenerateTools(server: McpServer): void {
           gongmun = buildGongmunOptions({
             preset: PRESET_ALIAS[preset], font, bodyPt: body_pt, lineSpacing: line_spacing,
             org, date, cover, toc, approval,
-            pageNumbers: page_numbers, endMark: end_mark, bodyTitleBox: body_title_box,
+            pageNumbers: page_numbers, endMark: end_mark, bodyTitleBox: body_title_box, chapterFit: chapter_fit,
             h2Marker: h2_marker, bandColor: band_color, bandTextColor: band_text_color, fonts, sizes, levels, bullet2, suppressSingle: suppress_single,
             docHead: doc_head, docFoot: doc_foot, reportInfo: report_info,
             noticeHead: notice_head, press, summary, docInfo: doc_info, dept, coverLabel: cover_label,
