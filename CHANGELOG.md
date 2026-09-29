@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **MCP `generate_document` 이미지 폴더 가두기 (#101, @LimePencil)**: `image_dir` 는 폴더 자체만 `KORDOC_ROOT` 안인지 봤고 폴더 안 그림 파일은 링크를 따라 읽어, 폴더 안 심링크가 루트 밖 파일을 생성 HWPX 에 실어 내보낼 수 있던 것 — CLI·MCP 공용 로더(`src/shared/generate-images.ts`)가 파일마다 실경로(realpath)를 이미지 폴더(MCP 는 `KORDOC_ROOT` 도) 안인지 다시 보고 `O_NOFOLLOW`·일반 파일만 연다. 폴더 안을 가리키는 링크는 그대로 허용. MCP 도 한글·URL 인코딩·하위 폴더 이름 그림을 싣고(종전엔 영숫자 이름만, 한글 이름은 조용히 빠짐) 건너뛴 참조를 경고로 알린다.
+
 ## [4.16.2] - 2026-09-29
 
 위·아래첨자를 `<sup>`·`<sub>` 로 표기한다(`scriptTags` — HWPX·HWP·DOCX 기본 켬, PDF 는 `true` 로 켠다) — 평문으로 펴 "10⁴ m²" 가 "104 m2" 로 값이 바뀌던 것. PDF 2단 논문 저자 줄 소속 표시(∗†)가 이름 위로 떨어지던 것도 고쳤다. PDF 글·표·OCR·ODL 하락 없음(ODL 기본 0.96014·최고 0.97282).
