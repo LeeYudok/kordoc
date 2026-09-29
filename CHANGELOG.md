@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.16.3] - 2026-09-29
+
+MCP `generate_document` 가 이미지 폴더 안 심링크를 따라 `KORDOC_ROOT` 밖 파일을 생성 HWPX 에 실을 수 있던 것을 막는다(#101). MCP 도 한글·URL 인코딩 이름 그림을 싣는다.
 
 ### Security
 
