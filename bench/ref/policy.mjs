@@ -42,6 +42,9 @@ export const WHITELIST = [
   { id: "page-text-parts", desc: "머리말·꼬리말은 조각(문단 글·표 셀·글상자, 문서 순서) 단위로 이어 찾는다 — 파서가 머리말 표를 ' / '·줄바꿈으로 평탄화. 전 머리말을 1회씩 소비한 뒤 재등장만 위반. 본문 문자 6자 미만은 문서 첫머리(머리말)·끝(꼬리말) 구간에서만 소비" },
   { id: "clickhere-placeholder", desc: "미기입 누름틀(CLICK_HERE·dirty≠1)의 값 자리 글이 안내문(Direction) 그대로면 한컴이 화면에만 흐리게 보이고 인쇄하지 않는다 — 파서는 IR 글에 placeholder span 으로 표시하고 마크다운에서 뺀다, 참조도 모수 제외(표 채점은 placeholder span 을 뺀 칸 글). rhwp form-01·form-02·issue1893 (v4.14.3)" },
   { id: "autonum-forms", desc: "자동번호 phantom 관용·셀 장식 관용에 한컴 번호 서식 전 계열 — 자모(ㄱ.)·괄호형((1)·(가))·로마자(I.) 추가, OUTLINE(개요) 문단도 자동부호 문단 (한컴 2020 PDF '1. 3. 단계별…')" },
+  // v4.17.0 채점 기준 변경 — 정답 표 = 원본 한글 문서에서 눈에 보이는 표 (ref/visible-tables.mjs 정의, 파서와 독립 구현)
+  { id: "visible-tables", desc: "표 채점 정답은 hp:tbl 이 아니라 보이는 표 — 칸 테두리(borderFill)가 그리는 행 띠만 표, 선이 안 보이는 틀 행은 글(칸 글은 재현율 유닛 그대로, 표 번호 없음). 보이는 변 밖 빈 들여쓰기 칸은 버리고 유령 격자선은 접는다. 칸 안 틀 표에서 풀린 글은 부모 칸 글. 법령 별표 272건 중 103건이 본문 전체를 틀 표에 담는다" },
+  { id: "cell-fraction", desc: "칸 두 개와 가로선으로 조립한 분수(할부거래법 시행령 [별표 1] 'A=P×r×(1+r)n/((1+r)n-1)') — 두 칸 글은 수식: 글 재현율 유닛에서 빼고 수식 존재(eqPresence) 모수에 1개로. 파서 출력 $\\frac{…}{…}$ 는 mdToPlain 이 세고 걷는다" },
 ]
 
 // ─── 블랙리스트: 출력 마크다운에 있으면 안 되는 문자열 (phantom 보조, pitfall #7) ───
@@ -81,7 +84,9 @@ export function newPolicyCounters() {
   return {
     shapeAltChars: 0,     // 대체텍스트 패턴으로 제거된 문자수
     excludedElements: {}, // 제외 요소 태그별 카운트
-    nestedTables: 0,      // 중첩표 수 (v3.0: 부모 IRCell.blocks에 보존 — 전부 비교 대상)
+    nestedTables: 0,      // 보이는 표 칸 안에 든 보이는 표 수 (v3.0: 부모 IRCell.blocks에 보존 — 전부 비교 대상)
+    hwpxTables: 0,        // 원본 hp:tbl 수 (v4.17.0 — 보이는 표로 나누기 전)
+    visibleTables: 0,     // 보이는 표 수 (= 표 채점 모수)
     trimmedCols: 0,       // 후행 빈 열 트림된 표 수
     autoNumHeadingParas: 0, // NUMBER/BULLET heading paraPr 사용 문단 수 — phantom 자동번호 관용 게이트
 
