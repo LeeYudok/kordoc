@@ -79,6 +79,9 @@ function mergeFractions(t: IRTable, anchors: Anchor[], H: boolean[][], V: boolea
   for (const u of anchors) {
     const d = at.get((u.r + u.rs) * t.cols + u.c)
     if (!d || d.cs !== u.cs || u.rs !== 1 || d.rs !== 1 || !fractionPart(u.cell) || !fractionPart(d.cell)) continue
+    // 표 온 폭을 차지하는 두 칸은 칸 두 개짜리 표(2×1 분수 표)일 때만 — 서식 끝 "…귀하"·"210mm×297mm" 칸, 제목과 본문 줄이
+    // 가로선 하나로 나뉜 모양이 분수로 잡혔다 (정답 그림 대조: 오탐 10건 → 0, 진짜 분수 9개 유지)
+    if (u.cs === t.cols && anchors.length !== 2) continue
     const bar = d.r, c1 = u.c, c2 = u.c + u.cs
     // 막대: 두 칸 사이 가로선이 두 칸 폭에만 — 옆 칸까지 이어지면 가로선만 긋는 표의 행 구분이다
     let ok = true
@@ -108,6 +111,20 @@ function ruledRows(t: IRTable, anchors: Anchor[], H: boolean[][], V: boolean[][]
 /** 표 띠 [r0, r1] → 새 표. 띠 안에서 시작하는 칸만, 띠 밖으로 나가는 병합은 자른다. 선 밖 빈 칸·안 쓰는 경계는 접는다 */
 function bandTable(t: IRTable, anchors: Anchor[], V: boolean[][], H: boolean[][], r0: number, r1: number): IRTable | null {
   let list = anchors.filter(a => a.r >= r0 && a.r <= r1).map(a => ({ ...a, rs: Math.min(a.rs, r1 - a.r + 1) }))
+  // 선 없이 붙은 빈 여백 행 — 그 행에서 시작하는 칸이 모두 비었고 윗선이나 아랫선이 표 폭 어디에도 없으면 그림에서 이웃 행과
+  // 한 행이다. 접는다 (양곡관리법·에너지이용 합리화법 별표 여백 행, 근로기준법 [별표 6] 여백 행 10개 — 정답 그림 대조 42→48/50.
+  // 윗선·아랫선 둘 다 없을 때만 접으면 에너지이용 합리화법 두 표가 안 접힌다)
+  const blank = (a: Anchor): boolean => !a.cell.text.trim() && !a.cell.blocks?.length
+  const drop: number[] = []
+  for (let r = r0; r <= r1; r++) {
+    if ((!H[r].some(Boolean) || !H[r + 1].some(Boolean)) && list.filter(a => a.r === r).every(blank)) drop.push(r)
+  }
+  if (drop.length) {
+    const shift = (y: number): number => y - drop.filter(d => d < y).length
+    list = list.filter(a => !drop.includes(a.r))
+      .map(a => ({ ...a, r: shift(a.r), rs: shift(a.r + a.rs) - shift(a.r) }))
+      .filter(a => a.rs > 0)
+  }
   // 선이 닿는 열 범위 — 그 밖에 놓인 빈 칸(들여쓰기 칸)은 버린다
   let lo = Infinity, hi = -Infinity
   for (let r = r0; r <= r1; r++) {
@@ -165,7 +182,13 @@ function unframeTable(t: IRTable, pageNumber: number | undefined): IRBlock[] | n
     ;({ H, V } = ruleGrids(t, anchors))
   }
   const ruled = ruledRows(t, anchors, H, V)
-  if (ruled.every(Boolean)) return null
+  if (ruled.every(Boolean)) {
+    // 표 전체가 표 띠여도 안 쓰는 격자선·선 밖 빈 칸·빈 여백 행은 접는다(한글 편집기 격자에만 있는 선, 86712 규제영향분석서 10×8 → 10×5).
+    // 모양이 그대로면 원래 표 객체(sourceId·캡션·곁정보)를 둔다
+    const whole = bandTable(t, anchors, V, H, 0, t.rows - 1)
+    if (!whole || (whole.rows === t.rows && whole.cols === t.cols)) return null
+    return [{ type: "table", table: { ...t, rows: whole.rows, cols: whole.cols, cells: whole.cells }, pageNumber }]
+  }
   const out: IRBlock[] = []
   if (t.caption) out.push({ type: "paragraph", text: t.caption, pageNumber })
   for (let r = 0; r < t.rows;) {

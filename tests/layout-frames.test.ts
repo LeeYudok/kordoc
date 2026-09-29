@@ -96,6 +96,47 @@ describe("unframeLayoutTables", () => {
     assert.ok(!out.includes("\\frac"), out)
   })
 
+  it("선이 다 보이는 표도 안 쓰는 격자선은 접는다 — 모양이 바뀌면 새 표, 속성은 유지", () => {
+    // 3열 격자인데 모든 칸이 0~1열을 병합 — 1열 경계를 어느 칸도 안 쓴다
+    const t = table([
+      [["등급", 2, 1, BOX], ["금액", 1, 1, BOX]],
+      [["1", 2, 1, BOX], ["23,000", 1, 1, BOX]],
+    ], 3)
+    t.sourceId = "tbl-1"
+    const out = unframeLayoutTables([{ type: "table", table: t }])
+    assert.equal(out.length, 1)
+    assert.equal(out[0].table!.cols, 2)
+    assert.equal(out[0].table!.sourceId, "tbl-1")
+    assert.equal(out[0].table!.cells[0][0].colSpan, 1)
+  })
+
+  it("선 없이 붙은 빈 여백 행은 접는다 (A1)", () => {
+    const V: Edges = { t: false, b: false, l: true, r: true }
+    const t = table([
+      [["구분", 1, 1, BOX], ["값", 1, 1, BOX]],
+      [["", 1, 1, V], ["", 1, 1, V]],
+      [["가", 1, 1, { ...V, b: true }], ["1", 1, 1, { ...V, b: true }]],
+    ], 2)
+    // 둘째 행: 세로선만 있고 윗선(첫 행 아랫변)이 보여 여백 행이 아니다 — 첫 행 아랫변을 지워 여백 행으로 만든다
+    CELL_EDGES.set(t.cells[0][0], { ...BOX, b: false })
+    CELL_EDGES.set(t.cells[0][1], { ...BOX, b: false })
+    const out = unframeLayoutTables([{ type: "table", table: t }])
+    assert.equal(out[0].table!.rows, 2)
+    assert.equal(out[0].table!.cells[1][0].text, "가")
+  })
+
+  it("표 온 폭 두 칸 분수는 칸 두 개짜리 표일 때만 (P1)", () => {
+    const B: Edges = { ...NONE, b: true }
+    const form = table([
+      [["위와 같이 신청합니다.", 2, 1, B]],
+      [["○○시장 귀하", 2, 1, NONE]],
+      [["첨부", 1, 1, NONE], ["없음", 1, 1, NONE]],
+    ], 2)
+    assert.ok(!md([{ type: "table", table: form }]).includes("\\frac"))
+    const frac = table([[["F", 1, 1, B]], [["P", 1, 1, NONE]]], 1)
+    assert.match(md([{ type: "table", table: frac }]), /\$\\frac\{F\}\{P\}\$/)
+  })
+
   it("테두리 정보 없는 표(다른 포맷)는 손대지 않는다", () => {
     const t: IRTable = { rows: 1, cols: 2, cells: [[{ text: "a", colSpan: 1, rowSpan: 1 }, { text: "b", colSpan: 1, rowSpan: 1 }]], hasHeader: false }
     assert.equal(unframeLayoutTables([{ type: "table", table: t }])[0].table, t)
