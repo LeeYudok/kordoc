@@ -580,14 +580,14 @@ import type {
 
 ## 📝 Recent Changes
 
+### v4.17.1
+- DOCX scientific supplements: inline equations stay in place (#104) · Symbol-font characters °·×·μ (#105) · `\langle` spacing and equation numbers as `\tag` (#106) · text inside `w:dir`/`w:bdo` (#107) · `images: false` leaves media parts out of the 100 MB unzip limit (#108)
+
 ### v4.17.0
 - Reads Korean documents **as they look**: invisible-border layout frames become text, only ruled parts stay tables, fractions built from two cells and a rule become `$\frac{…}{…}$` (`layoutTables`, default visual; `--keep-layout-tables` keeps the old structure). Statute annexes, 346 visible tables matched: HWP 72 → 346, PDF 66 → 335
 - PDF cross-page tables: split rows, unjoined fragments, tables with pictures, very large grids (151×76)
 - Text after dotted (leader) tabs is no longer cut off (HWPX · HWP5 · HWP3, HWPML tabs)
 - Markdown for `kordoc patch` must come from `--keep-layout-tables` (visual-mode edits are rejected with instructions)
-
-### v4.16.3
-- Security: MCP document generation no longer follows image-folder symlinks outside `KORDOC_ROOT` (#101); MCP also embeds Korean-named images
 
 Full history in the [CHANGELOG](CHANGELOG.md).
 

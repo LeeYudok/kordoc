@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.17.1] - 2026-09-30
+
+과학 논문 보충자료 DOCX 에서 글이 빠지거나 자리를 옮기던 것 다섯 가지를 고친다(#104~#108, @avdelua): 문단 속 인라인 수식이 문단 끝으로 몰리던 것, Word "기호 삽입" 글자(°·×·μ)가 빠지던 것, OMML → LaTeX 가 `\langlex`·`#` 로 깨지던 것, `w:dir`·`w:bdo` 안 글이 빠지던 것, `images: false` 인데도 그림 파트 크기로 100MB 상한에 걸리던 것. 코퍼스 DOCX 72건 중 출력이 바뀐 것은 이 수정이 닿는 4건(KS 표준안 수식 위치·이력서 양식 Symbol 기호, 각 사본 2)뿐이다. DOCX 정답 유닛이 `w:sym` 을 몰라 생긴 거짓 miss 는 채점 기준을 고쳤다(아래).
+
+### Fixed
+
+- **DOCX 인라인 수식 제자리 (#104)**: run 을 다 모은 뒤 문단 끝에 `m:oMath` 를 덧붙여 "Where and are the frequency … $f$ $λ$" 처럼 문장에서 변수가 빠졌다(보고자 실측: 보충자료 398건의 문장 속 인라인 수식 2,254개 중 2,240개) — 문단 자식(sdt·ins·dir 펼침 포함)을 문서 순서대로 훑으며 수식을 그 자리에서 `$…$` 로 낸다. 표 칸 문단도 같다. 링크·`mc:AlternateContent` 안처럼 더 깊이 든 수식만 종전대로 문단 끝. 코퍼스 KS 표준안의 "‘의 곱셈 때문에 와 관련이 있음’. $m\vec{a}$ $\vec{a}$" 가 "‘$m\vec{a}$의 곱셈 때문에 $\vec{a}$와 관련이 있음’" 으로(짝 PDF 와 같은 순서).
+- **DOCX `w:sym` 기호 (#105)**: Word "기호 삽입" 글자는 `w:t` 가 아니라 `<w:sym w:font="Symbol" w:char="F0B0"/>` 로 저장돼 통째로 빠졌다("4 °C" → "4 C", "kg⋅mol" → "kgmol") — Symbol 글꼴은 하위 바이트를 Adobe Symbol 인코딩 표로 유니코드에 옮기고(°·±·×·⋅·μ·α·Δ·Ω·≤·≥ …, `src/docx/symbol-font.ts`), 다른 글꼴은 코드 포인트 그대로 낸다. Wingdings 같은 그림 글꼴과 `F0xx` 글리프 자리는 글자가 아니라 건너뛴다.
+- **DOCX OMML → LaTeX (#106)**: 꺾쇠 괄호가 `\left\langlex`(없는 명령)로 붙던 것 — 글자로 끝나는 명령 뒤에 글자가 오면 한 칸 띄운다. Word 수식 번호 "식#(43)" 이 `#\left(43\right)` 로 나와 KaTeX·MathJax 가 오류를 내던 것 — 한 줄 수식 배열(`m:eqArr`) 끝 번호는 `\tag{43}`, 그 밖의 `#`·`%` 는 `\#`·`\%` 로 이스케이프한다.
+- **DOCX `w:dir`·`w:bdo` 안 글 (#107)**: 양방향 글 조각 요소로 감싼 run(교신저자 이메일)이 빠지던 것 — `w:ins`·`w:smartTag` 처럼 펼쳐 읽는다.
+
+### Changed
+
+- **DOCX `images: false` 는 그림 파트를 풀지 않는다 (#108)**: ZIP 비압축 상한(100MB)이 그림을 쓰지 않는 호출에도 `word/media` 를 세어, 원본 그림이 많은 보충자료가 파싱 전에 거부됐다 — `images: false`(CLI `--no-images`)면 `word/media`·`word/embeddings` 를 풀지도 세지도 않는다(그림 자리 표시 파일명은 그대로). 그림을 추출하다 상한을 넘으면 오류에 그림·개체 파트 크기와 끄는 방법을 적는다. 상한 자체는 종전대로 `KORDOC_MAX_UNZIP_MB` 로 올린다(#91).
+
+### 채점 기준 변경 (2026-09-30)
+
+- formats 트랙 DOCX 정답 유닛(`bench/formats-sweep.mjs`)은 `w:sym` 자리에서 끊고 기호는 채점하지 않는다(OMML 수식과 같은 모수 제외). 정답은 `w:t` 만 이어 붙여 기호를 몰랐고, 파서가 기호를 내자 이력서 양식 "신체.건강상 특이사항" 의 "신체" 가 정렬 최소 조각(3자) 아래로 잘려 거짓 miss 가 났다(docxRecall 0.999989). 정답엔 Symbol 글꼴 표를 두지 않는다(파서와 코드 공유 0) — 기호 변환은 단위 테스트가 본다. 4.17.0 출력도 같은 정답에서 1.
+
 ## [4.17.0] - 2026-09-30
 
 한글 문서를 원본에서 **보이는 모습대로** 읽는다. 테두리를 없앤 표로 쪽을 짠 "틀 표"는 글로 풀고 선이 보이는 부분만 표로 내며, 칸 두 개와 가로선으로 조립한 분수는 `$\frac{…}{…}$` 수식으로 낸다(`layoutTables`, 기본 `"visual"`). 법령 별표 272건(원본에서 보이는 표 346개) 표 완전 일치: HWP 72 → **346**, PDF 66 → **335**(v4.16.3 → 4.17.0, 같은 정답). PDF 쪽 넘김 표(쪼개진 행·안 이어지던 조각·그림 섞인 표·초대형 표)와 점선 탭 뒤 글 잘림도 고쳤다. 채점 정답을 "보이는 표"로 바꾸고 게이트를 다시 잠갔다(채점 기준 변경).
