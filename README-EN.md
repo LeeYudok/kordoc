@@ -578,17 +578,15 @@ import type {
 
 ## 📝 Recent Changes
 
+### v4.16.2
+- Superscripts and subscripts as `<sup>`/`<sub>` — "10⁴ m²" no longer flattens to "104 m2" (`scriptTags`, on by default for HWPX · HWP · DOCX; set `true` for papers and math PDFs)
+- Author-line affiliation marks (∗†) in two-column PDF papers no longer drop above the names
+
 ### v4.16.1
 - Seoul policy-plan preset `서울방침` — title table, chapter boxes, numbered outlines, cover, pre-review checklist and TOC (measured on 16 real approval documents)
 - Default PDF OCR now also reads text inside large images — ODL default 0.940 → 0.960
 - PDF tables 97.4% exact, text word F1 98.8%; OCR char recall 99.0% and precision 99.4%
 - Gaejosik chapter headers can fit the title cell to the text (`chapterFit`, #103)
-
-### v4.16.0
-- More accurate PDF text and tables — char recall 99.8%, exact table match 97.0% against the original HWPX
-- Automatic OCR for pages without a text layer (when the model is cached; `ocr: false` turns it off)
-- DOCX numbered lists use the real numbers ("[3]" · "5.1")
-- CLI images in `images/<document name>/` (#98) · `render --reflow` compatibility (#97) · security hardening (#100)
 
 Full history in the [CHANGELOG](CHANGELOG.md).
 

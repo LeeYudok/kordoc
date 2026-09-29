@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.16.2] - 2026-09-29
+
+위·아래첨자를 `<sup>`·`<sub>` 로 표기한다(`scriptTags` — HWPX·HWP·DOCX 기본 켬, PDF 는 `true` 로 켠다) — 평문으로 펴 "10⁴ m²" 가 "104 m2" 로 값이 바뀌던 것. PDF 2단 논문 저자 줄 소속 표시(∗†)가 이름 위로 떨어지던 것도 고쳤다. PDF 글·표·OCR·ODL 하락 없음(ODL 기본 0.96014·최고 0.97282).
 
 ### Added
 
