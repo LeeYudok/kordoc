@@ -10,10 +10,18 @@
 //     없음)이고, 둘 사이 가로선이 두 칸 열 범위 전체에 보이되 그 경계에서 바로 옆 열로 이어지지 않으며, U 윗변·D 아랫변·두 칸
 //     좌우 변이 모두 안 보이면 분수다. 두 행 병합 한 칸이 되고 그 글은 수식으로 친다(글 재현율 유닛에서 빼고 수식 존재 채점으로).
 //     빈 칸은 분수 항이 아니다(글 아래 밑줄 한 줄일 뿐 — 정의에 없는 해석, 가정으로 명시).
+//     P1: 두 칸이 표 온 폭을 차지하면 그 표가 칸 두 개짜리(2×1)일 때만 분수다 — 양식 끝 "…귀하"·"210mm×297mm[백상지…]" 칸,
+//     "제 목 …" 줄과 "아래와 같이 보고합니다." 줄 사이 괘선은 분수가 아니다. 코퍼스 칸 분수 20개 중 이런 오탐 11개(양식 10·제목 1)가
+//     빠지고 진짜 분수 9개(할부거래법 3·권리면적률·화물자동차·양도소득세 ⑥/④·사망률·exam_social 2×1 분수 표 2)는 그대로
 //  3. 행 띠: 행 r 의 단위 세로 변(바깥 좌우 포함) 중 하나라도 보이거나, 행 r 을 덮는 칸이 둘 이상이고 행 r 윗변·아랫변 가로선이
 //     표 온 폭에 모두 보이면 "표 행". 이어진 표 행 묶음 하나가 보이는 표 하나다. 표 행이 아닌 행은 글.
 //  4. 보이는 표 = 그 묶음 안에서 시작하는 칸만(묶음 밖으로 나가는 rowSpan 은 묶음 끝에서 자름). 보이는 변이 닿는 열 범위 밖에
 //     놓인 빈 칸(들여쓰기 칸)은 버리고, 어느 칸 모서리도 안 쓰는 행·열 경계(유령 격자선)는 접는다.
+//     A1: 그 행에서 시작하는 칸이 모두 비었고(글·개체 없음) 그 행의 윗선 또는 아랫선이 표 폭 어디에도 안 보이면, 선 없이 붙은
+//     여백 행이라 이웃 행에 접는다(행으로 세지 않음 — 윗선이 없으면 위 행에, 아니면 아래 행에). 쪽 나눔·여백용 빈 행이다:
+//     근로기준법 시행령 [별표 6] 은 등급 사이 여백 행 10개가 그림에 없다(25행 → 15행). 법령 별표 한컴 PDF 그림 대조 표본
+//     (무작위 25 + 틀 표 10문서, 보이는 표 50개) 일치 42 → 48/50 — 양곡관리법·에너지이용 합리화법(2표)·야생생물법·군예식령·
+//     군인사법. 남은 둘은 이어쓰기 행(방송법 진단요령)·테두리 상자 안 공식(건축법 [별표 8])
 //  5. 칸 안 중첩표는 같은 정의를 재귀로 — 호출자(hwpx-ref.mjs processTable)가 칸마다 이 함수를 따로 부른다.
 
 const NO_BORDER = { l: false, r: false, t: false, b: false }
@@ -61,6 +69,7 @@ export function visibleTables(grid, { borderOf, isFracPart, isEmpty }) {
     let ok = !hEdge(y, c0 - 1) && !hEdge(y, c1)
     for (let c = c0; c < c1 && ok; c++) ok = hEdge(y, c) && !hEdge(u.r, c) && !hEdge(y + 1, c)
     if (ok) ok = !vEdge(c0, u.r) && !vEdge(c1, u.r) && !vEdge(c0, y) && !vEdge(c1, y)
+    if (ok && c0 === 0 && c1 === cols && vc.length > 2) ok = false // P1: 온 폭 두 칸은 2×1 표일 때만
     if (ok) fracPairs.push([i, j])
   }
   for (const [i, j] of fracPairs) {
@@ -96,7 +105,24 @@ export function visibleTables(grid, { borderOf, isFracPart, isEmpty }) {
     let xmin = Infinity, xmax = -Infinity
     for (let r = r0; r <= r1; r++) for (let x = 0; x <= cols; x++) if (vEdge(x, r)) { xmin = Math.min(xmin, x); xmax = Math.max(xmax, x) }
     for (let y = r0; y <= r1 + 1; y++) for (let c = 0; c < cols; c++) if (hEdge(y, c)) { xmin = Math.min(xmin, c); xmax = Math.max(xmax, c + 1) }
-    const keep = members.filter(v => v.frac || !isEmpty(v.a) || (v.c + v.cs > xmin && v.c < xmax))
+    let keep = members.filter(v => v.frac || !isEmpty(v.a) || (v.c + v.cs > xmin && v.c < xmax))
+    if (!keep.length) continue
+    // A1: 선 없이 붙은 빈 여백 행 — 그 행 빈 칸을 버리고 이웃 행에 접는다. 표 폭 = 남은 칸 열 범위
+    const xs = Math.min(...keep.map(v => v.c)), xe = Math.max(...keep.map(v => v.c + v.cs))
+    const lineAt = y => { for (let c = xs; c < xe; c++) if (hEdge(y, c)) return true; return false }
+    for (let r = r0; r <= r1; r++) {
+      const starts = keep.filter(v => v.r === r)
+      if (!starts.length || starts.some(v => v.frac || !isEmpty(v.a))) continue
+      const rest = keep.filter(v => !starts.includes(v))
+      if (r > r0 && !lineAt(r)) {
+        // 위 행에 접기 — r 에서 끝나던 칸이 이 행까지 덮는다
+        for (const v of rest) if (v.r + v.rs === r) v.rs++
+      } else if (r < r1 && !lineAt(r + 1) && !rest.some(v => v.r < r && v.r + v.rs === r + 1)) {
+        // 아래 행에 접기 — r+1 에서 시작하던 칸이 이 행부터 덮는다 (위에서 내려와 r+1 에서 끝나는 칸이 있으면 접을 수 없다)
+        for (const v of rest) if (v.r === r + 1) { v.r = r; v.rs++ }
+      } else continue
+      keep = rest
+    }
     if (!keep.length) continue
     const cx = [...new Set(keep.flatMap(v => [v.c, v.c + v.cs]))].sort((p, q) => p - q)
     const rx = [...new Set(keep.flatMap(v => [v.r, v.r + v.rs]))].sort((p, q) => p - q)
