@@ -11,7 +11,7 @@
  */
 
 import type { IRBlock, IRCell, IRTable } from "../types.js"
-import { CELL_LINES, CLIP_TABLES, EMPTY_PARTS, FILLER_CELLS, IMAGE_CELLS, PART_COLXS, TABLE_COLXS, TABLE_ROWYS, TABLE_TAIL } from "./table-meta.js"
+import { CELL_LINES, CLIP_TABLES, EMPTY_PARTS, FILLER_CELLS, IMAGE_CELLS, PART_COLXS, ROW_RULES, TABLE_COLXS, TABLE_ROWYS, TABLE_TAIL, type LineBox } from "./table-meta.js"
 import { CONTACT_HEAD, CONTACT_ROLE } from "./contact-table.js"
 import { startsNewItem, type WrapLexicon } from "./line-wrap.js"
 import { NO_EDGES, joinCellEdges } from "./cell-edges.js"
@@ -177,11 +177,27 @@ export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx:
     for (let rr = 0; rr < r; rr++) owner[rr][c] = through
   }
   const table: IRTable = { rows, cols, cells: grid, hasHeader: prev.hasHeader, ...(prev.caption ? { caption: prev.caption } : {}) }
-  let split = rows > prev.rows && mergeSplitRow(table, owner, prev.rows, U)
+  // 쪽 경계 괘선 — 두 조각 모두 칸 밑변마다 괘선을 긋는데 앞 조각 밑변·뒤 조각 윗변만 안 그었으면(open) 쪼개진 행 증거다(mergeSplitRow 3).
+  // 두 쪽 모두 쪽 경계에 괘선을 그었으면(ruled) 칸 조각 이어짐만으로는 세로 병합 칸이 넘어간 새 행과 못 가른다. 짝·홀 쪽으로 옮겨 맞댄
+  // 조각(shifted)은 쪽마다 새로 놓인 상자일 수 있다 — 한 칸 제목 행을 되풀이했으면(편람 "작 성 방 법" 상자 "1. … 8." / "9. …", HWPX 는
+  // 두 표) 목록 번호 이어짐을 증거로 쓰지 않고, 아니어도 앞 조각 목록 번호가 둘 이상일 때만 쓴다 (편람 전송상태값 상자 "…가. …" / "나. …")
+  const pr = ROW_RULES.get(prev), cr = ROW_RULES.get(curr)
+  const shifted = dx !== 0
+  const cut: Cut = {
+    open: !!pr && !!cr && !pr.bottom && !cr.top && pr.innerOpen + cr.innerOpen === 0 && pr.innerRuled + cr.innerRuled > 0,
+    ruled: !!pr && !!cr && pr.bottom && cr.top,
+    list: !shifted ? "any" : skip > 0 && ca.filter(a => a.r < skip && a.cell.text.trim()).length < 2 ? "none" : "multi",
+  }
+  let split = rows > prev.rows && mergeSplitRow(table, owner, prev.rows, U, false, cut)
   // 세로 병합 칸을 이은 뒤 다시 본다 — 뒤 조각 이름표가 여러 행을 덮어 쪼개진 행 판정에서 빠졌던 행("일몰설정 / 예외기준" 이름표 옆
   // "…적용 되어야 / 하는 규제", 규제영향분석서)은 이름표가 한 칸이 되면 칸 조각 이어짐으로 판정된다
   // (글 이어짐 증거만 — 이어 늘린 빈 칸 조각은 증거로 쓰지 않는다: 시험기준표 "KS M ISO 2507-1," / "KS M ISO 2507-2" 는 두 행)
-  if (rows > prev.rows && !split && prevBottom !== undefined && mergeStraddlingCells(table, owner, prev.rows, prevBottom, lex, U)) split = mergeSplitRow(table, owner, prev.rows, U, true)
+  if (rows > prev.rows && !split && prevBottom !== undefined && mergeStraddlingCells(table, owner, prev.rows, prevBottom, lex, U)) split = mergeSplitRow(table, owner, prev.rows, U, true, { ...cut, open: false })
+  // 이은 표의 괘선 — 세 쪽 넘게 이어질 때 앞 조각과 다시 견준다. 잇지 않은 쪽 경계는 칸 밑변 하나로 센다
+  if (pr && cr) {
+    const cutRuled = pr.bottom || cr.top
+    ROW_RULES.set(table, { top: pr.top, bottom: cr.bottom, innerRuled: pr.innerRuled + cr.innerRuled + (!split && cutRuled ? 1 : 0), innerOpen: pr.innerOpen + cr.innerOpen + (!split && !cutRuled ? 1 : 0) })
+  }
   // 머리 행 증거는 되풀이된 행에 글 있는 칸이 둘 이상일 때만 — 한 칸짜리 제목 행은 같은 제목의 상자를 쪽마다 새로 놓은 것과 구별이
   // 안 된다 (편람 기안문 "작성방법" 상자가 짝·홀 쪽에 하나씩 놓여 한 표로 이어졌다, HWPX 는 두 표)
   return { table, colXs: U, split, header: ca.filter(a => a.r < skip && a.cell.text.trim()).length >= 2 }
@@ -329,7 +345,14 @@ function continuesAcross(u: IRCell, d: IRCell, x1: number, x2: number): boolean 
   // 내어쓴 자리에서 시작한 끝줄은 그 자리부터 칸 오른끝까지가 줄 폭이다 (좁은 칸 "(나) 그 / 밖 의" 둘째 줄 31pt, 칸 75pt)
   const indented = last.l - minL >= HANGING_MIN * fs
   if (last.r - last.l < FULL_LINE_MIN_FRAC * (indented ? x2 - last.l : x2 - x1)) return false
-  const leftAligned = (l: { l: number; r: number }) => l.l - minL <= fs && maxR - l.r > SHORT_LINE_GAP * fs
+  // 문단 끝줄은 칸 글 왼끝에서 시작하거나, 내어쓴 자리에서 시작하면 같은 자리의 다른 줄과 오른끝이 달라야 한다 — 가운데 정렬 줄은
+  // 왼끝이 같으면 폭도 같다. 내어쓰기가 글자 하나보다 깊은 칸(10pt 글자에 13pt 내어쓰기, 안전인증기관 기준 "가. … / 1) …")은 끝줄이
+  // 칸 글 왼끝에서 글자 하나 넘게 들어가 있다. 이 넓힌 증거와 아래 내어쓰기 첫 줄은 뒤 쪽 글이 새 항목 머리로 시작하면 쓰지 않는다 —
+  // 앞 끝줄이 문단 끝인데 우연히 꽉 찬 것이다 (폐기물관리법 과태료 "…갱신하지 않은 경우" / 다음 쪽 새 행 "부. 법 제40조제8항에 …")
+  const newItem = startsNewItem(u.text, d.text)
+  const all = D.length ? U.concat(D) : U
+  const leftAligned = (l: LineBox) => maxR - l.r > SHORT_LINE_GAP * fs
+    && (l.l - minL <= fs || (!newItem && all.some(o => o !== l && Math.abs(o.l - l.l) <= HANGING_TOL && Math.abs(o.r - l.r) >= HANGING_MIN * fs)))
   // 양쪽 맞춤이라 모든 줄이 꽉 차 문단 끝줄이 없는 칸 — 앞 쪽 끝줄이 내어쓴 자리(문단 둘째 줄 이후)에서 시작하고 뒤 쪽 첫 줄이
   // 같은 자리에서 이어지면 같은 문단이다 (제약기업 인증 규정 별첨 대비표 "1. 다음 각 목의 … 해 / 당하는 … 받지 않거 / 나, 그 행정처분을…":
   // 93 → 104 → 104). 새 문단이면 뒤 첫 줄이 문단 머리 자리에서 시작한다 (물관리 제안요청서 "‧다국적 …" 다음 "‧수질오염 …")
@@ -340,7 +363,15 @@ function continuesAcross(u: IRCell, d: IRCell, x1: number, x2: number): boolean 
   // 머리 자리에서 시작하거나(내어쓰기) 둘째 줄이 첫 줄보다 나온다(들여쓰기)
   const hangingHead = !indented && D.length >= 2 && D[0].l - last.l >= HANGING_MIN * fs && maxR - D[0].r <= FULL_LINE_TOL * fs
     && D.every(l => Math.abs(l.l - D[0].l) <= HANGING_TOL)
-  return U.some(leftAligned) || D.some(leftAligned) || hanging || hangingHead
+  // 내어쓰기 첫 줄 — 앞 쪽에 문단 첫 줄 한 줄만 보이고 뒤 쪽 첫 줄이 그보다 들어간 자리(내어쓴 자리)에서 새 항목 머리 없이 이어진다
+  // (도시정비법 과징금 "3) 건설업자 또는 등록사업자가" 75pt / 다음 쪽 "법 제132조제2항을 …" 86pt). 새 행이면 뒤 첫 줄은 항목 머리 자리에서
+  // 시작한다. 가운데·오른쪽 정렬 칸도 짧은 뒷줄은 들어가 시작하므로, 뒤 첫 줄이 칸 폭 절반 넘게 차 오른끝을 같이 쓰거나(양쪽 맞춤 — 오른쪽
+  // 정렬 짧은 글 "사무관" / "과장" 과 가른다) 오른끝이 짧게 끝나며 가운데가 어긋나야 한다(가운데 정렬은 두 줄 가운데가 같다)
+  const d0 = D[0]
+  const hangStart = U.length === 1 && !newItem && d0.l - last.l >= HANGING_MIN * fs
+    && ((Math.abs(d0.r - last.r) <= HANGING_TOL && d0.r - d0.l >= FULL_LINE_MIN_FRAC * (x2 - x1))
+      || (last.r - d0.r > SHORT_LINE_GAP * fs && Math.abs(d0.l + d0.r - last.l - last.r) / 2 >= HANGING_MIN * fs))
+  return U.some(leftAligned) || D.some(leftAligned) || hanging || hangingHead || hangStart
 }
 
 /** 개조식 절 제목 줄(□) */
@@ -362,14 +393,24 @@ function outlineContinues(u: IRCell, d: IRCell): boolean {
 /** 한 줄로 끝난 왼쪽 정렬 칸 — 오른쪽에 남은 자리(왼쪽 안쪽 여백만큼 뺀)가 글자 크기의 LABEL_ROOM 배 이상이라 다음 어절이 들어갈 수 있었다.
  *  다음 조각 첫 어절을 알면 그 폭(한글·한자 1em, 나머지 0.55em)도 들어가야 한다 — "…적용 되어야" 뒤 1.5em 남짓한 자리에 "하는"(2em)은
  *  안 들어가 줄이 바뀐 것이다(규제영향분석서 12.규제일몰제). 가운데 정렬 칸은 좌우 여백이 같아 해당하지 않는다 */
-function lineEnded(c: IRCell, x1: number, x2: number, next = ""): boolean {
+function lineEnded(c: IRCell, x1: number, x2: number, next?: IRCell): boolean {
   const L = CELL_LINES.get(c)
   if (!L || L.length !== 1) return false
   const l = L[0], h = l.h || 10
-  const word = next.trim().split(/\s+/)[0] ?? ""
+  // 뒤 조각 첫 줄이 앞 줄보다 들어간 자리에서 시작하면 끝난 이름표 뒤의 새 이름표가 아니라 앞 문단의 아래 항목·내어쓴 줄이다
+  // (군인연금법 유족 증명서류 "1. 가족관계증명서상 자녀인 경우" 168pt / 다음 쪽 "가. 군인등의 …" 180pt — 같은 칸 목록이 쪽을 넘었다)
+  const d0 = next ? CELL_LINES.get(next)?.[0] : undefined
+  if (d0 && d0.l - l.l >= HANGING_MIN * h) return false
+  return (x2 - l.r) - (l.l - x1) >= Math.max(LABEL_ROOM, firstWordUnits(next?.text ?? "")) * h
+}
+
+/** 첫 어절 폭(글자 크기 배) — 한글·한자 1, 나머지 0.55. 여는 괄호 뒤 공백은 텍스트층이 끼운 것이라 다음 낱말과 한 어절로 본다
+ *  (선관위 자격증 "( 자격증종류는 별표 12에 의함)") */
+function firstWordUnits(text: string): number {
+  const word = text.trim().replace(/^([(\[「『<〈])\s+/, "$1").split(/\s+/)[0] ?? ""
   let units = 0
   for (const ch of word) units += /[가-힣\u3400-\u9fff]/.test(ch) ? 1 : 0.55
-  return (x2 - l.r) - (l.l - x1) >= Math.max(LABEL_ROOM, units) * h
+  return units
 }
 
 /**
@@ -392,15 +433,19 @@ const hasContent = (cell: IRCell): boolean => !!cell.text.trim() || !!cell.block
 /**
  * 쪽 넘김으로 쪼개진 행 — 뒤 조각 첫 행을 앞 조각 마지막 행에 합친다. 한컴은 칸 단위로 나누지 않는 표의 긴 행을 글줄
  * 사이에서 끊어 두 쪽에 나눠 그리고, 쪽 끝 행은 쪼개졌든 아니든 본문 바닥까지 늘려 그리므로 기하로는 구별이 안 된다.
- * 두 행의 칸 짜임(열 범위)이 같고, 다음 두 증거 가운데 하나가 있을 때만 합친다.
- *  1) 글 이어짐 — 어느 한 열에서 글이 앞 쪽 끝줄을 꽉 채우고 뒤 쪽으로 이어진다(continuesAcross).
+ * 두 행의 칸 짜임(열 범위)이 같고, 다음 증거 가운데 하나가 있을 때만 합친다.
+ *  1) 글 이어짐 — 어느 한 열에서 글이 앞 쪽 끝줄을 꽉 채우고 뒤 쪽으로 이어지거나(continuesAcross) 문장 중간에서 끊겼다(clauseContinues),
+ *     뒤 쪽 첫 줄 번호가 앞 쪽 칸 목록의 다음 차례다(listContinues).
  *  2) 칸 조각 이어짐 — 한컴은 칸의 첫 조각에는 글이 없어도 클립을 깐다(편람 대비표 빈 시행규칙 칸). 앞 쪽 끝 행에서 시작한
  *     칸(또는 앞 쪽에서도 클립이 없던 칸)이 다음 쪽에 클립이 없으면 그 칸은 다음 쪽 첫 행 띠까지 이어진 것이다. 글 있는 열 쌍이
  *     하나뿐이고 새 칸 증거(앞 쪽 빈 칸 뒤의 글)가 없으면 행이 쪼개진 것으로 본다. 칸 안 문단 경계에서 쪽이 넘어가 글 증거가 없는
  *     행(편람 대비표 "…제1항 / ② 중앙행정기관…")을 여기서 잡는다. 쪽 넘김 후보를 HWPX 로 같은 칸인지 확인한 대조: 표 GT 한컴
  *     407쌍에서 이 조건 42건이 전부 쪼개진 행, 따로 뗀 법령 서식·별표 4세트(rhwp 변환 HWPX)에서 121건 중 새 행 2건.
  *     글 있는 열 쌍이 둘 이상이면 세로 병합 칸만 이어지고 행은 새로 시작하는 경우(시험기준표 "플라이애시 / 시멘트")와
- *     섞여 쓰지 않는다. 위에서 내려온 세로 병합 칸이 클립 없이 넘어간 것은 새 행에서도 똑같아 증거가 아니다
+ *     섞여 쓰지 않는다(아래 carriedSplit 의 두 예외). 위에서 내려온 세로 병합 칸이 클립 없이 넘어간 것은 새 행에서도 똑같아 증거가 아니다
+ *  3) 괘선 없는 쪽 경계 — 두 조각 모두 칸 밑변마다 괘선을 긋는데 쪽 경계만 앞 조각 밑변·뒤 조각 윗변 괘선이 없다(한컴은 쪽을 넘는 칸의
+ *     잘린 변에 테두리를 긋지 않는다). 법령 별표 272건 쪽 넘김 후보에서 이 모양 40건이 모두 쪼개진 행, 새 행 0건
+ *     (군인연금법 유족 증명서류 "바. 「군인 재해보 / 상법」 …" 옆 "1. … 자녀인 경우 / 가. 군인등의 …")
  */
 /** 문장 중간에서 끊긴 끝 어절 — 받침에 맞는 목적격 조사(받침 뒤 "을"·모음 뒤 "를" — "마을" 은 아니다)나 관형형·연결 어미(뒤에 서술어가 와야 하는 -어야 포함) */
 const CLAUSE_OPEN_ENDING = /(?:하는|되는|하고|하며|하여|되어|되고|되며|이며|으며|어야|아야|여야)$/
@@ -416,18 +461,63 @@ function clauseContinues(u: IRCell, d: IRCell): boolean {
   return (last === "을" && batchim(before)) || (last === "를" && !batchim(before)) || CLAUSE_OPEN_ENDING.test(tail)
 }
 
+/**
+ * 줄 넘침 — 앞 쪽 끝줄에 뒤 쪽 첫 어절을 붙이면 칸 폭을 넘는다(가운데 정렬이어도 그 어절은 그 줄에 못 들어가 줄이 바뀌었다). 좁은 칸의
+ * 짧은 글은 새 칸 글과도 곧잘 들어맞아 홀로는 증거가 못 되고, 칸 조각 이어짐(carried)과 함께 볼 때만 쓴다
+ * (양곡가공업자 처분기준 "영업정지 / 3개월" 57pt 칸, 선관위 자격증 "방송 / 통신" 40pt 칸)
+ */
+function wordOverflows(u: IRCell, d: IRCell, x1: number, x2: number): boolean {
+  const U = CELL_LINES.get(u)
+  if (!U?.length || startsNewItem(u.text, d.text)) return false
+  const last = U[U.length - 1], units = firstWordUnits(d.text)
+  return units > 0 && last.r - last.l + units * (last.h || 10) > x2 - x1
+}
+
+/** 한글 항목 번호 차례 */
+const KO_ORDER = "가나다라마바사아자차카타파하"
+/** 줄 머리 항목 번호 — 꼴(1.·1)·(1)·가.·가)·(가)·①·A.)과 차례 */
+function itemMark(line: string): { style: string; n: number } | null {
+  let m = /^(\d{1,2})([.)])(?!\d)/.exec(line)
+  if (m) return { style: "1" + m[2], n: +m[1] }
+  if ((m = /^\((\d{1,2})\)/.exec(line))) return { style: "(1)", n: +m[1] }
+  if ((m = /^([가-하])([.)])/.exec(line)) && KO_ORDER.includes(m[1])) return { style: "가" + m[2], n: KO_ORDER.indexOf(m[1]) }
+  if ((m = /^\(([가-하])\)/.exec(line)) && KO_ORDER.includes(m[1])) return { style: "(가)", n: KO_ORDER.indexOf(m[1]) }
+  if ((m = /^[①-⑳]/.exec(line))) return { style: "①", n: m[0].charCodeAt(0) }
+  if ((m = /^([A-Z])\.\s/.exec(line))) return { style: "A.", n: m[1].charCodeAt(0) }
+  return null
+}
+
+/**
+ * 목록 이어짐 — 뒤 쪽 칸 첫 줄의 항목 번호가 앞 쪽 칸 목록의 다음 차례다(같은 꼴의 마지막 번호 + 1). 칸 안 문단 경계에서 쪽이 넘어가
+ * 글 이어짐 증거가 없는 행(진단기관 지정기준 "가. … 바. …" / 다음 쪽 "사. …", 직무교육기관 장비 "1) … 8) …" / "9) …")을 잡는다.
+ * 앞 쪽 칸 목록은 번호가 둘 이상이거나 칸 첫 줄이 아닌 자리에서 시작해야 한다 — 행마다 항목 하나를 둔 표는 칸 첫 줄이 번호이고
+ * 다음 행이 다음 번호로 시작한다(과태료 부과기준 "다. …" 행 다음 "라. …" 행)
+ */
+function listContinues(u: IRCell, d: IRCell, multi = false): boolean {
+  const head = itemMark(d.text.trim())
+  if (!head) return false
+  const marks = u.text.split("\n").map(l => itemMark(l.trim()))
+  let last = -1, count = 0
+  marks.forEach((m, i) => { if (m?.style === head.style) { last = i; count++ } })
+  return last >= 0 && marks[last]!.n + 1 === head.n && (count >= 2 || (!multi && last > 0))
+}
+
 /** 뒤 쪽 첫 행에 글 있는 칸이 하나뿐이고 그 칸이 개조식 위계로 이어진다 — 다른 열에 새 글(이름표)이 오면 새 행이다 */
 function outlineOnly(pairs: Array<[Anchor, Anchor]>, cell: (a: Anchor) => IRCell): boolean {
   const filled = pairs.filter(([, d]) => hasContent(d.cell))
   return filled.length === 1 && outlineContinues(cell(filled[0][0]), cell(filled[0][1]))
 }
 
-function mergeSplitRow(table: IRTable, owner: (Anchor | null)[][], first: number, colXs: number[], textOnly = false): boolean {
+/** 쪽 경계 괘선과 목록 번호 증거 범위 — joinSplitParts 가 두 조각 곁정보로 정한다 */
+interface Cut { open: boolean; ruled: boolean; list: "any" | "multi" | "none" }
+const NO_CUT: Cut = { open: false, ruled: false, list: "any" }
+
+function mergeSplitRow(table: IRTable, owner: (Anchor | null)[][], first: number, colXs: number[], textOnly = false, cut: Cut = NO_CUT): boolean {
   const last = first - 1
   // 열마다 앞 행 칸과 뒤 행 칸을 맞춘다 — 두 행을 다 덮는 세로 병합 칸(앞 쪽에서 넘어와 이어 늘린 칸)은 그대로 두고,
   // 나머지는 앞 행에서 끝나는 칸과 뒤 행에서 시작하는 칸의 열 범위가 같아야 한다
   const pairs: Array<[Anchor, Anchor]> = []
-  let carried = false, tall = false
+  let carried = false
   for (let c = 0; c < table.cols;) {
     const a = owner[last][c], b = owner[first][c]
     // 두 쪽 모두 클립이 없던 자리 — 글 없는 칸이 쪽을 넘은 부분이다 (행정업무운영 편람 신구조문 대비표: 시행규칙 쪽이 빈 조문 행이
@@ -437,7 +527,11 @@ function mergeSplitRow(table: IRTable, owner: (Anchor | null)[][], first: number
     if (!a || !b) return false
     if (a !== b) {
       if (a.c !== b.c || a.cs !== b.cs || a.r + a.rs - 1 !== last || b.r !== first) return false
-      if (b.rs > 1) tall = true
+      // 뒤 조각 칸이 여러 행을 덮으면 쪽 경계에 걸친 세로 병합 칸의 나머지다(외국환거래법 "다. 등록 또는 인가의 내용 / 이나 조건을
+      // 위반한 경우" 가 다음 쪽 두 행을 덮는다). 앞 쪽 칸이 비었으면 새로 시작한 세로 병합 이름표(가산대상 자격증 빈 칸 아래 "임업"),
+      // 앞 쪽에서도 여러 행을 덮었으면 행은 새로 시작하고 이름표만 쪽 경계를 넘은 것이다(과태료 기준 "…준용하는 / 경우를 포함한다)" 옆
+      // "5회 | 70만원" / "6회 | 90만원" — mergeStraddlingCells 가 잇는다)
+      if (b.rs > 1 && (a.rs > 1 || !hasContent(a.cell))) return false
       pairs.push([a, b])
     } else if (a.r === last && a.rs === 2) carried = true // 앞 쪽 끝 행에서 시작한 칸을 뒤 쪽 첫 행 빈 자리로만 이어 늘렸다 — 더 아래까지
     // 비어 있으면 뒤 쪽 여러 행을 덮는 세로 병합 칸이다(규제영향분석서 "기타"). 쪼개진 행의 이어진 조각은 첫 행 띠 하나다
@@ -445,28 +539,42 @@ function mergeSplitRow(table: IRTable, owner: (Anchor | null)[][], first: number
   }
   // 뒤 쪽 칸 조각의 글 없는 클립은 증거가 아니다 — 한컴 PDF 판(1.3.0.546·538)과 칸에 따라 이어진 빈 조각에도 클립을 깐다
   // (법령 별표 쪼개진 행 17건에 있음). 앞 쪽 빈 칸 뒤에 글이 오는 것만 새 칸 증거다 (글은 칸 위에서부터 흐른다)
-  const carriedSplit = !textOnly && carried && pairs.filter(([u, d]) => hasContent(u.cell) && hasContent(d.cell)).length <= 1
-    && !pairs.some(([u, d]) => !hasContent(u.cell) && hasContent(d.cell))
-  // 뒤 조각 첫 행에서 시작해 여러 행을 덮는 칸은 칸 조각 이어짐으로만 앞 행 칸에 잇는다 — 앞 쪽 끝 행에서 시작한 옆 칸이 클립 없이
-  // 첫 행 띠로 넘어왔으면 그 행이 쪽 경계에서 갈린 것이고, 한 행이 갈리면 그 행의 칸이 모두 갈리므로 같은 열 뒤 조각은 앞 칸의
-  // 나머지다 (농어촌정비법 시설기준 "관광농원" / 다음 쪽 "사업" 6행 — 옆 "영농체험시설" 칸의 빈 조각이 다음 쪽 첫 띠에 클립 없이 이어짐).
-  // 글 이어짐만으로는 잇지 않는다 (첫 행 한 칸 이름표가 새 묶음일 수 있다)
-  if (tall && !carriedSplit) return false
+  const newCell = pairs.some(([u, d]) => !hasContent(u.cell) && hasContent(d.cell))
   // 글줄은 격자에 놓은 복사본 칸에서 본다 — 옮겨 맞댄 뒤 조각(짝·홀 쪽·단 넘김)은 복사본에만 옮긴 글줄이 있다
   const cell = (a: Anchor): IRCell => table.cells[a.r][a.c]
+  // 글 있는 열 쌍이 둘 이상이면 세로 병합 칸만 넘어가고 행은 새로 시작하는 표(규제영향분석서 "10.영향평가 여부" 옆 "기술영향평가 |
+  // 경쟁영향평가 | …" / 다음 쪽 "해당없음 | 해당없음 | …")와 가려야 한다. 쪼개진 행 증거로 쓰는 경우 —
+  //  · 글 있는 뒤 조각 칸이 모두 여러 행을 덮는다: 쪽 경계에 걸린 행의 세로 병합 칸들이 함께 넘어갔다. 새 행이면 한 행 칸이 적어도
+  //    하나 있다 (선관위 자격증 "방송 / 통신"·"기술사 / (자격증종류는 …)" 가 다음 쪽 두 행을 덮고, 옆 "통신사" 칸은 클립 없이 이어진다)
+  //  · 쪽 경계에 괘선이 없고 글 쌍 하나라도 줄 넘침이다 (양곡가공업자 "영업정지 / 3개월")
+  // 이때 다른 열의 한 줄 끝난 글은 칸 안 문단 경계다(선관위 "기능장" / "기사(6) …") — 끝난 이름표 모순(lineEnded)을 보지 않는다.
+  // 법령 별표 272건에서 칸 조각 이어짐 + 글 쌍 둘 이상 35건이 모두 쪼개진 행, 표 GT 에서 새 행 1건(위 규제영향분석서, 괘선 있는 쪽 경계)
+  const contentPairs = pairs.filter(([u, d]) => hasContent(u.cell) && hasContent(d.cell))
+  const carriedSplit = !textOnly && carried && !newCell && (contentPairs.length <= 1 || contentPairs.every(([, d]) => d.rs > 1)
+    || (!cut.ruled && contentPairs.some(([u, d]) => wordOverflows(cell(u), cell(d), colXs[u.c], colXs[u.c + u.cs]))))
   if (!carriedSplit) {
     // 앞 쪽 칸이 한 줄로 끝난 이름표(다음 어절이 들어갈 자리가 남음)인데 뒤 쪽 같은 열에 다른 글이 있으면 그 열은 새 칸이다 — 끝난 칸의
     // 이어진 조각은 글이 없어 클립조차 없다. 다른 열 끝줄이 꽉 찬 것(글 이어짐)보다 이 모순이 앞선다 (편람 [별표 4] 가로 판
     // "8. 글자 | …꽉 찬 끝줄" 다음 쪽 "9. 한글과 함께 적는 외국글자 | 가. 단어를 …", 시험기준표 "액성한계·소성한계 | KS F 2303" 다음 쪽
     // "세립토 비율 | KS F 2309"). 같은 글이면 문단마다 붙는 표지다 (신구조문 대비표 "<신 설>" 이 큰 행 두 조각에 하나씩)
     const norm = (c: IRCell): string => c.text.replace(/\s+/g, "")
-    if (pairs.some(([u, d]) => hasContent(d.cell) && norm(cell(d)) !== norm(cell(u)) && lineEnded(cell(u), colXs[u.c], colXs[u.c + u.cs], cell(d).text))) return false
-    if (!outlineOnly(pairs, cell) && !pairs.some(([u, d]) => continuesAcross(cell(u), cell(d), colXs[u.c], colXs[u.c + u.cs]))
-      && !pairs.some(([u, d]) => clauseContinues(cell(u), cell(d)))) return false
+    if (pairs.some(([u, d]) => hasContent(d.cell) && norm(cell(d)) !== norm(cell(u)) && lineEnded(cell(u), colXs[u.c], colXs[u.c + u.cs], cell(d)))) return false
+    const flows = ([u, d]: [Anchor, Anchor]): boolean => continuesAcross(cell(u), cell(d), colXs[u.c], colXs[u.c + u.cs]) || clauseContinues(cell(u), cell(d))
+    // 괘선 없는 쪽 경계(3)는 글 증거 없이 합친다 — 앞 쪽 빈 칸 뒤 글(새 칸)이 없을 때만 (쪽 끝 빈 행 다음 새 표 행, 노인복지법 운영기준)
+    if (!(cut.open && !newCell)) {
+      // 그 칸 글이 스스로 이어지지 않는 여러 행 칸은 다음 쪽에서 새로 시작한 세로 병합 칸이다 (시험기준표 "KS D 3502 / KS F 4603" 아래
+      // 세 행을 덮는 새 "KS F 4603")
+      if (pairs.some(p => p[1].rs > 1 && !flows(p))) return false
+      // 다른 글 이어짐 증거는 뒤 조각에서 한 행인 칸에서만 본다 — 여러 행을 덮는 칸은 쪽 경계에 걸친 세로 병합 칸이라 그 글이 이어져도
+      // 행은 새로 시작할 수 있다 (특수복식 "2) 여자 경찰 / 공무원 근무복" 칸 옆 "2) 여자 경찰공무원 근무복" 다음 행 "가) 상의 앞면, 뒷면")
+      const one = pairs.filter(([, d]) => d.rs === 1)
+      if (!outlineOnly(pairs, cell) && !one.some(flows) && (cut.list === "none" || !one.some(([u, d]) => listContinues(cell(u), cell(d), cut.list === "multi")))) return false
+    }
   }
   for (const [u, d] of pairs) {
     appendCell(table.cells[u.r][u.c], table.cells[d.r][d.c])
-    if (d.rs > 1) table.cells[u.r][u.c].rowSpan = first + d.rs - u.r
+    // 뒤 조각에서 여러 행을 덮던 칸은 이은 칸이 그만큼 더 덮는다 (아래 줄이기가 경계 행 하나를 뺀다)
+    if (d.rs > 1) table.cells[u.r][u.c].rowSpan = u.rs + d.rs
   }
   // 위에서 내려와 두 행에 걸친 세로 병합 칸은 한 행 줄어든다
   for (let r = 0; r < first; r++) for (let c = 0; c < table.cols; c++) {
