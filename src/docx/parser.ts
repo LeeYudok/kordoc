@@ -771,7 +771,9 @@ async function buildImageMap(
     if (!imgFile) continue
 
     try {
-      const data = readBytes ? await imgFile.async("uint8array") : null
+      // 삼항 안 await 는 CJS 빌드(sucrase)가 못 읽는다 — if 로
+      let data: Uint8Array | null = null
+      if (readBytes) data = await imgFile.async("uint8array")
       imgIdx++
       const ext = imgPath.split(".").pop()?.toLowerCase() ?? "png"
       const mimeMap: Record<string, string> = {
