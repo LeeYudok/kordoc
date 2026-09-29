@@ -19,6 +19,9 @@ export const IMAGE_CELLS = new WeakSet<IRCell>()
 export const FILLER_CELLS = new WeakSet<IRCell>()
 /** 앞 쪽 칸의 이어짐인 1칸 조각 → 그 앞 쪽 칸의 클립 사각형 (clip-cells 판정, cell-continuation 이 앞 쪽 표 그 칸에 붙인다) */
 export const CONT_PARTS = new WeakMap<IRTable, { x1: number; x2: number }>()
+/** 이어짐 1칸 조각을 받아 흐름이 뒤 쪽까지 간 표 → 흐름 끝 조각의 쪽·밑변·높이 (cell-continuation 이 적고, 쪽 넘김 잇기가 그 쪽 다음
+ *  쪽 표와 견준다 — 표 블록의 쪽·bbox 는 첫 조각 것으로 둔다) */
+export const TABLE_END = new WeakMap<IRTable, { page: number; y: number; height: number }>()
 
 /** 칸 글줄 상자 (쪽 좌표, y 는 기준선) — 쪽 넘김 이음 행이 한 칸의 두 조각인지 가를 때 쓴다 (table-parts) */
 export interface LineBox { y: number; l: number; r: number; h: number }

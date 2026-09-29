@@ -11,7 +11,7 @@
  */
 
 import type { IRBlock, IRCell, IRTable } from "../types.js"
-import { CELL_LINES, CLIP_TABLES, EMPTY_PARTS, FILLER_CELLS, IMAGE_CELLS, TABLE_COLXS } from "./table-meta.js"
+import { CELL_LINES, CLIP_TABLES, EMPTY_PARTS, FILLER_CELLS, IMAGE_CELLS, TABLE_COLXS, TABLE_END } from "./table-meta.js"
 import { CONTACT_HEAD, CONTACT_ROLE } from "./contact-table.js"
 import { startsNewItem, type WrapLexicon } from "./line-wrap.js"
 
@@ -130,6 +130,15 @@ export function joinSplitParts(prev: IRTable, pcx: number[], curr: IRTable, ccx:
 
   // 아무 칸도 덮지 않은 자리는 채움 칸으로 남긴다 — 이 표가 다시 앞 쪽 조각과 이어질 때(세 쪽 넘게) 빈 자리로 보고 세로 병합을 잇게
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (owner[r][c] === null) FILLER_CELLS.add(grid[r][c])
+  // 앞 조각 왼쪽에 빠진 열(prevLacksLeftCols) — 쪽 전체를 덮은 세로 병합 칸이 그 쪽에서 클립 없이 지나간 자리다. 쪼개진 행 판정에는 두
+  // 조각 경계를 가로지르는 한 칸으로 보인다(뒤 조각 첫머리 빈 자리까지). "두 쪽 모두 클립 없는 빈 칸 조각" 증거로 쓰면 조세특례 국가전략기술
+  // "반도체" 칸 옆 "너. …" / 다음 쪽 "더. …" 가 한 행으로 합쳐진다. 채움 칸 표시는 그대로라 앞 쪽 조각과 다시 이을 때 세로 병합으로 이어진다
+  for (let c = 0; c < cols && U[c + 1] <= pcx[0] + PART_COL_TOL; c++) {
+    let r = prev.rows
+    while (r < rows && owner[r][c] === null) r++
+    const through: Anchor = { r: 0, c, rs: r, cs: 1, cell: grid[0][c] }
+    for (let rr = 0; rr < r; rr++) owner[rr][c] = through
+  }
   const table: IRTable = { rows, cols, cells: grid, hasHeader: prev.hasHeader, ...(prev.caption ? { caption: prev.caption } : {}) }
   let split = rows > prev.rows && mergeSplitRow(table, owner, prev.rows, U)
   // 세로 병합 칸을 이은 뒤 다시 본다 — 뒤 조각 이름표가 여러 행을 덮어 쪼개진 행 판정에서 빠졌던 행("일몰설정 / 예외기준" 이름표 옆
@@ -429,6 +438,12 @@ function placeJoined(blocks: IRBlock[], i: number, j: number, table: IRTable): v
   if (k > i) blocks.splice(k, 0, blocks.splice(i, 1)[0])
 }
 
+/** 쪽 넘김 판정에 쓰는 표 블록 — 뒤 쪽 1칸 조각을 받아 흐름이 이어진 표(TABLE_END)는 쪽·밑변을 흐름 끝 조각 것으로 바꿔 본다 */
+function flowEnd(b: IRBlock): IRBlock {
+  const e = b.table && TABLE_END.get(b.table)
+  return e && b.bbox ? { ...b, pageNumber: e.page, bbox: { ...b.bbox, page: e.page, y: e.y, height: e.height } } : b
+}
+
 /** 같은 쪽에서 표 테두리 안에 든 블록 — 칸 안 예시 상자처럼 표 칸에 붙지 못하고 표 뒤에 따로 나온 조각 */
 function insideTable(b: IRBlock, t: IRBlock): boolean {
   if (!b.bbox || b.pageNumber !== t.pageNumber) return false
@@ -456,7 +471,7 @@ function sameHeadShape(a: IRCell[] | undefined, b: IRCell[] | undefined): boolea
 export function mergeCrossPageTables(blocks: IRBlock[], pageHeights?: Map<number, number>, lex?: WrapLexicon): void {
   mergeColumnFlow(blocks, pageHeights, lex)
   for (let i = blocks.length - 2; i >= 0; i--) {
-    const prev = blocks[i]
+    const prev = flowEnd(blocks[i])
     if (prev.type !== "table" || !prev.table || !prev.bbox || !prev.pageNumber) continue
     // 다음 표 — 다음 쪽까지만 훑는다 (글만 긴 문서에서 블록마다 끝까지 훑지 않게). 앞 표 테두리 안에 든 표(칸 안 예시 상자가 따로 나온
     // 것)와 앞 표 왼쪽 단의 표(2단 지면)는 건너뛴다 — 편람 [별표 4] 서식 설계기준표는 "3. 쪽번호" 칸 안 예시 상자가 쪽 마지막 표가
@@ -571,14 +586,15 @@ function mergeColumnFlow(blocks: IRBlock[], pageHeights?: Map<number, number>, l
 /**
  * 클립 표 두 조각이 한 표의 쪽 넘김인지 보고 이어 붙인다. 열 경계가 같으면 종전처럼 이어짐으로 보고, 다르면
  * 쪽 넘김 기하(앞 조각이 쪽 밑까지, 뒤 조각이 쪽 위부터 — PAGE_EDGE_BAND)와 오른쪽 끝 일치·뒤 조각 왼쪽 끝이 앞 조각
- * 경계 위에 있음을 요구한다(뒤 쪽에 세로 병합 이어진 칸이 비어 왼쪽 열이 빠진 경우).
+ * 경계 위에 있음을 요구한다(뒤 쪽에 세로 병합 이어진 칸이 비어 왼쪽 열이 빠진 경우). 앞 조각 쪽에서 왼쪽 열이 빠진 경우
+ * (prevLacksLeftCols)와 뒤 조각 경계가 모두 앞 조각 경계 위에 있는 경우(양옆 열이 빠진 쪼개진 끝 행)도 잇는다.
  */
 function joinClipParts(prev: IRBlock, curr: IRBlock, pageHeights?: Map<number, number>, lex?: WrapLexicon): IRTable | null {
   const pt = prev.table!, ct = curr.table!
   if (!CLIP_TABLES.has(pt) || !CLIP_TABLES.has(ct)) return null
   const px = TABLE_COLXS.get(pt), cx = TABLE_COLXS.get(ct)
   if (!px || !cx) return null
-  let xs = cx, shifted = false, dx = 0, foreign = false
+  let xs = cx, shifted = false, dx = 0, foreign = false, within = false
   if (!shiftedSame(px, cx, false)) {
     // 열 구성이 다르면 쪽 넘김 기하를 반드시 확인 (looksContinued 는 쪽 높이를 모르면 통과시킨다)
     if (!pageHeights?.get(prev.pageNumber!) || !pageHeights?.get(curr.pageNumber!)) return null
@@ -587,8 +603,13 @@ function joinClipParts(prev: IRBlock, curr: IRBlock, pageHeights?: Map<number, n
     // 잇는다 — 새 상자의 첫 행은 빈 칸이고 앞 상자 끝 행과 칸 짜임이 달라 둘 다 될 수 없다. 이 조건 없이 옮김만 넣으면 연달아
     // 놓인 상자끼리 이어져 편람 −14표 (클립 표 평행 이동 후보 47건 중 같은 표 5건)
     dx = px[px.length - 1] - cx[cx.length - 1]
-    if (Math.abs(dx) > CONTINUATION_COL_TOL) { xs = cx.map(x => x + dx); shifted = true } else dx = 0
-    if (!px.some(x => Math.abs(x - xs[0]) <= CONTINUATION_COL_TOL)) return null
+    // 뒤 조각의 경계가 모두 앞 조각 경계 위에 있으면 옮겨진 것이 아니라 양옆 열이 빠진 조각이다 — 쪼개진 끝 행에서 글이 넘어간 열만
+    // 클립이 깔리고 글 없이 넘어간 좌우 열은 클립이 없다(총포 행정처분기준 "너. …전자장치를 임의로 / 제거 또는 훼손" 은 위반사항·적용법령
+    // 두 열만 다음 쪽 첫머리에, 9열 중 오른쪽 6열이 빠져 오른끝이 196pt 어긋남). 경계가 우연히 맞물린 새 표와 가르려고 옮긴 조각처럼
+    // 쪼개진 행 증거를 요구한다
+    within = Math.abs(dx) > CONTINUATION_COL_TOL && cx.length >= 3 && cx.every(x => px.some(p => Math.abs(p - x) <= CONTINUATION_COL_TOL))
+    if (Math.abs(dx) > CONTINUATION_COL_TOL && !within) { xs = cx.map(x => x + dx); shifted = true } else dx = 0
+    if (!px.some(x => Math.abs(x - xs[0]) <= CONTINUATION_COL_TOL) && !prevLacksLeftCols(prev, px, xs, pageHeights)) return null
     // 뒤 조각이 절 제목 상자 꼴로 시작하고 안쪽 열 경계가 앞 조각 경계 어디에도 맞물리지 않으면 새로 놓인 상자다 — 옮긴 조각처럼
     // 쪼개진 행·글 있는 머리 행 되풀이가 있을 때만 잇는다(서식 7열 표 뒤 다음 쪽 "목 차" 상자, "3 | 기대성과 및 기대효과"·"5 | 시험방법"
     // 번호 머리 상자, "② 세미나, 포럼, 언론 활동" 제목 상자 — tac-img-02·pr-1674). 쪽마다 열 짜임을 바꾸며 이어지는 별표·서식은 첫 행이
@@ -597,10 +618,21 @@ function joinClipParts(prev: IRBlock, curr: IRBlock, pageHeights?: Map<number, n
     foreign = inner.length > 0 && !inner.some(x => px.some(p => Math.abs(p - x) <= CONTINUATION_COL_TOL)) && headingRow(ct.cells[0] ?? [])
   }
   const res = joinSplitParts(pt, px, ct, xs, dx, prev.bbox?.y, lex)
-  if (!res || ((shifted || foreign) && !res.split && !res.header)) return null
+  if (!res || ((shifted || foreign || within) && !res.split && !res.header)) return null
   TABLE_COLXS.set(res.table, res.colXs)
   CLIP_TABLES.add(res.table)
   return res.table
+}
+
+/**
+ * 앞 조각에 왼쪽 열이 빠졌나 — 앞 조각 왼끝이 뒤 조각 안쪽 경계 위에 있고 앞 조각이 쪽 머리부터 바닥까지 찼다. 왼쪽 열의 세로 병합
+ * 칸이 쪽 전체를 덮고 그 쪽에 글이 없으면 한컴은 그 칸에 클립을 깔지 않아, 가운데 쪽 조각만 왼쪽 열 없이 나온다(해양경찰 관할구역
+ * "동해지방해양경찰청" 칸, 체류자격 첨부서류 "교수(E-1)" 칸). 쪽 전체를 차지한 조각은 표 첫머리가 아니라 사슬 가운데라 머리 행이 없다
+ */
+function prevLacksLeftCols(prev: IRBlock, px: number[], xs: number[], pageHeights?: Map<number, number>): boolean {
+  const ph = pageHeights?.get(prev.pageNumber!)
+  if (!ph || prev.bbox!.y + prev.bbox!.height < ph * (1 - PAGE_EDGE_BAND)) return false
+  return xs[0] < px[0] && xs.slice(1, -1).some(x => Math.abs(x - px[0]) <= CONTINUATION_COL_TOL)
 }
 
 /** 절 제목 상자 꼴의 첫 행 — 짧은 제목 한 칸(공백 뺀 8자 이하), 원문자로 시작하는 제목 한 칸, 번호 칸 + 제목 칸 */
@@ -701,14 +733,14 @@ function chainHead(blocks: IRBlock[], i: number, pageHeights?: Map<number, numbe
     for (let q = p - 1; q >= 0 && blocks[q].pageNumber === blocks[p].pageNumber; q--) {
       if (blocks[q].type === "table" && blocks[q].bbox && insideTable(blocks[p], blocks[q])) { p = q; break }
     }
-    const pb = blocks[p]
+    const pb = flowEnd(blocks[p])
     if (pb.pageNumber !== (cur.pageNumber ?? 0) - 1) break
     if (!blocks.slice(p + 1, k).every(b => besideOwn(b, pb, cur) || insideTable(b, pb))) break
     if (!looksContinued(pb, cur, pageHeights)) break
     const px = TABLE_COLXS.get(pb.table!), cx = TABLE_COLXS.get(cur.table!)
     if (!px || !cx) break
     const dx = px[px.length - 1] - cx[cx.length - 1]
-    if (!shiftedSame(px, cx) && !px.some(x => Math.abs(x - (cx[0] + dx)) <= CONTINUATION_COL_TOL)) break
+    if (!shiftedSame(px, cx) && !px.some(x => Math.abs(x - (cx[0] + dx)) <= CONTINUATION_COL_TOL) && !prevLacksLeftCols(pb, px, cx, pageHeights)) break
     k = p
   }
   return k
