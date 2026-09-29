@@ -9,6 +9,8 @@ import type { IRCell, IRTable } from "../types.js"
 export const CLIP_TABLES = new WeakSet<IRTable>()
 /** 표의 열 경계 x (그리드 좌표, 오름차순) */
 export const TABLE_COLXS = new WeakMap<IRTable, number[]>()
+/** 쪽 넘김으로 이은 클립 표의 첫 조각 열 경계 — 이은 표의 TABLE_COLXS 는 모든 조각의 합집합이다 (table-parts) */
+export const PART_COLXS = new WeakMap<IRTable, number[]>()
 /** 글 없는 클립 표 — 앞 쪽 표가 넘어온 조각일 수 있어(Q&A 상자 마지막 빈 행이 다음 쪽으로 넘어감) 쪽 넘김 잇기까지만
  *  두고, 잇지 못하면 버린다 (mergeCrossPageTables) */
 export const EMPTY_PARTS = new WeakSet<IRTable>()
@@ -19,6 +21,9 @@ export const IMAGE_CELLS = new WeakSet<IRCell>()
 export const FILLER_CELLS = new WeakSet<IRCell>()
 /** 앞 쪽 칸의 이어짐인 1칸 조각 → 그 앞 쪽 칸의 클립 사각형 (clip-cells 판정, cell-continuation 이 앞 쪽 표 그 칸에 붙인다) */
 export const CONT_PARTS = new WeakMap<IRTable, { x1: number; x2: number }>()
+/** 쪽을 넘는 칸 조각을 붙인 표가 실제로 끝난 쪽과 그 조각의 세로 범위(쪽 좌표) — 표 블록은 첫 쪽 자리에 남지만 쪽 넘김 잇기는
+ *  표가 끝난 쪽에서 다음 쪽 조각을 찾는다 (mergeContinuedCells → mergeCrossPageTables) */
+export const TABLE_TAIL = new WeakMap<IRTable, { pageNumber: number; y: number; height: number }>()
 
 /** 칸 글줄 상자 (쪽 좌표, y 는 기준선) — 쪽 넘김 이음 행이 한 칸의 두 조각인지 가를 때 쓴다 (table-parts) */
 export interface LineBox { y: number; l: number; r: number; h: number }

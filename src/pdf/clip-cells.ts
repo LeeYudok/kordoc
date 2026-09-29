@@ -289,6 +289,26 @@ export function buildClipCellGrids(
     const ra = find(g.i), rb = find(g.j)
     if (ra !== rb) root[ra] = rb
   }
+  // 쪽 첫머리 띠의 떨어진 조각 — 앞 쪽에서 쪼개져 넘어온 행의 이 쪽 조각은 글 있는 칸에만 클립이 있어(빈 칸 조각은 클립 없음) 한 띠의
+  // 클립이 틈을 두고 떨어진다. 변을 맞대지 못한 조각은 따로 묶여 표가 갈렸다(석유사업법 과태료 10쪽: 금액 칸 조각 "만 원"·"0만 원"
+  // 9개와 3개가 1×9·1×3 표로, 첫 열 조각만 아래 전폭 행과 한 표). 앞 쪽이 표 칸으로 끝났고, 쪽 첫 내용인 한 띠(윗변·밑변이 같음)의
+  // 조각들이 밑변에 맞붙은 한 칸 위에 모두 놓이며 그 가운데 하나가 그 칸과 이웃이면 한 표로 묶는다 — 띠의 빈 자리는 채움 칸이 된다
+  if (prev.lastCells.length) {
+    const headTop = pageHeight * (1 - HEADER_BAND)
+    let top = -Infinity
+    for (let i = 0; i < cells.length; i++) if (parent[i] < 0 && !tableClip[i]) top = Math.max(top, cells[i].y2)
+    const band = cells.flatMap((c, i) => parent[i] < 0 && !tableClip[i] && Math.abs(c.y2 - top) <= CLIP_COORD_TOL ? [i] : [])
+    const y1 = band.length ? cells[band[0]].y1 : 0
+    if (band.length >= 2 && band.every(i => Math.abs(cells[i].y1 - y1) <= CLIP_COORD_TOL) && !textPoints.some(p => p.y > top + CLIP_EDGE_TOL && p.y < headTop)) {
+      for (let f = 0; f < cells.length; f++) {
+        const b = cells[f]
+        if (parent[f] >= 0 || tableClip[f] || Math.abs(b.y2 - y1) > CLIP_ADJ_GAP) continue
+        const on = band.filter(i => cells[i].x1 >= b.x1 - CLIP_COORD_TOL && cells[i].x2 <= b.x2 + CLIP_COORD_TOL)
+        if (on.length < 2 || !on.some(i => adjacent(cells[i], b))) continue
+        for (const i of on) { const ra = find(i), rb = find(f); if (ra !== rb) root[ra] = rb }
+      }
+    }
+  }
   const groups = new Map<number, number[]>()
   for (let i = 0; i < cells.length; i++) {
     const r = find(i)
@@ -381,6 +401,8 @@ export function buildClipCellGrids(
 
     const colXs = dropSliverGaps(clusterCoords(members.flatMap(r => [r.x1, r.x2])))
     const rowYs = clusterCoords(members.flatMap(r => [r.y1, r.y2])).reverse() // 위→아래 내림차순
+    const band = parentRect ? undefined : carriedBandTop(colXs, rowYs[0], strokedH, strokedV, textPoints, cells, prev.lastCells, headY)
+    if (band !== undefined) rowYs.unshift(band) // 띠 칸은 아래 채움 칸으로 들어간다
     const numRows = rowYs.length - 1, numCols = colXs.length - 1
     if (numRows < 1 || numCols < 1) continue
 
@@ -601,6 +623,30 @@ function closeGaps(members: ClipRect[], gaps: RuledGap[]): ClipRect[] {
     }
   }
   return out
+}
+
+/**
+ * 쪽 첫머리 클립 없는 띠의 윗변 — 앞 쪽에서 쪼개져 넘어온 행의 이 쪽 조각에 글이 한 칸도 없으면 한컴은 그 조각에 클립을 깔지
+ * 않고 괘선만 그린다. 클립 격자는 그 아래 새 행부터 시작해, 쪽 넘김 잇기가 새 행을 쪼개진 행의 나머지로 합친다(농어촌정비법
+ * 시설기준 "조식 제공시설" 칸 아래 새 행 "※ 위 가목부터 …" 가 앞 칸 글 끝에 붙었다). 앞 쪽이 표 칸으로 끝났고, 격자 윗변 위에
+ * 격자 폭을 다 덮는 가로 괘선과 그 괘선까지 올라간 양끝 세로 괘선이 있으며, 그 사이와 위(머리말 띠 밖)에 글·클립이 없으면
+ * 그 괘선을 윗변으로 한 빈 행을 격자 첫 행으로 더한다. 첫 조각은 글이 없어도 클립을 까니 새 표의 첫 행은 이렇게 비지 않는다
+ */
+function carriedBandTop(colXs: number[], top: number, strokedH: LineSegment[], strokedV: LineSegment[],
+  textPoints: ReadonlyArray<{ x: number; y: number }>, cells: ClipRect[], prevLast: ClipRect[], headY: number): number | undefined {
+  const x1 = colXs[0], x2 = colXs[colXs.length - 1]
+  if (!prevLast.some(b => overlap(b.x1, b.x2, x1, x2) > CLIP_EDGE_TOL)) return undefined
+  let y: number | undefined
+  for (const l of strokedH) {
+    if (l.y1 > top + CLIP_MIN_H && l.x1 <= x1 + STROKE_NEAR && l.x2 >= x2 - STROKE_NEAR && (y === undefined || l.y1 < y)) y = l.y1
+  }
+  if (y === undefined || !edgeStroked(strokedV, "v", x1, top, y) || !edgeStroked(strokedV, "v", x2, top, y)) return undefined
+  // 띠 안과 띠 위(머리말 띠 밖)에 글·클립이 없어야 쪽 첫 내용이다
+  const above = Math.max(y, headY)
+  const inX = (x: number): boolean => x > x1 && x < x2
+  if (textPoints.some(p => inX(p.x) && p.y > top && p.y < above)) return undefined
+  if (cells.some(c => overlap(c.x1, c.x2, x1, x2) > CLIP_EDGE_TOL && c.y1 >= top - CLIP_EDGE_TOL && c.y1 < above)) return undefined
+  return y
 }
 
 /**
