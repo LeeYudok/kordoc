@@ -4,6 +4,7 @@
  */
 
 import type { IRCell, IRTable } from "../types.js"
+import type { LineSegment } from "./line-types.js"
 
 /** 한컴 셀 클립으로 셀 기하가 확정된 표 — 클립 묶음이 이미 표 경계다 */
 export const CLIP_TABLES = new WeakSet<IRTable>()
@@ -38,4 +39,35 @@ export function recordCellLines(cell: IRCell, items: ReadonlyArray<{ x: number; 
     } else lines.push({ y: it.y, l: it.x, r: it.x + it.w, h: fs })
   }
   CELL_LINES.set(cell, lines)
+}
+
+/** 클립 표 가로 괘선 — 표 윗변·밑변이 그어졌는지, 칸 밑변(표 밑변 제외) 가운데 괘선이 그어진 자리·안 그어진 자리 수.
+ *  쪽 넘김 쪼개진 행 판정이 본다: 행 경계마다 괘선을 긋는 표에서 쪽 경계만 괘선이 없으면 한 칸이 쪽을 넘은 것이다 (table-parts) */
+export interface RowRules { top: boolean; bottom: boolean; innerRuled: number; innerOpen: number }
+export const ROW_RULES = new WeakMap<IRTable, RowRules>()
+
+type Box = { x1: number; y1: number; x2: number; y2: number }
+/** 가로 괘선이 칸 변(y, x1~x2)을 덮는 비율 — 괘선 y 가 1.5pt 안 */
+function ruleCover(hs: ReadonlyArray<LineSegment>, y: number, x1: number, x2: number): number {
+  const segs = hs.filter(l => Math.abs(l.y1 - y) <= 1.5 && l.x2 > x1 && l.x1 < x2).map(l => [Math.max(l.x1, x1), Math.min(l.x2, x2)]).sort((a, b) => a[0] - b[0])
+  let len = 0, end = x1
+  for (const [a, b] of segs) if (b > end) { len += b - Math.max(a, end); end = b }
+  return x2 > x1 ? len / (x2 - x1) : 0
+}
+
+/** 칸 상자(클립)와 가로 괘선으로 ROW_RULES 기록 — 괘선이 변 폭의 90% 이상을 덮으면 그어진 변. 클립 없이 메운 칸은 보지 않는다 */
+export function recordRowRules(table: IRTable, cells: ReadonlyArray<{ bbox: Box; filler?: boolean }>, bbox: Box, hs: ReadonlyArray<LineSegment>): void {
+  const real = cells.filter(c => !c.filler)
+  const edge = (y: number, pick: (c: { bbox: Box }) => number): boolean => {
+    let w = 0, covered = 0
+    for (const c of real) if (Math.abs(pick(c) - y) <= 1) { w += c.bbox.x2 - c.bbox.x1; covered += ruleCover(hs, y, c.bbox.x1, c.bbox.x2) * (c.bbox.x2 - c.bbox.x1) }
+    return w > 0 && covered >= 0.9 * w
+  }
+  let innerRuled = 0, innerOpen = 0
+  for (const c of real) {
+    if (Math.abs(c.bbox.y1 - bbox.y1) <= 1) continue
+    if (ruleCover(hs, c.bbox.y1, c.bbox.x1 + 0.5, c.bbox.x2 - 0.5) >= 0.9) innerRuled++
+    else innerOpen++
+  }
+  ROW_RULES.set(table, { top: edge(bbox.y2, c => c.bbox.y2), bottom: edge(bbox.y1, c => c.bbox.y1), innerRuled, innerOpen })
 }

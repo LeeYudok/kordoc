@@ -9,7 +9,7 @@ import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 import { joinSplitParts, mergeCrossPageTables } from "../src/pdf/table-parts.js"
 import { WrapLexicon } from "../src/pdf/line-wrap.js"
-import { CLIP_TABLES, EMPTY_PARTS, FILLER_CELLS, TABLE_COLXS, CELL_LINES, recordCellLines } from "../src/pdf/table-meta.js"
+import { CLIP_TABLES, EMPTY_PARTS, FILLER_CELLS, TABLE_COLXS, CELL_LINES, ROW_RULES, recordCellLines } from "../src/pdf/table-meta.js"
 import { trimTrailingEmptyTableCols, markImageCell } from "../src/pdf/table-trim.js"
 import { buildClipCellGrids } from "../src/pdf/clip-cells.js"
 import type { IRBlock, IRCell, IRTable } from "../src/types.js"
@@ -880,5 +880,184 @@ describe("쪽 넘김 2차 — 개조식 위계 이어짐", () => {
     lines(curr.cells[0][0], [[10, 70, 780]])
     const res = joinSplitParts(prev, [0, 300], curr, [0, 300])
     assert.ok(res && !res.split)
+  })
+})
+
+describe("쪽 넘김 3차 — 쪼개진 행의 내어쓰기·세로 병합 나머지", () => {
+  it("앞 쪽에 문단 첫 줄 한 줄만 보이고 뒤 쪽 첫 줄이 내어쓴 자리에서 이어지면 쪼개진 행이다", () => {
+    // 도시정비법 과징금: "3) 건설업자 또는 등록사업자가"(75~257) / 다음 쪽 "법 제132조제2항을 위반하여 …"(86~257), 오른쪽 칸 "공사비의" / "100분의 10"
+    const xs = [58, 261.9, 410.4, 508.5]
+    const prev = grid(1, 3, [[0, 0, "3) 건설업자 또는 등록사업자가"], [0, 1, ""], [0, 2, "공사비의"]])
+    const curr = grid(1, 3, [[0, 0, "법 제132조제2항을 위반하여 시공외제안한 가액의 합이 500만원 이상 1천만원 미만인 경우"], [0, 1, ""], [0, 2, "100분의 10"]])
+    lines(prev.cells[0][0], [[75, 257, 39]])
+    lines(curr.cells[0][0], [[86, 257, 770], [86, 257, 751], [86, 248, 732]])
+    lines(prev.cells[0][2], [[436, 484, 39]])
+    lines(curr.cells[0][2], [[430, 490, 770]])
+    const res = joinSplitParts(prev, xs, curr, xs)
+    assert.ok(res?.split)
+    assert.equal(res.table.rows, 1)
+    assert.match(res.table.cells[0][2].text, /공사비의\n100분의 10/)
+    // 뒤 쪽 첫 줄이 새 항목 머리("4) …")면 들어가 있어도 새 행이다
+    const curr2 = grid(1, 3, [[0, 0, "4) 건설업자 또는 등록사업자가 법 제132조제2항을 위반한 경우"], [0, 1, ""], [0, 2, "공사비의"]])
+    lines(curr2.cells[0][0], [[86, 257, 770], [97, 200, 751]])
+    lines(curr2.cells[0][2], [[436, 484, 770]])
+    const res2 = joinSplitParts(prev, xs, curr2, xs)
+    assert.ok(res2 && !res2.split)
+  })
+
+  it("가운데 정렬 칸은 뒤 쪽 짧은 첫 줄이 들어가 시작해도 내어쓰기 증거가 아니다", () => {
+    const prev = grid(1, 2, [[0, 0, "가나다라마바사아자차카타파하"], [0, 1, "비고"]])
+    const curr = grid(1, 2, [[0, 0, "거너더러머버서"], [0, 1, "비고 둘"]])
+    lines(prev.cells[0][0], [[20, 280, 60]]) // 가운데 150
+    lines(curr.cells[0][0], [[40, 260, 780]]) // 가운데 150, 오른끝도 20 들어감
+    const res = joinSplitParts(prev, [0, 300, 400], curr, [0, 300, 400])
+    assert.ok(res && !res.split)
+  })
+
+  it("내어쓰기가 글자 하나보다 깊은 칸도 같은 자리에서 시작한 짧은 줄이 있으면 왼쪽 정렬로 본다", () => {
+    // 10pt 글자에 13pt 내어쓰기(154 → 167): 끝줄이 칸 글 왼끝에서 글자 하나 넘게 들어가 있다
+    const prev = grid(1, 1, [[0, 0, "가. 다음의 어느 하나에 해당하는 사람 1명 이상 1) 관련 분야 기사 자격을 취득한 후"]])
+    const curr = grid(1, 1, [[0, 0, "해당 실무경력이 3년 이상인 사람 2) 관련 학과 졸업"]])
+    lines(prev.cells[0][0], [[154, 356, 106], [167, 356, 90], [167, 240, 74], [167, 356, 58]])
+    lines(curr.cells[0][0], [[167, 356, 768], [167, 356, 752]])
+    const res = joinSplitParts(prev, [151.6, 358.5], curr, [151.6, 358.5])
+    assert.ok(res?.split)
+  })
+
+  it("뒤 쪽 칸이 여러 행을 덮으면 쪽 경계에 걸친 세로 병합 칸의 나머지로 이어 그 행 수만큼 덮는다", () => {
+    // 외국환거래법: "다. 등록 또는 인가의 내용 / 이나 조건을 위반한 경우"(다음 쪽 두 행), 가운데 칸은 행마다 새 칸, 오른쪽 "업무정지 3개월"
+    // 칸은 다음 쪽 첫 행 자리에 클립 없이 이어진다(칸 조각 이어짐) — 글 쌍 "1) 등록 또는 인가의 내용 / 이나 …" 는 줄 넘침
+    const xs = [59.5, 202.1, 344.8, 504.6]
+    const prev = grid(1, 3, [[0, 0, "다. 등록 또는 인가의 내용"], [0, 1, "1) 등록 또는 인가의 내용"], [0, 2, "업무정지 3개월"]])
+    const curr = grid(2, 3, [[0, 0, "이나 조건을 위반한 경우", 1, 2], [0, 1, "이나 조건을 처음 위반한 경우"], [0, 2, ""], [1, 1, "2) 등록 또는 인가의 내용이나 조건을 위반"], [1, 2, "등록 또는 인가취소"]])
+    FILLER_CELLS.add(curr.cells[0][2])
+    lines(prev.cells[0][0], [[61, 201, 43]])
+    lines(curr.cells[0][0], [[72, 198, 711]])
+    lines(prev.cells[0][1], [[204, 343, 43]])
+    lines(curr.cells[0][1], [[213, 343, 771], [213, 235, 753]])
+    lines(prev.cells[0][2], [[425, 503, 43]])
+    const res = joinSplitParts(prev, xs, curr, xs)
+    assert.ok(res?.split)
+    assert.equal(res.table.rows, 2)
+    assert.equal(res.table.cells[0][0].rowSpan, 2)
+    assert.equal(res.table.cells[0][0].text, "다. 등록 또는 인가의 내용\n이나 조건을 위반한 경우")
+    assert.equal(res.table.cells[0][2].rowSpan, 1)
+    assert.equal(res.table.cells[1][2].text, "등록 또는 인가취소")
+    // 칸 조각 이어짐이 없으면 여러 행 칸은 그 칸 글이 스스로 이어져야 한다 — 새로 시작한 세로 병합 칸(시험기준표 "KS F 4603")은 새 행
+    const prev2 = grid(1, 3, [[0, 0, "H형강 말뚝"], [0, 1, "겉모양, 치수, 무게"], [0, 2, "KS D 3502\nKS F 4603"]])
+    const curr2 = grid(2, 3, [[0, 0, "", 1, 2], [0, 1, "화학성분"], [0, 2, "KS F 4603", 1, 2], [1, 1, "기계적 성질"]])
+    lines(prev2.cells[0][1], [[144, 230, 46]])
+    lines(curr2.cells[0][1], [[144, 184, 753]])
+    lines(prev2.cells[0][2], [[260, 314, 52], [260, 313, 40]])
+    lines(curr2.cells[0][2], [[260, 313, 727]])
+    const res2 = joinSplitParts(prev2, [57.1, 141.4, 239.5, 333.5], curr2, [57.1, 141.4, 239.5, 333.5])
+    assert.ok(res2 && !res2.split)
+  })
+
+  it("앞 쪽 빈 칸 아래 뒤 쪽 칸이 여러 행을 덮으면 새로 시작한 세로 병합 이름표라 새 행이다", () => {
+    // 가산대상 자격증: 앞 쪽 끝 행 직렬 칸이 비고 다음 쪽 첫 행에 "임업"(네 행) — 다른 열 끝줄이 꽉 차 보여도 잇지 않는다
+    const xs = [0, 50, 100, 200]
+    const prev = grid(1, 3, [[0, 0, ""], [0, 1, "생명유전"], [0, 2, "기사 자격증 가산비율 적용: 방사성동위원소취급자(일반), 방사선취급감독자"]])
+    const curr = grid(2, 3, [[0, 0, "임업", 1, 2], [0, 1, "산림조경"], [0, 2, "기사 자격증 가산비율 적용: 나무의사"], [1, 1, "산림자원"], [1, 2, ""]])
+    lines(prev.cells[0][2], [[105, 194, 83], [105, 195, 70], [105, 186, 57]])
+    lines(curr.cells[0][2], [[105, 194, 767], [105, 116, 749]])
+    const res = joinSplitParts(prev, xs, curr, xs)
+    assert.ok(res && !res.split)
+    assert.equal(res.table.rows, 3)
+  })
+})
+
+describe("쪽 넘김 3차 — 목록 이어짐·괘선 없는 쪽 경계·칸 조각 이어짐", () => {
+  it("뒤 쪽 칸 첫 줄 번호가 앞 쪽 칸 목록의 다음 차례면 칸 안 문단 경계에서 쪼개진 행이다", () => {
+    // 직무교육기관 장비: "1) … 8) 심폐소생 인체모형" / 다음 쪽 "9) 혈압계 …", 수량 칸 "1" 줄마다
+    const xs = [70.2, 444.8, 507.1]
+    const prev = grid(1, 2, [[0, 0, "1) 절연저항측정기\n2) 접지저항측정기\n8) 심폐소생 인체모형"], [0, 1, "1\n1\n1"]])
+    const curr = grid(1, 2, [[0, 0, "9) 혈압계\n10) 혈당검사용 간이검사기"], [0, 1, "1\n1"]])
+    lines(prev.cells[0][0], [[76, 160, 93], [76, 170, 74], [76, 194, 55]])
+    lines(curr.cells[0][0], [[76, 128, 757], [76, 224, 738]])
+    const res = joinSplitParts(prev, xs, curr, xs)
+    assert.ok(res?.split)
+    assert.equal(res.table.rows, 1)
+    // 행마다 항목 하나를 둔 표 — 앞 칸 첫 줄의 번호 다음 차례로 시작하는 뒤 칸은 새 행이다
+    const prev2 = grid(1, 2, [[0, 0, "다. 법 제14조를 위반하여 신고하지 않은 경우"], [0, 1, "100"]])
+    const curr2 = grid(1, 2, [[0, 0, "라. 법 제14조제4항을 위반한 경우"], [0, 1, "50"]])
+    lines(prev2.cells[0][0], [[76, 300, 60]])
+    lines(curr2.cells[0][0], [[76, 280, 760]])
+    const res2 = joinSplitParts(prev2, xs, curr2, xs)
+    assert.ok(res2 && !res2.split)
+  })
+
+  it("짝·홀 쪽으로 옮겨 맞댄 조각이 한 칸 제목 행을 되풀이하면 목록 번호 이어짐은 증거가 아니다 (쪽마다 새로 놓인 상자)", () => {
+    // 편람 "작 성 방 법" 상자: "1. … 8. …" / 다음 쪽 "작 성 방 법" + "9. …" (HWPX 는 두 표)
+    const prev = grid(2, 1, [[0, 0, "작 성 방 법"], [1, 0, "1. 행정기관명\n7. 시행 처리과명\n8. 우 도로명주소"]])
+    const curr = grid(2, 1, [[0, 0, "작 성 방 법"], [1, 0, "9. 누리집(홈페이지) 주소"]])
+    lines(prev.cells[1][0], [[95, 300, 160], [95, 350, 140], [108, 250, 120]])
+    lines(curr.cells[1][0], [[95, 400, 700]])
+    const shifted = joinSplitParts(prev, [87.5, 480.8], curr, [99, 492.3].map(x => x - 11.5), 11.5)
+    assert.ok(shifted && !shifted.split)
+    // 같은 자리 조각이면 목록 이어짐으로 잇는다
+    const same = joinSplitParts(prev, [87.5, 480.8], curr, [87.5, 480.8])
+    assert.ok(same?.split)
+  })
+
+  it("칸 밑변마다 괘선을 긋는 표에서 쪽 경계만 괘선이 없으면 글 증거 없이도 쪼개진 행이다", () => {
+    // 군인연금법 유족 증명서류: "1. 가족관계증명서상 자녀인 경우" / 다음 쪽 "가. 군인등의 (상세)가족관계증명서" — 칸 안 문단 경계
+    const xs = [58, 164.8, 531.2]
+    const make = () => ({
+      prev: grid(2, 2, [[0, 0, "마. 조부모"], [0, 1, "1. 군인등의 부모의 가족관계증명서"], [1, 0, "바. 손자녀"], [1, 1, "1. 가족관계증명서상 자녀인 경우"]]),
+      curr: grid(2, 2, [[0, 0, "상이연금 등급"], [0, 1, "가. 군인등의 (상세)가족관계증명서"], [1, 0, ""], [1, 1, "2. 가족관계증명서상 자녀가 아닌 경우"]]),
+    })
+    const { prev, curr } = make()
+    lines(prev.cells[1][1], [[168, 347, 42]])
+    lines(curr.cells[0][1], [[180, 372, 770]])
+    ROW_RULES.set(prev, { top: true, bottom: false, innerRuled: 3, innerOpen: 0 })
+    ROW_RULES.set(curr, { top: false, bottom: true, innerRuled: 2, innerOpen: 0 })
+    const res = joinSplitParts(prev, xs, curr, xs)
+    assert.ok(res?.split)
+    assert.equal(res.table.rows, 3)
+    // 쪽 경계에 괘선이 있으면(행 경계) 잇지 않는다
+    const b = make()
+    lines(b.prev.cells[1][1], [[168, 347, 42]])
+    lines(b.curr.cells[0][1], [[180, 372, 770]])
+    ROW_RULES.set(b.prev, { top: true, bottom: true, innerRuled: 3, innerOpen: 0 })
+    ROW_RULES.set(b.curr, { top: true, bottom: true, innerRuled: 2, innerOpen: 0 })
+    const res2 = joinSplitParts(b.prev, xs, b.curr, xs)
+    assert.ok(res2 && !res2.split)
+  })
+
+  it("칸 조각 이어짐에 글 쌍이 둘 이상이면 뒤 조각 칸이 모두 여러 행을 덮거나, 괘선 없는 쪽 경계에서 줄 넘침이어야 잇는다", () => {
+    // 선관위 자격증: "방송 | 통신사 | 기술사" / 다음 쪽 "통신(두 행) | (클립 없음) | (자격증종류는 …)(두 행)", 그 아래 "통신기술"
+    const xs = [59.5, 100, 149, 226.9]
+    const prev = grid(1, 3, [[0, 0, "방송"], [0, 1, "통신사"], [0, 2, "기술사"]])
+    const curr = grid(2, 3, [[0, 0, "통신", 1, 2], [0, 1, ""], [0, 2, "( 자격증종류는 별표 12에 의함)", 1, 2], [1, 1, "통신기술"]])
+    FILLER_CELLS.add(curr.cells[0][1])
+    lines(prev.cells[0][0], [[69, 91, 42]])
+    lines(prev.cells[0][2], [[150, 182, 42]])
+    const res = joinSplitParts(prev, xs, curr, xs)
+    assert.ok(res?.split)
+    assert.equal(res.table.rows, 2)
+    assert.equal(res.table.cells[0][0].text, "방송\n통신")
+    assert.equal(res.table.cells[0][0].rowSpan, 2)
+    assert.equal(res.table.cells[1][1].text, "통신기술")
+    // 양곡가공업자 처분기준: 이름표 칸들은 클립 없이 이어지고 "영업정지 / 3개월" 은 57pt 칸에 한 줄로 못 들어간다
+    const ys = [72.3, 282.6, 408.1, 465.1, 522]
+    const mk = () => {
+      const p = grid(1, 4, [[0, 0, "2) 과실인 경우"], [0, 1, "경고"], [0, 2, "영업정지"], [0, 3, "영업정지"]])
+      const c = grid(1, 4, [[0, 0, ""], [0, 1, ""], [0, 2, "3개월"], [0, 3, "6개월"]])
+      FILLER_CELLS.add(c.cells[0][0]); FILLER_CELLS.add(c.cells[0][1])
+      lines(p.cells[0][2], [[416, 457, 88]]); lines(p.cells[0][3], [[473, 514, 88]])
+      lines(c.cells[0][2], [[423, 451, 750]]); lines(c.cells[0][3], [[480, 507, 750]])
+      return { p, c }
+    }
+    const a = mk()
+    const res2 = joinSplitParts(a.p, ys, a.c, ys)
+    assert.ok(res2?.split)
+    assert.equal(res2.table.cells[0][2].text, "영업정지\n3개월")
+    // 두 쪽 모두 쪽 경계에 괘선을 그었으면 세로 병합 이름표만 넘어간 새 행(규제영향분석서 "10.영향평가 여부" / "해당없음")과 못 가른다
+    const b = mk()
+    ROW_RULES.set(b.p, { top: true, bottom: true, innerRuled: 4, innerOpen: 0 })
+    ROW_RULES.set(b.c, { top: true, bottom: true, innerRuled: 4, innerOpen: 0 })
+    const res3 = joinSplitParts(b.p, ys, b.c, ys)
+    assert.ok(res3 && !res3.split)
   })
 })

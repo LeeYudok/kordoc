@@ -25,7 +25,7 @@ import { extractImageRegions, type ImageRegion } from "./image-regions.js"
 import { markImageCell } from "./table-trim.js"
 import { mergeSliverColumns } from "./table-trim.js"
 import { headerLineAbove } from "./grid-header-line.js"
-import { CLIP_TABLES, CONT_PARTS, EMPTY_PARTS, FILLER_CELLS, TABLE_COLXS, recordCellLines } from "./table-meta.js"
+import { CLIP_TABLES, CONT_PARTS, EMPTY_PARTS, FILLER_CELLS, TABLE_COLXS, recordCellLines, recordRowRules } from "./table-meta.js"
 import { WrapLexicon } from "./line-wrap.js"
 import { isPageFrameGrid } from "./page-frame.js"
 import { closeOpenTableEnds } from "./open-table-ends.js"
@@ -69,6 +69,8 @@ export function extractPageBlocksWithLines(
   // 1단계: PDF 그래픽 명령에서 선 추출
   const extracted = extractLines(opList.fnArray, opList.argsArray)
   let { horizontals, verticals } = extracted
+  // 칸 변 괘선 판정(recordRowRules)은 그어진 획 그대로 본다 — 전처리가 열린 표 끝에 합성하는 가상 괘선은 빼고
+  const rawRules = extracted.horizontals.concat(extracted.shortH)
   // 밑줄 빈칸("翻译成 ____ （语言）")은 앞 글에 공백으로 메우고 선에서 뺀다 — 빈칸 간격이 표 열·단 사이로 읽히지 않게 (blank-fills.ts)
   const filled = fillBlanks(items, horizontals, verticals)
   items = filled.items
@@ -142,7 +144,7 @@ export function extractPageBlocksWithLines(
   if (detectTables && clipGrids.length === 0 && ruled.length === 0 && lineGrids.length === 0) ruled.push(...detectTextBoxTables(extracted.hiddenBoxes, items, pageNum))
   if (ruled.length > 0) {
     const imageRegions = extractImageRegions(opList.fnArray, opList.argsArray).filter(r => r.x2 - r.x1 >= 8 && r.y2 - r.y1 >= 8)
-    return extractBlocksWithGrids(items, pageNum, pageWidth, pageHeight, grids, horizontals, verticals, imageRegions, lex, ruled)
+    return extractBlocksWithGrids(items, pageNum, pageWidth, pageHeight, grids, horizontals, verticals, imageRegions, lex, ruled, rawRules)
   }
 
   // Repeated dense rows with explicit captions form independent table bands.
@@ -163,7 +165,7 @@ export function extractPageBlocksWithLines(
   if (grids.length > 0) {
     // 셀 안 그림(로고·서명 등) — 8pt 미만 조각은 장식이라 제외
     const imageRegions = extractImageRegions(opList.fnArray, opList.argsArray).filter(r => r.x2 - r.x1 >= 8 && r.y2 - r.y1 >= 8)
-    return extractBlocksWithGrids(items, pageNum, pageWidth, pageHeight, grids, horizontals, verticals, imageRegions, lex)
+    return extractBlocksWithGrids(items, pageNum, pageWidth, pageHeight, grids, horizontals, verticals, imageRegions, lex, [], rawRules)
   }
 
   // Fallback: 기존 휴리스틱 (선이 없는 PDF). 단 안의 그림은 글이 없는 자리라 거터 판정에 점유 사각형으로 넘긴다
@@ -396,6 +398,7 @@ function extractBlocksWithGrids(
   imageRegions: ImageRegion[] = [],
   lex?: WrapLexicon,
   ruled: RuledTable[] = [],
+  rawRules: LineSegment[] = horizontals,
 ): IRBlock[] {
   // OCR 로 읽은 쪽(글이 모두 인식 결과) — 성긴 산문 격자 판정(isSparseProseGrid)은 이 쪽에서만
   const ocrPage = items.length > 0 && items.every(i => i.fontName === "ocr")
@@ -615,7 +618,7 @@ function extractBlocksWithGrids(
       ...(semanticOneColumn ? { renderAsTable: true } : {}),
     }
     // 중첩표도 같은 쪽 넘김 규칙을 쓴다 — pendingNested 분기 전에 기하 출처를 기록한다.
-    if (grid.cells) CLIP_TABLES.add(irTable)
+    if (grid.cells) { CLIP_TABLES.add(irTable); recordRowRules(irTable, grid.cells, grid.bbox, rawRules) }
     TABLE_COLXS.set(irTable, grid.colXs)
     if (grid.continues) CONT_PARTS.set(irTable, grid.continues)
 
