@@ -283,9 +283,27 @@ export function buildClipCellGrids(
       if (adjacent(cells[i], cells[j])) { const ra = find(i), rb = find(j); if (ra !== rb) root[ra] = rb }
     }
   }
-  // 괘선 틈을 사이에 둔 이웃(셀 간격 표·짧은 칸 클립)도 한 표 — 좌표는 격자를 만들 때 닫는다(closeGaps)
+  // 괘선 틈을 사이에 둔 이웃(셀 간격 표·짧은 칸 클립)도 한 표 — 좌표는 격자를 만들 때 닫는다(closeGaps).
+  // 단 위아래 묶음이 저마다 틈 없이 맞닿아 쌓인 행을 가졌고 틈 양끝에 괘선이 따로 그어졌고(위 표 밑 테두리·아래 표 윗 테두리) 틈이 표 안
+  // 틈보다 넓으면 그 가로 틈은 표 안 행 간격이 아니라 따로 쌓은 두 표 사이다 — 셀 간격 표는 모든 칸 사이가, 짧게 깐 칸 클립 표(문서번호
+  // 표)는 모든 행 사이가 떠 있어 맞닿아 쌓인 행이 없다 (경찰복제 특수복식 8쪽: "경찰화" 행으로 끝난 표 밑변 548.04 와 "기타 | 사. 항공
+  // 휘장" 표 윗변 545.28 사이 2.76pt, 경계변경 실태조사서 5쪽 "관할구역도 작성방법" 2.76pt — HWPX 두 표). 한 표 안의 틈은 이보다 좁다:
+  // 이중선 테두리 행 경계 0.95~1.08pt(지적공부 열람 신청서·자율방범대 신고서, 양끝 괘선), 클립 없는 얇은 빈 행 0.96pt(수수료 표, 한쪽 괘선),
+  // 셀 간격 표 1.92~2.52pt. 재해유족급여 청구서의 청구인 칸 묶음 사이(1.92·2.04pt)도 이 폭이라 종전대로 한 표로 둔다(정답 대조로 가를 근거 없음)
+  const stacked = new Set<number>()
+  if (ruledGaps.some(g => g.axis === "y" && g.both && g.hi - g.lo > STACKED_TABLE_GAP)) {
+    for (let i = 0; i < cells.length; i++) {
+      if (tableClip[i]) continue
+      const k = edgeBin(cells[i].y2)
+      for (let d = -1; d <= 1; d++) {
+        if ((startsY.get(k + d) ?? []).some(j => j !== i && !tableClip[j] && parent[j] === parent[i] && adjacent(cells[i], cells[j]))) stacked.add(find(i))
+      }
+    }
+  }
+  const comp = cells.map((_, i) => find(i))
   for (const g of ruledGaps) {
     if (tableClip[g.i] || tableClip[g.j]) continue
+    if (g.axis === "y" && g.both && g.hi - g.lo > STACKED_TABLE_GAP && comp[g.i] !== comp[g.j] && stacked.has(comp[g.i]) && stacked.has(comp[g.j])) continue
     const ra = find(g.i), rb = find(g.j)
     if (ra !== rb) root[ra] = rb
   }
@@ -432,6 +450,8 @@ export function buildClipCellGrids(
 /** 괘선 그어진 틈의 최대 폭 (pt) — 셀 간격 표(행정업무운영 편람 설계 기준 표 1.92~2.52pt)·아래 여백만큼 짧은 칸 클립
  *  (결재문서 문서번호 표 1.32~1.44pt) 실측 */
 const CLIP_SPACING_MAX = 3
+/** 쌓은 두 표 사이로 보는 가로 틈의 최소 폭 (pt) — 한 표 안 틈의 실측 최대(셀 간격 2.52pt)보다 넓어야 한다. 따로 쌓은 표 2.76pt 실측 */
+const STACKED_TABLE_GAP = 2.6
 
 /** 괘선 틈 쌍 — 두 클립(i 가 위·왼쪽), 축, 양끝 좌표(y 틈의 lo 는 아래 칸 윗변·hi 는 위 칸 밑변), 두 클립이 겹친 직각 구간 e1~e2,
  *  괘선으로 본 닫을 좌표(ruleEnd) */

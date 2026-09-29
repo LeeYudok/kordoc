@@ -9,6 +9,11 @@ import type { IRCell, IRTable } from "../types.js"
 export const CLIP_TABLES = new WeakSet<IRTable>()
 /** 표의 열 경계 x (그리드 좌표, 오름차순) */
 export const TABLE_COLXS = new WeakMap<IRTable, number[]>()
+/** 클립 표 첫 조각(첫 쪽)의 행 경계 y (위→아래 내림차순) — 쪽 넘김으로 밀려난 첫 행 묶음의 높이를 잰다 (table-parts) */
+export const TABLE_ROWYS = new WeakMap<IRTable, number[]>()
+/** 마지막 행 칸이 다음 쪽으로 넘어가 그 조각(CONT_PARTS)을 붙인 표 — 표가 실제로 끝나는 쪽과 그 쪽 조각의 밑변·높이
+ *  (cell-continuation 이 기록, 쪽 넘김 잇기가 표 끝 자리로 본다) */
+export const TABLE_TAIL = new WeakMap<IRTable, { page: number; y: number; height: number }>()
 /** 글 없는 클립 표 — 앞 쪽 표가 넘어온 조각일 수 있어(Q&A 상자 마지막 빈 행이 다음 쪽으로 넘어감) 쪽 넘김 잇기까지만
  *  두고, 잇지 못하면 버린다 (mergeCrossPageTables) */
 export const EMPTY_PARTS = new WeakSet<IRTable>()

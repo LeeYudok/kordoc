@@ -25,7 +25,7 @@ import { extractImageRegions, type ImageRegion } from "./image-regions.js"
 import { markImageCell } from "./table-trim.js"
 import { mergeSliverColumns } from "./table-trim.js"
 import { headerLineAbove } from "./grid-header-line.js"
-import { CLIP_TABLES, CONT_PARTS, EMPTY_PARTS, FILLER_CELLS, TABLE_COLXS, recordCellLines } from "./table-meta.js"
+import { CLIP_TABLES, CONT_PARTS, EMPTY_PARTS, FILLER_CELLS, TABLE_COLXS, TABLE_ROWYS, recordCellLines } from "./table-meta.js"
 import { WrapLexicon } from "./line-wrap.js"
 import { isPageFrameGrid } from "./page-frame.js"
 import { closeOpenTableEnds } from "./open-table-ends.js"
@@ -617,6 +617,7 @@ function extractBlocksWithGrids(
     // 중첩표도 같은 쪽 넘김 규칙을 쓴다 — pendingNested 분기 전에 기하 출처를 기록한다.
     if (grid.cells) CLIP_TABLES.add(irTable)
     TABLE_COLXS.set(irTable, grid.colXs)
+    if (grid.cells && finalRows === numRows) TABLE_ROWYS.set(irTable, grid.rowYs)
     if (grid.continues) CONT_PARTS.set(irTable, grid.continues)
 
     // 빈 테이블(모든 셀이 빈 문자열) 스킵
