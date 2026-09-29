@@ -8,7 +8,7 @@
  */
 
 import type { IRBlock, IRCell, IRTable } from "../types.js"
-import { CLIP_TABLES, CONT_PARTS, EMPTY_PARTS, TABLE_COLXS } from "./table-meta.js"
+import { CLIP_TABLES, CONT_PARTS, EMPTY_PARTS, TABLE_COLXS, TABLE_END } from "./table-meta.js"
 import { mergeCrossPageTables } from "./table-parts.js"
 
 /** 조각의 좌우 변과 앞 표 열 경계를 같은 것으로 보는 거리 (pt) — 격자 열 경계는 클립 좌표 묶음(0.3pt)의 평균 */
@@ -55,6 +55,12 @@ export function mergeContinuedCells(blocks: IRBlock[], pageHeights?: Map<number,
     cell.text = [cell.text, add.text].filter(s => s.trim()).join("\n")
     // 앞 쪽 조각이 빈 칸뿐이던 표(쪽 끝에 머리 행만 남은 칸)도 이어진 글을 받았으면 더는 빈 조각이 아니다 — 쪽 넘김 잇기가 버리지 않게
     if (cell.text.trim() || cell.blocks?.length) EMPTY_PARTS.delete(prev.table)
+    // 조각이 쪽 바닥까지 차면 표 흐름 끝은 이제 조각 쪽이다 — 그다음 쪽 표 조각과의 쪽 넘김 잇기가 조각 쪽 바닥에서 이어 본다(체류자격
+    // 첨부서류: 첨부서류 칸만 한 쪽을 통째로 넘긴 20쪽 조각을 19쪽 표에 붙이고 나면 19쪽 표와 21쪽 표 사이가 두 쪽이라 잇지 못했다).
+    // 쪽 중간에서 끝난 조각 바로 아래 표는 같은 쪽에서 이어지는 행들이다 — 종전처럼 앞 표 쪽의 다음 쪽 첫머리 표로 잇는다
+    // (규제영향분석서 "근거설명" 행이 앞 행 내용 칸 33pt 조각 바로 아래에서 시작)
+    const ph = pageHeights?.get(part.pageNumber ?? 0)
+    if (part.bbox && part.pageNumber && ph && part.bbox.y <= ph * CONTINUED_TABLE_PAGE_BAND) TABLE_END.set(prev.table, TABLE_END.get(part.table) ?? { page: part.pageNumber, y: part.bbox.y, height: part.bbox.height })
     blocks.splice(j, 1)
     // 칸 안에서 쪽 경계로 갈린 표 (반제품 아이스팩 기준 틀의 2×2 계산 예시: 첫 행만 앞 쪽에 남은 것)
     if (cell.blocks && at > 0) {
