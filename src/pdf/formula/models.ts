@@ -8,7 +8,7 @@
  * 모델 버전 갱신 시 URL + SHA 를 함께 갱신해야 한다.
  */
 
-import { createHash } from "crypto"
+import { createHash, randomUUID } from "crypto"
 import { createReadStream } from "fs"
 import { mkdir, stat, unlink, rename } from "fs/promises"
 import { createWriteStream } from "fs"
@@ -175,13 +175,8 @@ export async function ensureModelsIn(dir: string, specs: ReadonlyArray<ModelSpec
       continue
     }
 
-    // 기존 파일 있지만 SHA 불일치 → 삭제
-    try {
-      await unlink(localPath)
-    } catch {
-      // 없을 수 있음
-    }
-
+    // Keep the destination until atomic replacement; another process may have
+    // finished a valid download since our initial check.
     await downloadToFile(spec, localPath, onProgress)
   }
 }
@@ -199,11 +194,6 @@ export async function ensureSingleModel(spec: ModelSpec, onProgress?: ProgressHa
   if (await isExistingValid(localPath, spec.sha256)) {
     onProgress?.({ spec, downloaded: 0, total: null, phase: "skip" })
     return
-  }
-  try {
-    await unlink(localPath)
-  } catch {
-    // 재다운로드 전 손상/잔존 파일 정리 best-effort — 애초에 없으면 실패해도 무방
   }
   await downloadToFile(spec, localPath, onProgress)
 }
@@ -235,7 +225,9 @@ async function downloadToFile(
   )
 
   // 먼저 .part 로 받고 검증 후 rename — 중단된 다운로드가 "정상 파일"로 오인되는 걸 방지
-  const partPath = `${localPath}.part`
+  // Batch workers may download the same missing model concurrently. Never share
+  // a partial file: only a fully verified download is atomically published.
+  const partPath = `${localPath}.${randomUUID()}.part`
   await mkdir(dirname(localPath), { recursive: true })
 
   const resp = await fetch(spec.url, {

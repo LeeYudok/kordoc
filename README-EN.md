@@ -342,11 +342,16 @@ Signals: `textChars` · `hangulRatio` · `controlCharRatio` · `replacementCharR
 
 ## 💻 CLI
 
+[Parallel batch benchmarks and limits](docs/parallel-batch.md)
+
+`--jobs N` runs whole-file conversions in parallel using N reusable processes (default: 1). Multiple inputs require `-d`; input filenames must have distinct stems, including across extensions. Failures do not stop other files, and any failure sets a nonzero exit status. Completion messages and failure JSON arrive in completion order. More workers use more memory; tiny files may be slower, and OCR already uses native CPU threads. This does not parallelize pages within one document or change the JavaScript/MCP APIs.
+
 ```bash
 # convert
 npx kordoc business-plan.hwpx                       # print to terminal
 npx kordoc report.hwp -o report.md                  # save to file (images in images/report/)
 npx kordoc *.pdf -d ./converted/                    # batch conversion
+npx kordoc *.pdf --jobs 4 -d ./converted/           # parallel batch (4 reusable processes)
 npx kordoc review.hwpx --format json                # JSON (blocks + pages + metadata)
 npx kordoc review.pdf --format chunks               # RAG structure chunks (breadcrumbs + standalone tables)
 npx kordoc report.hwpx --pages 1-3                  # page range
