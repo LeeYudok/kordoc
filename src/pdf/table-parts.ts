@@ -13,6 +13,7 @@
 import type { IRBlock, IRCell, IRTable } from "../types.js"
 import { CELL_LINES, CLIP_TABLES, EMPTY_PARTS, FILLER_CELLS, IMAGE_CELLS, TABLE_COLXS } from "./table-meta.js"
 import { CONTACT_HEAD, CONTACT_ROLE } from "./contact-table.js"
+import { startsNewItem } from "./line-wrap.js"
 
 /** 두 조각의 경계를 같은 것으로 보는 거리 (pt) — 클립 좌표 오차 0.05pt, 조각 간 반올림 여유 */
 const PART_COL_TOL = 1
@@ -290,6 +291,20 @@ const hasContent = (cell: IRCell): boolean => !!cell.text.trim() || !!cell.block
  *     글 있는 열 쌍이 둘 이상이면 세로 병합 칸만 이어지고 행은 새로 시작하는 경우(시험기준표 "플라이애시 / 시멘트")와
  *     섞여 쓰지 않는다. 위에서 내려온 세로 병합 칸이 클립 없이 넘어간 것은 새 행에서도 똑같아 증거가 아니다
  */
+/** 문장 중간에서 끊긴 끝 어절 — 받침에 맞는 목적격 조사(받침 뒤 "을"·모음 뒤 "를" — "마을" 은 아니다)나 관형형·연결 어미 */
+const CLAUSE_OPEN_ENDING = /(?:하는|되는|하고|하며|하여|되어|되고|되며|이며|으며)$/
+const batchim = (ch: string): boolean => { const k = ch.charCodeAt(0) - 0xac00; return k >= 0 && k < 11172 && k % 28 !== 0 }
+/**
+ * 글 이어짐(문장) — 앞 쪽 칸 글이 문장 중간에서 끊기고 뒤 쪽 칸이 새 항목 머리가 아닌 한글로 시작한다. 가운데 정렬 칸은 끝줄이 오른끝에
+ * 닿는지(continuesAcross)로 못 가려(규제영향분석서 정성분석 "…폐기 사실을 / 입력하므로 제도 도입에 따른…") 말 자체로 본다
+ */
+function clauseContinues(u: IRCell, d: IRCell): boolean {
+  const tail = u.text.trim().split(/\s+/).pop() ?? "", head = d.text.trim()
+  if (!/^[가-힣]{2,}$/.test(tail) || !/^[가-힣]/.test(head) || startsNewItem(u.text, head)) return false
+  const last = tail[tail.length - 1], before = tail[tail.length - 2]
+  return (last === "을" && batchim(before)) || (last === "를" && !batchim(before)) || CLAUSE_OPEN_ENDING.test(tail)
+}
+
 /** 뒤 쪽 첫 행에 글 있는 칸이 하나뿐이고 그 칸이 개조식 위계로 이어진다 — 다른 열에 새 글(이름표)이 오면 새 행이다 */
 function outlineOnly(pairs: Array<[Anchor, Anchor]>, cell: (a: Anchor) => IRCell): boolean {
   const filled = pairs.filter(([, d]) => hasContent(d.cell))
@@ -329,7 +344,8 @@ function mergeSplitRow(table: IRTable, owner: (Anchor | null)[][], first: number
     // "세립토 비율 | KS F 2309"). 같은 글이면 문단마다 붙는 표지다 (신구조문 대비표 "<신 설>" 이 큰 행 두 조각에 하나씩)
     const norm = (c: IRCell): string => c.text.replace(/\s+/g, "")
     if (pairs.some(([u, d]) => hasContent(d.cell) && norm(cell(d)) !== norm(cell(u)) && lineEnded(cell(u), colXs[u.c], colXs[u.c + u.cs]))) return false
-    if (!outlineOnly(pairs, cell) && !pairs.some(([u, d]) => continuesAcross(cell(u), cell(d), colXs[u.c], colXs[u.c + u.cs]))) return false
+    if (!outlineOnly(pairs, cell) && !pairs.some(([u, d]) => continuesAcross(cell(u), cell(d), colXs[u.c], colXs[u.c + u.cs]))
+      && !pairs.some(([u, d]) => clauseContinues(cell(u), cell(d)))) return false
   }
   for (const [u, d] of pairs) appendCell(table.cells[u.r][u.c], table.cells[d.r][d.c])
   // 위에서 내려와 두 행에 걸친 세로 병합 칸은 한 행 줄어든다
