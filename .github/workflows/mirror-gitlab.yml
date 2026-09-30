@@ -32,7 +32,7 @@ jobs:
           # 기본 checkout은 annotated tag를 GITHUB_SHA(대상 커밋)로 덮을 수 있다.
           ref: ${{ inputs.mirror_ref || github.ref }}
 
-      - name: Push ${{ github.ref }} to gitlab.aigov.go.kr
+      - name: Push ${{ inputs.mirror_ref || github.ref }} to gitlab.aigov.go.kr
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
           REPO: ${{ github.event.repository.name }}

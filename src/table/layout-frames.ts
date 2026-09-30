@@ -14,6 +14,7 @@
  */
 
 import type { IRBlock, IRCell, IRTable } from "../types.js"
+import { visibleText } from "./builder.js"
 
 /** 칸의 보이는 변 */
 export interface Edges { t: boolean; b: boolean; l: boolean; r: boolean }
@@ -114,13 +115,28 @@ function ruledRows(t: IRTable, anchors: Anchor[], H: boolean[][], V: boolean[][]
 /** 표 띠 [r0, r1] → 새 표. 띠 안에서 시작하는 칸만, 띠 밖으로 나가는 병합은 자른다. 선 밖 빈 칸·안 쓰는 경계는 접는다 */
 function bandTable(t: IRTable, anchors: Anchor[], V: boolean[][], H: boolean[][], r0: number, r1: number, keepEmptyCols: boolean): IRTable | null {
   let list = anchors.filter(a => a.r >= r0 && a.r <= r1).map(a => ({ ...a, rs: Math.min(a.rs, r1 - a.r + 1) }))
+  const blank = (a: Anchor): boolean => {
+    if (CONTENT_CELLS.has(a.cell)) return false
+    if (!a.cell.blocks?.length) return !a.cell.text.trim()
+    return a.cell.blocks.every(b => (b.type === "paragraph" || b.type === "heading") && !visibleText(b).trim() && !b.footnoteText)
+  }
+  // 선이 닿는 열 범위 — 선 밖 빈 들여쓰기 칸부터 빼야 그 칸을 표 행의 시작으로 세지 않는다.
+  let lo = Infinity, hi = -Infinity
+  for (let r = r0; r <= r1; r++) {
+    for (let c = 0; c <= t.cols; c++) if (V[r][c]) { lo = Math.min(lo, c); hi = Math.max(hi, c) }
+    for (const rr of [r, r + 1]) for (let c = 0; c < t.cols; c++) if (H[rr][c]) { lo = Math.min(lo, c); hi = Math.max(hi, c + 1) }
+  }
+  // 한쪽 세로선만 있는 입력 항목도 경계가 알려져 있다(lo === hi). 선 밖 글·그림은 보존한다.
+  if (Number.isFinite(lo)) list = list.filter(a => a.c < hi && a.c + a.cs > lo || !blank(a))
+  if (!list.length) return null
   // 선 없이 붙은 빈 여백 행 — 그 행에서 시작하는 칸이 모두 비었고 윗선이나 아랫선이 표 폭 어디에도 없으면 그림에서 이웃 행과
   // 한 행이다. 접는다 (양곡관리법·에너지이용 합리화법 별표 여백 행, 근로기준법 [별표 6] 여백 행 10개 — 정답 그림 대조 42→48/50.
   // 윗선·아랫선 둘 다 없을 때만 접으면 에너지이용 합리화법 두 표가 안 접힌다)
-  const blank = (a: Anchor): boolean => !a.cell.text.trim() && !a.cell.blocks?.length && !CONTENT_CELLS.has(a.cell)
   const drop: number[] = []
   for (let r = r0; r <= r1; r++) {
-    if ((!H[r].some(Boolean) || !H[r + 1].some(Boolean)) && list.filter(a => a.r === r).every(blank)) drop.push(r)
+    const starts = list.filter(a => a.r === r)
+    // 시작 칸이 없는 행은 위 칸의 병합 덮개다. 실제 빈 여백 칸이 있는 행만 접는다.
+    if (starts.length && (!H[r].some(Boolean) || !H[r + 1].some(Boolean)) && starts.every(blank)) drop.push(r)
   }
   if (drop.length) {
     const shift = (y: number): number => y - drop.filter(d => d < y).length
@@ -128,14 +144,6 @@ function bandTable(t: IRTable, anchors: Anchor[], V: boolean[][], H: boolean[][]
       .map(a => ({ ...a, r: shift(a.r), rs: shift(a.r + a.rs) - shift(a.r) }))
       .filter(a => a.rs > 0)
   }
-  // 선이 닿는 열 범위 — 그 밖에 놓인 빈 칸(들여쓰기 칸)은 버린다
-  let lo = Infinity, hi = -Infinity
-  for (let r = r0; r <= r1; r++) {
-    for (let c = 0; c <= t.cols; c++) if (V[r][c]) { lo = Math.min(lo, c); hi = Math.max(hi, c) }
-    for (const rr of [r, r + 1]) for (let c = 0; c < t.cols; c++) if (H[rr][c]) { lo = Math.min(lo, c); hi = Math.max(hi, c + 1) }
-  }
-  if (lo < hi) list = list.filter(a => a.c < hi && a.c + a.cs > lo || a.cell.text.trim() || a.cell.blocks?.length)
-  if (!list.length) return null
   // 후행 빈 열 — 띠에서 오른쪽 끝 열이 비면 자른다. 원래 표를 만들 때 builder 가 하는 트림(마크다운 가독성)을 띠 표에도 똑같이:
   // 표 전체로는 글이 있어 남은 열이 한 띠에서만 비는 경우다(결재문서 점검표 "□ | ■ | (빈 칸)" — 생성 → 재파싱 왕복이 어긋났다).
   // keepTrailingEmptyCols(#47 서식 입력란)면 builder 처럼 두고
@@ -202,7 +210,8 @@ function unframeTable(t: IRTable, pageNumber: number | undefined, keepEmptyCols:
     return [{ type: "table", table: { ...t, rows: whole.rows, cols: whole.cols, cells: whole.cells }, pageNumber }]
   }
   const out: IRBlock[] = []
-  if (t.caption) out.push({ type: "paragraph", text: t.caption, pageNumber })
+  if (t.captionBlocks?.length) out.push(...t.captionBlocks)
+  else if (t.caption) out.push({ type: "paragraph", text: t.caption, pageNumber })
   for (let r = 0; r < t.rows;) {
     if (ruled[r]) {
       let r1 = r
@@ -224,6 +233,7 @@ export function unframeLayoutTables(blocks: IRBlock[], keepEmptyCols = false): I
   const out: IRBlock[] = []
   for (const b of blocks) {
     if (b.type !== "table" || !b.table) { out.push(b); continue }
+    if (b.table.captionBlocks?.length) b.table.captionBlocks = unframeLayoutTables(b.table.captionBlocks, keepEmptyCols)
     const flat = unframeTable(b.table, b.pageNumber, keepEmptyCols)
     const kept = flat ?? [b]
     for (const k of kept) {

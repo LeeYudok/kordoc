@@ -1,0 +1,144 @@
+{
+  "schema": "kordoc-hwpx-table-refactor/v1",
+  "date": "2026-09-30",
+  "version": "4.17.3",
+  "status": "unit, type, build and independent checks passed; normal publish gates pending",
+  "baselineCommit": "107a981d120944a157796865d98b5256db9d2c95",
+  "originalPopulation": {
+    "documents": 2286,
+    "tables": 9865
+  },
+  "before": {
+    "exactTables": 9834,
+    "tableExactPercent": 99.68575772934616,
+    "cellF1": 0.997993,
+    "contentNED": 0.999627,
+    "cellExact": 0.999677
+  },
+  "target100Achieved": false,
+  "parserCasesFixed": 15,
+  "remainingGroundTruthCases": {
+    "invalidNegativeDimensions": 14,
+    "equationOnlyColumns": 2,
+    "total": 16
+  },
+  "immutable": {
+    "groundTruth": true,
+    "evaluator": true,
+    "corpus": true,
+    "exclusions": true
+  },
+  "references": {
+    "originalAudit": "hwpx-table-original-audit-2026-09-30.json"
+  },
+  "regressionProtection": [
+    "1x1/one-column image output",
+    "caption image Markdown/HTML after unframing",
+    "placeholder keep / display / filled modes",
+    "image/math/footnote preservation",
+    "merged cover rows and visible boundary order",
+    "empty spans text fallback",
+    "caption-only footnote after parent unframing"
+  ],
+  "gitlab": {
+    "sourceFixCommit": "d6e8c84f158e3df9afdc961a0f29f54c4df81c3a",
+    "previousFailure": "OSV vulnerable fast-uri/ip-address (fixed in 4.17.2)",
+    "repairRun": "https://github.com/chrisryugj/kordoc/actions/runs/36713304551",
+    "repairRunConclusion": "success",
+    "originalTagObject": "ec18ae36396f1ad74f27c5fd827309bc5bc21ba7",
+    "originalTagTarget": "89b3e52b245e168c12ab8eba78601007092fc1a3",
+    "remoteTagVerified": true
+  },
+  "visual": {
+    "status": "not run",
+    "reason": "Hancom GUI unavailable; earlier explicit user instruction to proceed with deployment after disclosure remains applicable"
+  },
+  "after": {
+    "exactTables": 9849,
+    "tableExactPercent": 99.83781044095286,
+    "cellF1": 0.998581,
+    "contentNED": 0.999953,
+    "cellExact": 0.999982
+  },
+  "fullHwpxVerification": {
+    "generatedAt": "2026-09-30T12:39:30.648Z",
+    "documents": 2286,
+    "tables": 9865,
+    "refChars": 5548157,
+    "pass": true,
+    "remaining": [
+      {
+        "file": "licbyl/17337363_주민투표관리규칙_인영신고서.hwpx",
+        "exact": 1,
+        "ref": 2
+      },
+      {
+        "file": "licbyl/18194893_상표법 시행규칙_국제출원서.hwpx",
+        "exact": 46,
+        "ref": 59
+      },
+      {
+        "file": "rhwp/3-09월_교육_통합_2023.hwpx",
+        "exact": 1,
+        "ref": 2
+      },
+      {
+        "file": "rhwp/3-10월_교육_통합_2022.hwpx",
+        "exact": 2,
+        "ref": 3
+      }
+    ]
+  },
+  "finalDistSHA256": "b6aa73022cbec4734a3c1ad7ba9393c7a571f4ed00610603d650cfdd286a9518",
+  "renderingFixes": {
+    "imagesAfterCollapse": true,
+    "captionImagesMarkdownAndHtml": true,
+    "standaloneFootnotes": true,
+    "plainNumberFormatPreserved": true,
+    "emptySpanTextFallback": true,
+    "unframedCaptionFootnotes": true
+  },
+  "unitTests": {
+    "tests": 2796,
+    "suites": 816,
+    "passed": 2796,
+    "failed": 0,
+    "skipped": 0
+  },
+  "independentReview": {
+    "status": "PASS",
+    "focusedTests": 77,
+    "failed": 0,
+    "skipped": 0,
+    "sourceModified": false
+  },
+  "performance": {
+    "documents": 12,
+    "runsPerVersion": 7,
+    "method": "Same process; inputs preloaded; warmup; alternating order; parse+render end to end",
+    "beforeMedianMs": 787.297084,
+    "afterMedianMs": 782.6100000000006,
+    "times": {
+      "before": [
+        787.297084,
+        815.4805409999999,
+        783.8260829999999,
+        798.125916,
+        778.1586250000009,
+        794.2786250000008,
+        778.6890000000003
+      ],
+      "after": [
+        796.9894589999999,
+        801.1804160000002,
+        782.5474589999994,
+        801.5615829999997,
+        782.6100000000006,
+        760.9693750000006,
+        780.3788750000003
+      ]
+    },
+    "percentChange": -0.5953386714181552,
+    "interpretation": "No material performance regression in the 12-document diagnostic sample; not a corpus-wide speed claim"
+  }
+}
