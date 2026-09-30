@@ -175,6 +175,17 @@ describe("bodyLineJoins — 본문 꺾임 기하", () => {
     assert.deepEqual(joins, [" ", "\n", " ", "\n", " "])
   })
 
+  it("왼쪽 정렬 묶음에서 다단계 번호(\"5.1 \")로 여는 줄은 새 조항이라 잇지 않는다", () => {
+    // SOP 실측: 짧은 줄만 모인 묶음이라 오른끝이 229 — "5 …기계장치"(223) 끝에 "5.1" 이 못 들어간다
+    const joins = bodyLineJoins([
+      line("5 사용 원자재 또는 기계장치", 70, 223, 700, 11),
+      line("5.1 채취용기(1.5L 유리병)", 90, 229, 681, 11),
+      line("5.2 배수용 물통", 90, 176, 662, 11),
+    ])
+    // 둘째 자리("5.1 …" → "5.2 …")는 묶음에서 가장 넓은 찬 줄이라 기존 full 판정이 잇는다 — 이 규칙의 몫이 아니다
+    assert.equal(joins[0], "\n")
+  })
+
   it("양쪽 정렬 묶음의 덜 찬 줄은 문단 끝줄이라 잇지 않는다 (ODL 188 \"e.g., H6.\" ⏎ \"Model merging.\")", () => {
     const joins = bodyLineJoins([
       line("et al., 2021). We utilize these datasets as benchmarks for", 72, 290, 700),

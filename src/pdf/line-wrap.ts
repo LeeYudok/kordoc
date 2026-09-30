@@ -262,6 +262,8 @@ export interface WrapLine { text: string; left: number; right: number; y: number
 
 /** 여백 밖에 매달리는 줄 끝 전각 구두점 */
 const HANGING = /[，。、：；！？）」』】〕》〉．]\s*$/
+/** 다단계 번호 머리 — "5.1 채취용기", "7.1.1.2 장기 가동중단" (공백까지 있어야 "1.5L"·"3.5kg" 과 갈린다) */
+const MULTI_LEVEL_NUMBER = /^\d{1,2}(?:\.\d{1,3})+\.?\s/
 /** 찬 줄: 묶음 오른끝에 글자 크기 0.25배 안 — 양쪽 정렬 본문은 꺾인 줄이 오른끝까지 찬다 */
 const BODY_FULL_TOL = 0.25
 /** 꺾인 줄 최소 폭(글자 크기 배) — 좁은 줄(가운데 정렬 제목·서명란)은 묶음에서 가장 넓어 오른끝에 닿아도 꺾임이 아니다
@@ -318,7 +320,8 @@ export function bodyLineJoins(lines: WrapLine[], lex?: WrapLexicon): string[] {
     const fs = a.fontSize
     const others = i === i1 ? p2 : p1 // 다른 쌍이 없으면 Infinity — 상대 기준 없이 2em
     const maxPitch = Number.isFinite(others) ? Math.min(BODY_MAX_PITCH_ABS_EM * fs, Math.max(BODY_MAX_PITCH_EM * fs, others * BODY_PITCH_REL)) : BODY_MAX_PITCH_EM * fs
-    const wordWrap = !full(a) && nextWordNoRoom(a, b)
+    // 다단계 번호("5.1 ", "7.1.2 ")로 여는 줄은 새 조항이다 — ITEM_HEAD 는 한 단계 번호만 본다
+    const wordWrap = !full(a) && nextWordNoRoom(a, b) && !MULTI_LEVEL_NUMBER.test(b.text.trimStart())
     const wraps = fs > 0
       && (full(a) || wordWrap)
       && a.right - a.left >= BODY_MIN_WIDTH_EM * fs
