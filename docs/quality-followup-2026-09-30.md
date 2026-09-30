@@ -43,4 +43,6 @@ OCR의 공정 CER·문자 F1 등은 직전 개선 결과와 동일하다. strict
 
 main 커밋 3ff5280의 Node 20/22/24 CI는 모두 통과했다. 미러 OSV가 기존 MCP 간접 의존성 fast-uri 3.1.7 및 ip-address 10.7.0을 거부해 각각 3.1.8·10.7.2로 호환 갱신했다. 이후 전체 2,772테스트(실패·skip 0), typecheck·build·메타·고지·npm audit(취약점 0), CJS/ESM 생성·파싱 통합 검사를 통과했다. 파서 소스와 ESM index 해시는 고정 C와 동일하다. 전체 코퍼스 게이트는 이 lockfile 추가 패치 이전 C에서 통과한 기록이며, 의존성 패치 후 전체 코퍼스를 재실행했다고 표시하지 않는다.
 
-[4.17.2 릴리스 초안](https://github.com/chrisryugj/kordoc/releases/tag/untagged-46a7acafd922d5b63d61)에 패키지를 첨부했다. npm registry는 4.17.1, 공개 v4.17.2 태그 없음.
+[4.17.2 릴리스 초안](https://github.com/chrisryugj/kordoc/releases)에 패키지를 첨부했다. npm registry는 4.17.1, 공개 v4.17.2 태그 없음.
+
+미러는 demo/package-lock.json도 검사하므로 데모의 fast-uri 3.1.7→3.1.8 항목도 갱신했다. 데모 npm audit도 취약점 0이며, 데모 코드는 변경하지 않았다.

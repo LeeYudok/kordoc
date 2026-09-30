@@ -736,7 +736,7 @@
       "sha256": "847612a9efdb58e5c042e572647cb04752dd86be6affabf4711df4f6fe3dc7c6",
       "size": 5572237
     },
-    "draftUrl": "https://github.com/chrisryugj/kordoc/releases/tag/untagged-46a7acafd922d5b63d61",
+    "draftUrl": "https://github.com/chrisryugj/kordoc/releases",
     "publicTagCreated": false,
     "mainIntegration": {
       "qualityCommit": "3ff5280a6cb093805d56f1bbc08e79de0239092d",
@@ -1054,6 +1054,12 @@
     "allSourceAndEsmIndexHashesPreserved": true,
     "cjsEsmGenerateParse": true,
     "cjsBuildDifference": "Symlink versus local node_modules path in tsup shim comment changes chunk IDs; canonical CJS index body identical",
-    "fullCorpusGateScope": "Full prepublish gate passed on frozen C before this SDK-only dependency lockfile patch; parser ESM and source hashes remain identical"
+    "fullCorpusGateScope": "Full prepublish gate passed on frozen C before this SDK-only dependency lockfile patch; parser ESM and source hashes remain identical",
+    "demoLockfile": {
+      "fastUriBefore": "3.1.7",
+      "fastUriAfter": "3.1.8",
+      "scope": "Single transitive package entry; demo source and package ranges unchanged",
+      "auditVulnerabilities": 0
+    }
   }
 }
