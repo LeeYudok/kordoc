@@ -13,7 +13,7 @@ import { dropShadingClipGrids, dropInsetClipGrids, dropHeadBandClipGrids } from 
 import { chainShortSegments } from "./line-extract.js"
 import { extractLines, preprocessLines, filterPageBorderLines, closeOpenTableEdges, bridgeSplitColumnVerticals, buildTableGrids, extractCells, mapTextToCells, cellTextToString, normalizeUndersegmentedTable, type TextItem, type TableGrid, type LineSegment } from "./line-detector.js"
 import { detectClusterTables, findTwoColumnProseCutX, type ClusterItem, type ClusterTableResult } from "./cluster-detector.js"
-import { type NormItem, collapseEvenSpacing, computeBBox, dominantStyle, groupByY, mergeSuperscriptLines, mergeLineSimple } from "./text-line.js"
+import { type NormItem, computeBBox, dominantStyle, groupByY, mergeSuperscriptLines, mergeLineSimple } from "./text-line.js"
 import { findRuledColumnDivider } from "./ruled-columns.js"
 import { xyCutOrder } from "./xy-cut.js"
 import { fillBlanks } from "./blank-fills.js"
@@ -26,8 +26,9 @@ import { markImageCell } from "./table-trim.js"
 import { mergeSliverColumns } from "./table-trim.js"
 import { headerLineAbove } from "./grid-header-line.js"
 import { CLIP_TABLES, CONT_PARTS, EMPTY_PARTS, FILLER_CELLS, TABLE_COLXS, TABLE_ROWYS, recordCellLines, recordRowRules } from "./table-meta.js"
-import { NO_EDGES, recordClipCellEdges, takeClipCellEdges } from "./cell-edges.js"
-import { CELL_EDGES } from "../table/layout-frames.js"
+import { recordClipCellEdges, takeClipCellEdges } from "./cell-edges.js"
+import { cleanCellText } from "./cell-text.js"
+import { rebuildUnitLine, prependUnitRow, attachUnitRow } from "./table-unit-row.js"
 import { WrapLexicon } from "./line-wrap.js"
 import { isPageFrameGrid } from "./page-frame.js"
 import { closeOpenTableEnds } from "./open-table-ends.js"
@@ -330,12 +331,6 @@ function isSparseProseGrid(table: IRTable): boolean {
   return prose >= chars * 0.6
 }
 
-/** 셀 텍스트 정리 — 페이지 번호 표시("- 2 -") 제거 + 줄별 균등배분 공백 제거("경 제 총 괄 반" → "경제총괄반") */
-function cleanCellText(text: string): string {
-  const stripped = text.replace(/^[\s]*[-–—]\s*\d+\s*[-–—][\s]*$/gm, "").trim()
-  return stripped.split("\n").map(line => collapseEvenSpacing(line)).join("\n")
-}
-
 /** 틀 셀 좌표와 같은 부모를 가진 중첩표를 pending 에서 꺼낸다 (제자리 제거) */
 const FRAME_RECT_TOL = 1.5
 function takePendingNested(
@@ -516,7 +511,7 @@ function extractBlocksWithGrids(
         markImageCell(irGrid[cell.row][cell.col])
       }
       if (cell.filler && !cellItems.length) FILLER_CELLS.add(irGrid[cell.row][cell.col])
-      if (grid.cells && cellItems.length) recordCellLines(irGrid[cell.row][cell.col], cellItems)
+      if (cellItems.length) recordCellLines(irGrid[cell.row][cell.col], cellItems)
       takeClipCellEdges(cell, irGrid[cell.row][cell.col])
     }
 
@@ -527,20 +522,7 @@ function extractBlocksWithGrids(
     let finalGrid = irGrid
     let finalRows = numRows
     let rebuiltUsed = false
-    let unitLine: NormItem[] = []
-    let unitText = ""
-    if (!grid.cells && numRows >= 3 && numRows <= 5 && numCols >= 3) {
-      const nearby = items.filter(item => item.y >= grid.bbox.y2 && item.y - grid.bbox.y2 <= 18
-        && item.x >= grid.bbox.x1 - 3 && item.x + item.w <= grid.bbox.x2 + 3)
-      for (const y of [...new Set(nearby.map(item => Math.round(item.y)))].sort((a, b) => a - b)) {
-        const line = nearby.filter(item => Math.abs(item.y - y) <= 1).sort((a, b) => a.x - b.x)
-        const text = line.map(item => item.text).join("")
-        if (!/^\s*\(\s*단위\s*[:：]/.test(text)) continue
-        unitLine = line
-        unitText = text
-        break
-      }
-    }
+    const unitLine = !grid.cells && numRows >= 3 && numRows <= 5 && numCols >= 3 ? rebuildUnitLine(items, grid) : []
     if (!grid.cells && numRows <= 5 && numCols >= 3 && !nestedAttached && (numRows <= 2 || unitLine.length > 0)) {
       const rebuilt = normalizeUndersegmentedTable(irGrid, grid.colXs, textItems, grid.rowYs)
       if (rebuilt) {
@@ -557,28 +539,10 @@ function extractBlocksWithGrids(
       }
     }
     if (unitLine.length > 0 && rebuiltUsed && !/^\s*\(\s*단위\s*[:：]/.test(finalGrid[0]?.[0]?.text ?? "")) {
-      finalGrid.unshift(Array.from({ length: numCols }, (_, c) => ({ text: c === 0 ? cleanCellText(unitText) : "", colSpan: c === 0 ? numCols : 1, rowSpan: 1 })))
+      prependUnitRow(finalGrid, numCols, unitLine, usedItems)
       finalRows++
-      for (const item of unitLine) usedItems.add(item)
     }
-    // 표의 무괘선 첫 행 "(단위: …)" — 한컴 표 칸 안 오른쪽 정렬 글은 칸 안쪽 여백(1.8mm≈5.1pt)만큼 표 오른끝에서 들어가 선다.
-    // 표 밖 오른쪽 정렬 문단은 본문 오른끝(표 오른끝 ±1pt)에 붙는다 — 단위 줄 140개(정답 표 안 40·밖 100): 안 4.8~5.3pt, 밖 4.3pt 이하
-    // 칸 절반 넘게 빈 격자(큰 표 머리의 조각 격자)는 제외 — 조각이 큰 표의 단위 줄을 먼저 가져갔다
-    const filledCells = finalGrid.flat().filter(c => c.text.trim()).length
-    if (!rebuiltUsed && filledCells * 2 >= finalGrid.flat().length && !/^\s*\(\s*단위\s*[:：]/.test(finalGrid[0]?.[0]?.text ?? "")) {
-      const above = items.filter(it => !usedItems.has(it) && it.y >= grid.bbox.y2 && it.y - grid.bbox.y2 <= 8 &&
-        it.x >= grid.bbox.x1 - 3 && it.x + it.w <= grid.bbox.x2 + 3)
-      const line = above.filter(it => Math.abs(it.y - Math.min(...above.map(a => a.y))) <= 1).sort((a, b) => a.x - b.x)
-      const text = line.map(it => it.text).join("")
-      const inset = line.length ? grid.bbox.x2 - (line[line.length - 1].x + line[line.length - 1].w) : 0
-      if (line.length && /^\s*\(\s*단위\s*[:：]/.test(text) && inset >= 4.6 && inset <= 5.6) {
-        finalGrid.unshift(Array.from({ length: numCols }, (_, c) => ({ text: c === 0 ? cleanCellText(text) : "", colSpan: c === 0 ? numCols : 1, rowSpan: 1 })))
-        // 클립 격자 위 단위 줄은 자기 테두리가 없다 — 곁정보 없는 칸은 layout-frames 가 보이는 칸으로 본다
-        if (grid.cells) for (const u of finalGrid[0]) CELL_EDGES.set(u, NO_EDGES)
-        finalRows++
-        for (const item of line) usedItems.add(item)
-      }
-    }
+    if (!rebuiltUsed && attachUnitRow(items, grid, finalGrid, numCols, usedItems)) finalRows++
 
     // Alternating empty bands are visual row spacing, not empty data records.
     // Only a repeated, populated sequence is a semantic one-column table.

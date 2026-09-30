@@ -32,6 +32,63 @@ function lines(cell: IRCell, spec: Array<[number, number, number]>): void {
 const h = (y: number, x1: number, x2: number, w = 0.36): LineSegment => ({ x1, y1: y, x2, y2: y, lineWidth: w })
 const v = (x: number, y1: number, y2: number): LineSegment => ({ x1: x, y1, x2: x, y2, lineWidth: 0.36 })
 
+describe("선 격자 표의 반복 머리행 아래 쪼개진 본문", () => {
+  const blocksOf = (a: string, b: string): IRBlock[] => {
+    const prev = grid(2, 2, [[0, 0, "현행"], [0, 1, "개정안"], [1, 0, "현행 조문 내용"], [1, 1, a]])
+    const curr = grid(2, 2, [[0, 0, "현행"], [0, 1, "개정안"], [1, 0, "현행 조문 내용"], [1, 1, b]])
+    for (const t of [prev, curr]) TABLE_COLXS.set(t, [50, 250, 500])
+    lines(prev.cells[1][0], [[60, 180, 100], [60, 180, 80]])
+    lines(prev.cells[1][1], [[260, 490, 100], [260, 490, 80]])
+    lines(curr.cells[1][0], [[60, 180, 700], [60, 180, 680]])
+    lines(curr.cells[1][1], [[260, 490, 700], [260, 400, 680]])
+    return [
+      { type: "table", table: prev, pageNumber: 1, bbox: { page: 1, x: 50, y: 70, width: 450, height: 630 } },
+      { type: "table", table: curr, pageNumber: 2, bbox: { page: 2, x: 50, y: 70, width: 450, height: 630 } },
+    ]
+  }
+  it("칸 글줄이 문장 중간에서 이어지면 같은 본문 행에 합친다", () => {
+    const blocks = blocksOf("기관이 지원하는", "사업의 세부 내용을 검토한다.")
+    mergeCrossPageTables(blocks)
+    assert.equal(blocks.length, 1)
+    assert.equal(blocks[0].table!.rows, 2)
+    assert.match(blocks[0].table!.cells[1][1].text, /지원하는\n사업의/)
+  })
+  it("한 줄로 끝난 다른 이름표가 있으면 독립 데이터 행을 보존한다", () => {
+    const blocks = blocksOf("기관이 지원하는", "사업의 세부 내용을 검토한다.")
+    blocks[0].table!.cells[1][0].text = "가. 첫 기관"
+    blocks[1].table!.cells[1][0].text = "나. 둘째 기관"
+    lines(blocks[0].table!.cells[1][0], [[60, 130, 80]])
+    mergeCrossPageTables(blocks)
+    assert.equal(blocks[0].table!.rows, 3)
+  })
+  it("반복 머리행의 밑줄 유무가 달라도 같은 머리행이다", () => {
+    const blocks = blocksOf("기관이 지원하는", "사업의 세부 내용을 검토한다.")
+    for (const cell of blocks[0].table!.cells[0]) cell.text = `<u>${cell.text}</u>`
+    mergeCrossPageTables(blocks)
+    assert.equal(blocks[0].table!.rows, 2)
+    assert.equal(blocks[0].table!.cells[0][0].text, "<u>현행</u>")
+  })
+})
+
+describe("칸 이어짐 판정은 인라인 서식과 무관하다", () => {
+  it("밑줄 친 관형형 뒤에도 다음 쪽 문장이 이어진다", () => {
+    const prev = grid(1, 1, [[0, 0, "<u>기관이 지원하는</u>"]])
+    const curr = grid(1, 1, [[0, 0, "<u>사업의 세부 내용을 검토한다.</u>"]])
+    const joined = joinSplitParts(prev, [0, 200], curr, [0, 200])!
+    assert.equal(joined.split, true)
+    assert.equal(joined.table.rows, 1)
+    assert.match(joined.table.cells[0][0].text, /<u>기관이 지원하는<\/u>\n<u>사업의/)
+  })
+  it("밑줄·취소선을 친 조문 번호도 다음 차례와 한 칸으로 잇는다", () => {
+    const prev = grid(1, 1, [[0, 0, "<u>① 첫째 내용</u>\n~~② 둘째 내용~~"]])
+    const curr = grid(1, 1, [[0, 0, "<u>③ 셋째 내용</u>"]])
+    const joined = joinSplitParts(prev, [0, 200], curr, [0, 200])!
+    assert.equal(joined.split, true)
+    assert.equal(joined.table.rows, 1)
+    assert.match(joined.table.cells[0][0].text, /~~② 둘째 내용~~\n<u>③ 셋째 내용<\/u>/)
+  })
+})
+
 describe("쪽 경계에 걸친 위 정렬 칸 — 글이 바닥까지 차고 문장이 이어진다", () => {
   // 위반행위 | 근거 법조문(글 없이 다음 쪽으로 넘어가 클립 없음) | 횟수. 앞 쪽 "차." 칸은 2행, 다음 쪽 조각은 2행
   const make = (tail: string): IRTable => {

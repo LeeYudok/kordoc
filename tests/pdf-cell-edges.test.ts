@@ -105,6 +105,21 @@ describe("recordClipCellEdges — 클립 격자 칸에만", () => {
     recordClipCellEdges([{ rowYs: [640, 600], colXs: [100, 200], bbox: { ...BOX }, vertexRadius: 1, cells: [c] }], [white, hl(100, 200, 600)], [], new Set([white]))
     assert.deepEqual(CLIP_CELL_EDGES.get(c), { t: false, b: true, l: false, r: false })
   })
+  it("얇은 빈 채움 띠는 한 괘선을 위·아래 두 테두리로 복제하지 않는다", () => {
+    const c = { ...cell, filler: true, bbox: { ...BOX, y1: 600, y2: 601 } }
+    recordClipCellEdges([{ rowYs: [601, 600], colXs: [100, 200], bbox: c.bbox, vertexRadius: 1, cells: [c] }], [hl(100, 200, 600)], [])
+    assert.deepEqual(CLIP_CELL_EDGES.get(c), { ...NO_EDGES, b: true })
+  })
+  it("클립이 없는 칸도 실제 가로·세로 테두리는 보존한다", () => {
+    const c = { ...cell, filler: true, bbox: { ...BOX } }
+    recordClipCellEdges([{ rowYs: [640, 600], colXs: [100, 200], bbox: c.bbox, vertexRadius: 1, cells: [c] }], [hl(100, 200, 600)], [vl(200, 600, 640)])
+    assert.deepEqual(CLIP_CELL_EDGES.get(c), { t: false, b: true, l: false, r: true })
+  })
+  it("얇은 채움 칸도 두 개의 별도 가로선은 보존한다", () => {
+    const c = { ...cell, filler: true, bbox: { ...BOX, y1: 600, y2: 601 } }
+    recordClipCellEdges([{ rowYs: [601, 600], colXs: [100, 200], bbox: c.bbox, vertexRadius: 1, cells: [c] }], [hl(100, 200, 600), hl(100, 200, 601)], [])
+    assert.deepEqual(CLIP_CELL_EDGES.get(c), { t: true, b: true, l: false, r: false })
+  })
 })
 
 describe("extractPageBlocksWithLines — 칸 클립 표만 IR 칸에 보이는 변", () => {

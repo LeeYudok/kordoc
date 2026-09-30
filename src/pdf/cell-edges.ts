@@ -54,19 +54,19 @@ function rules(lines: LineSegment[], dir: "h" | "v"): Rules {
 }
 
 /** 변(가로 y=at 의 x a1~a2, 세로 x=at 의 y a1~a2)이 보이는가 — 선이 덮은 길이로 판정 */
-function seen(r: Rules, at: number, a1: number, a2: number): boolean {
+function seen(r: Rules, at: number, a1: number, a2: number, near = EDGE_NEAR): boolean {
   const len = a2 - a1
   if (len <= 0) return false
-  const covered = coverage(r, at, a1, a2)
+  const covered = coverage(r, at, a1, a2, near)
   return covered >= len * EDGE_COVER && len - covered <= EDGE_SLACK
 }
 
 /** 변을 선이 덮은 길이 — 점선 조각 사이 틈(DASH_GAP 안)은 이어 본다 */
-function coverage(r: Rules, at: number, a1: number, a2: number): number {
+function coverage(r: Rules, at: number, a1: number, a2: number, near: number): number {
   let i = 0, j = r.pos.length
-  while (i < j) { const m = (i + j) >> 1; if (r.pos[m] < at - EDGE_NEAR) i = m + 1; else j = m }
+  while (i < j) { const m = (i + j) >> 1; if (r.pos[m] < at - near) i = m + 1; else j = m }
   const spans: Array<[number, number]> = []
-  for (; i < r.pos.length && r.pos[i] <= at + EDGE_NEAR; i++) {
+  for (; i < r.pos.length && r.pos[i] <= at + near; i++) {
     const l = r.lines[i]
     const l1 = r.dir === "h" ? Math.min(l.x1, l.x2) : Math.min(l.y1, l.y2), l2 = r.dir === "h" ? Math.max(l.x1, l.x2) : Math.max(l.y1, l.y2)
     const lo = Math.max(a1, l1), hi = Math.min(a2, l2)
@@ -84,10 +84,10 @@ function coverage(r: Rules, at: number, a1: number, a2: number): number {
 }
 
 /** 칸 사각형의 보이는 변 (PDF 좌표는 아래→위 — 윗변은 y2) */
-function edgesOf(box: { x1: number; y1: number; x2: number; y2: number }, h: Rules, v: Rules): Edges {
+function edgesOf(box: { x1: number; y1: number; x2: number; y2: number }, h: Rules, v: Rules, hNear = EDGE_NEAR): Edges {
   return {
-    t: seen(h, box.y2, box.x1, box.x2),
-    b: seen(h, box.y1, box.x1, box.x2),
+    t: seen(h, box.y2, box.x1, box.x2, hNear),
+    b: seen(h, box.y1, box.x1, box.x2, hNear),
     l: seen(v, box.x1, box.y1, box.y2),
     r: seen(v, box.x2, box.y1, box.y2),
   }
@@ -107,7 +107,11 @@ export function recordClipCellEdges(grids: TableGrid[], horizontals: LineSegment
   if (!grids.some(g => g.cells)) return
   const h = rules(nonRules?.size ? horizontals.filter(l => !nonRules.has(l)) : horizontals, "h")
   const v = rules(nonRules?.size ? verticals.filter(l => !nonRules.has(l)) : verticals, "v")
-  for (const g of grids) for (const c of g.cells ?? []) CLIP_CELL_EDGES.set(c, edgesOf(c.bbox, h, v))
+  // 얇은 채움 띠는 같은 획이 양변으로 잡히지 않게 탐색 창을 줄인다. 실제 두 획과 세로 변은 보존한다.
+  for (const g of grids) for (const c of g.cells ?? []) {
+    const near = c.filler ? Math.min(EDGE_NEAR, (c.bbox.y2 - c.bbox.y1) / 3) : EDGE_NEAR
+    CLIP_CELL_EDGES.set(c, edgesOf(c.bbox, h, v, near))
+  }
 }
 
 /** 클립 격자 칸의 보이는 변을 그 칸으로 만든 IR 칸에 옮긴다 (클립 격자 칸이 아니면 아무것도 안 한다) */

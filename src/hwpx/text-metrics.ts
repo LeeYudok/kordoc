@@ -252,8 +252,9 @@ export function simulateWrap(
   const breakBefore = (unitPos: number, w: number): void => {
     let bp = unitPos
     const u = text[unitPos]
+    const prevStart = (end: number): number => end - (end >= 2 && /[\uDC00-\uDFFF]/.test(text[end - 1]) && /[\uD800-\uDBFF]/.test(text[end - 2]) ? 2 : 1)
     // 시작금칙: 줄머리 금지 문자면 직전 글자 1개를 함께 내린다 (밀어내기)
-    if (u !== undefined && FORBID_START.has(u) && bp - 1 > lineStart() && text[bp - 1] !== " ") bp--
+    if (u !== undefined && FORBID_START.has(u) && prevStart(bp) > lineStart() && text[bp - 1] !== " ") bp = prevStart(bp)
     // 끝금칙: 남는 줄 끝이 여는 괄호류면 그 글자(들)도 함께 내린다
     while (bp - 1 > lineStart() && FORBID_END.has(text[bp - 1])) bp--
     if (bp <= lineStart()) bp = unitPos

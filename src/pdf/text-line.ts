@@ -98,10 +98,12 @@ export function filterHiddenText(items: NormItem[], pageWidth: number, pageHeigh
  */
 export function collapseEvenSpacing(text: string, whole = true): string {
   // 1. 전체가 균등배분: 토큰의 70%가 1글자
-  const tokens = text.split(" ")
-  const singleCharCount = tokens.filter(t => t.length === 1).length
-  if (whole && tokens.length >= 3 && singleCharCount / tokens.length >= 0.7 && !isDateUnitBlank(tokens)) {
-    return tokens.join("")
+  if (whole) {
+    const tokens = text.split(" ")
+    // 표시 서식은 글자 비율·날짜 빈칸 판정에 영향이 없다. 출력 태그는 원래 토큰으로 보존한다.
+    const visible = tokens.map(t => t.replace(/<\/?u>|~~/g, ""))
+    const singleCharCount = visible.filter(t => t.length === 1).length
+    if (tokens.length >= 3 && singleCharCount / tokens.length >= 0.7 && !isDateUnitBlank(visible)) return tokens.join("")
   }
 
   // 2. 부분 균등배분: 한글 1자가 3개+ 연속 (2자 단어는 건드리지 않음)
@@ -112,7 +114,13 @@ export function collapseEvenSpacing(text: string, whole = true): string {
   // hwpx↔pdf 752쌍: 96문서 나아짐·4문서 나빠짐(각 1~2어절)
   return text.replace(
     /(?<![^\s>])[가-힣](?: [가-힣\d]){2,}(?![^\s<])/g,
-    match => (isDateUnitBlank(match.split(" ")) ? match : match.replace(/ /g, "")),
+    (match, offset: number) => {
+      // 표지는 낱말 경계가 아니다 — "할 수 있</u>다"의 "있"은 홀로 선 한 글자가 아니다.
+      const before = text.slice(0, offset).replace(/(?:<\/?u>|~~)+$/, "")
+      const after = text.slice(offset + match.length).replace(/^(?:<\/?u>|~~)+/, "")
+      if (/\S$/.test(before) || /^\S/.test(after)) return match
+      return isDateUnitBlank(match.split(" ")) ? match : match.replace(/ /g, "")
+    },
   )
 }
 

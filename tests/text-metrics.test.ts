@@ -67,6 +67,13 @@ describe("simulateWrap — 어절(keep)·글자(charAll) 모델", () => {
     assert.equal(r.lines, 2)
     assert.deepEqual(r.starts, [0, 3])
   })
+  it("금칙으로 직전 이모지를 옮겨도 서로게이트 쌍을 나누지 않는다", () => {
+    for (const mode of ["keep", "charAll"] as const) {
+      const r = simulateWrap("가😀,나", 1940, 1940, 1000, 100, mode)
+      assert.deepEqual(r.starts, [0, 1, 4])
+      for (const start of r.starts) assert.ok(!/[\uDC00-\uDFFF]/.test("가😀,나"[start]))
+    }
+  })
 })
 
 describe("fitRatioForFewerLines — 자동 장평(orphan 축소)", () => {
