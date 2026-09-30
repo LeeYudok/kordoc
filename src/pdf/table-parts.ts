@@ -17,6 +17,9 @@ import { startsNewItem, type WrapLexicon } from "./line-wrap.js"
 import { NO_EDGES, joinCellEdges } from "./cell-edges.js"
 import { CELL_EDGES } from "../table/layout-frames.js"
 
+/** 글 이어짐은 표시 서식이 아니라 실제 글로 판정한다. 출력 칸의 밑줄·취소선은 그대로 둔다. */
+const flowText = (text: string): string => text.replace(/<\/?u>|~~/g, "")
+
 /** 두 조각의 경계를 같은 것으로 보는 거리 (pt) — 클립 좌표 오차 0.05pt, 조각 간 반올림 여유 */
 const PART_COL_TOL = 1
 /** 쪽 조각끼리 짜임이 다를 때 같은 경계로 보는 거리 (pt) — 쪽 안 클립 격자(clip-cells CLIP_COORD_TOL)와 같다 */
@@ -72,7 +75,7 @@ const indexOf = (coords: number[], x: number): number => {
 }
 
 const rowText = (anchors: Anchor[], r: number): string =>
-  anchors.filter(a => a.r === r).map(a => a.cell.text.replace(/\s+/g, "")).join("|")
+  anchors.filter(a => a.r === r).map(a => flowText(a.cell.text).replace(/\s+/g, "")).join("|")
 /** 행 글(rowText)에 칸 구분자 말고 글이 있나 */
 const hasText = (t: string): boolean => t.replace(/\|/g, "") !== ""
 
@@ -386,8 +389,8 @@ const OUTLINE_ITEM = /^[ㅇ○◦\-‐–·․‧※*]\s*\S/
  * (과제 품목 명세서 "□ 개발내용 / ㅇ … / - … 주사제형화 기술 개발" / 다음 쪽 "ㅇ PFC 나노산소운반체의 …")
  */
 function outlineContinues(u: IRCell, d: IRCell): boolean {
-  const U = u.text.split("\n").map(l => l.trim()).filter(Boolean)
-  const D = d.text.split("\n").map(l => l.trim()).filter(Boolean)
+  const U = flowText(u.text).split("\n").map(l => l.trim()).filter(Boolean)
+  const D = flowText(d.text).split("\n").map(l => l.trim()).filter(Boolean)
   return U.length >= 2 && D.length >= 1 && U.some(l => OUTLINE_HEAD.test(l)) && OUTLINE_ITEM.test(D[0])
 }
 
@@ -408,7 +411,7 @@ function lineEnded(c: IRCell, x1: number, x2: number, next?: IRCell): boolean {
 /** 첫 어절 폭(글자 크기 배) — 한글·한자 1, 나머지 0.55. 여는 괄호 뒤 공백은 텍스트층이 끼운 것이라 다음 낱말과 한 어절로 본다
  *  (선관위 자격증 "( 자격증종류는 별표 12에 의함)") */
 function firstWordUnits(text: string): number {
-  const word = text.trim().replace(/^([(\[「『<〈])\s+/, "$1").split(/\s+/)[0] ?? ""
+  const word = flowText(text).trim().replace(/^([(\[「『<〈])\s+/, "$1").split(/\s+/)[0] ?? ""
   let units = 0
   for (const ch of word) units += /[가-힣\u3400-\u9fff]/.test(ch) ? 1 : 0.55
   return units
@@ -456,7 +459,7 @@ const batchim = (ch: string): boolean => { const k = ch.charCodeAt(0) - 0xac00; 
  * 닿는지(continuesAcross)로 못 가려(규제영향분석서 정성분석 "…폐기 사실을 / 입력하므로 제도 도입에 따른…") 말 자체로 본다
  */
 function clauseContinues(u: IRCell, d: IRCell): boolean {
-  const tail = u.text.trim().split(/\s+/).pop() ?? "", head = d.text.trim()
+  const tail = flowText(u.text).trim().split(/\s+/).pop() ?? "", head = flowText(d.text).trim()
   if (!/^[가-힣]{2,}$/.test(tail) || !/^[가-힣]/.test(head) || startsNewItem(u.text, head)) return false
   const last = tail[tail.length - 1], before = tail[tail.length - 2]
   return (last === "을" && batchim(before)) || (last === "를" && !batchim(before)) || CLAUSE_OPEN_ENDING.test(tail)
@@ -478,6 +481,7 @@ function wordOverflows(u: IRCell, d: IRCell, x1: number, x2: number): boolean {
 const KO_ORDER = "가나다라마바사아자차카타파하"
 /** 줄 머리 항목 번호 — 꼴(1.·1)·(1)·가.·가)·(가)·①·A.)과 차례 */
 function itemMark(line: string): { style: string; n: number } | null {
+  line = flowText(line).trim()
   let m = /^(\d{1,2})([.)])(?!\d)/.exec(line)
   if (m) return { style: "1" + m[2], n: +m[1] }
   if ((m = /^\((\d{1,2})\)/.exec(line))) return { style: "(1)", n: +m[1] }
@@ -558,7 +562,7 @@ function mergeSplitRow(table: IRTable, owner: (Anchor | null)[][], first: number
     // 이어진 조각은 글이 없어 클립조차 없다. 다른 열 끝줄이 꽉 찬 것(글 이어짐)보다 이 모순이 앞선다 (편람 [별표 4] 가로 판
     // "8. 글자 | …꽉 찬 끝줄" 다음 쪽 "9. 한글과 함께 적는 외국글자 | 가. 단어를 …", 시험기준표 "액성한계·소성한계 | KS F 2303" 다음 쪽
     // "세립토 비율 | KS F 2309"). 같은 글이면 문단마다 붙는 표지다 (신구조문 대비표 "<신 설>" 이 큰 행 두 조각에 하나씩)
-    const norm = (c: IRCell): string => c.text.replace(/\s+/g, "")
+    const norm = (c: IRCell): string => flowText(c.text).replace(/\s+/g, "")
     if (pairs.some(([u, d]) => hasContent(d.cell) && norm(cell(d)) !== norm(cell(u)) && lineEnded(cell(u), colXs[u.c], colXs[u.c + u.cs], cell(d)))) return false
     const flows = ([u, d]: [Anchor, Anchor]): boolean => continuesAcross(cell(u), cell(d), colXs[u.c], colXs[u.c + u.cs]) || clauseContinues(cell(u), cell(d))
     // 괘선 없는 쪽 경계(3)는 글 증거 없이 합친다 — 앞 쪽 빈 칸 뒤 글(새 칸)이 없을 때만 (쪽 끝 빈 행 다음 새 표 행, 노인복지법 운영기준)
@@ -718,6 +722,25 @@ export function mergeCrossPageTables(blocks: IRBlock[], pageHeights?: Map<number
       continue
     }
 
+    // 선 격자도 반복 머리행 아래의 본문이 쪽 중간에서 끊긴다. 기존 칸·문장 이어짐 검증을 재사용한다.
+    // 한 줄로 끝난 이름표·새 항목은 mergeSplitRow가 거절하며, 글줄 증거 없는 표는 종전대로 행을 붙인다.
+    if (px && cx && !CLIP_TABLES.has(prev.table) && !CLIP_TABLES.has(curr.table)
+      && currCells.length < curr.table.cells.length && curr.table.cells[0].filter(c => c.text.trim()).length >= 2
+      && prev.table.cells.at(-1)!.concat(currCells[0]).every(c => c.rowSpan === 1 && c.colSpan === 1 && CELL_LINES.has(c))) {
+      const dx = px[0] - cx[0]
+      const part = joinSplitParts(prev.table, px, curr.table, cx.map(x => x + dx), dx, undefined, lex)
+      if (part?.split && part.table.rows === prev.table.rows + currCells.length - 1) {
+        const last = prev.table.rows - 1
+        for (let c = 0; c < part.table.cols; c++) {
+          const U = CELL_LINES.get(prev.table.cells[last][c])!, D = CELL_LINES.get(currCells[0][c])!
+          CELL_LINES.set(part.table.cells[last][c], U.concat(D.map(l => ({ ...l, l: l.l + dx, r: l.r + dx }))))
+        }
+        TABLE_COLXS.set(part.table, part.colXs)
+        placeJoined(blocks, i, j, part.table)
+        continue
+      }
+    }
+
     const merged: IRTable = {
       rows: prev.table.rows + currCells.length,
       cols: prev.table.cols,
@@ -843,7 +866,7 @@ function prevLacksLeftCols(prev: IRBlock, px: number[], xs: number[], pageHeight
 
 /** 절 제목 상자 꼴의 첫 행 — 짧은 제목 한 칸(공백 뺀 8자 이하), 원문자로 시작하는 제목 한 칸, 번호 칸 + 제목 칸 */
 function headingRow(row: IRCell[]): boolean {
-  const heads = row.map(c => c.text.replace(/\s+/g, "")).filter(Boolean)
+  const heads = row.map(c => flowText(c.text).replace(/\s+/g, "")).filter(Boolean)
   if (heads.length === 1) return heads[0].length <= 8 || /^[①-⑳❶-❿]/.test(heads[0])
   return heads.length === 2 && /^(?:\d{1,2}|[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+|[①-⑳❶-❿])$/.test(heads[0])
 }
@@ -864,7 +887,7 @@ function looksContinued(prev: IRBlock, curr: IRBlock, pageHeights?: Map<number, 
   const firstText = firstRow.find(c => c.text.trim())?.text ?? ""
   if (!ANNEX_HEAD_RE.test(firstText)) return true
   // 신구조문 대비표 행 — 현행·개정안 두 칸 이상에 같은 "[별표 2] …" 가 들면 첨부 머리표가 아니라 대비표 본문이다 (머리표는 제목 한 칸)
-  const filled = firstRow.map(c => c.text.replace(/\s+/g, "")).filter(Boolean)
+  const filled = firstRow.map(c => flowText(c.text).replace(/\s+/g, "")).filter(Boolean)
   return filled.length >= 2 && filled.every(t => t === filled[0])
 }
 
@@ -910,7 +933,7 @@ function tailOf(b: IRBlock): IRBlock {
 function firstRowSig(t: IRTable): Array<{ x1: number; x2: number; t: string }> | null {
   const x = TABLE_COLXS.get(t)
   if (!x || x.length !== t.cols + 1) return null
-  return anchorsOf(t).filter(a => a.r === 0).map(a => ({ x1: x[a.c], x2: x[a.c + a.cs], t: a.cell.text.replace(/\s+/g, "") }))
+  return anchorsOf(t).filter(a => a.r === 0).map(a => ({ x1: x[a.c], x2: x[a.c + a.cs], t: flowText(a.cell.text).replace(/\s+/g, "") }))
 }
 
 /**
@@ -950,7 +973,7 @@ function restartsTitledForm(head: IRTable, curr: IRTable): boolean {
   if (head.rows < 2 || curr.rows < 2 || head.cols !== curr.cols) return false
   const full = (t: IRTable) => t.cells[0][0]?.colSpan === t.cols
   if (!full(head) || !full(curr)) return false
-  const norm = (c: IRCell | undefined) => (c?.text ?? "").replace(/\s+/g, "")
+  const norm = (c: IRCell | undefined) => flowText(c?.text ?? "").replace(/\s+/g, "")
   const ht = norm(head.cells[0][0]), ct = norm(curr.cells[0][0])
   if (!ht || !ct || ht === ct) return false
   // 제목 칸만 — 앞 쪽에서 넘어온 본문 칸("ㅇ …"·"- …" 긴 글)으로 시작하는 이어진 조각끼리는 짜임이 같아도 새 표가 아니다(form-002)
@@ -993,7 +1016,7 @@ function chainHead(blocks: IRBlock[], i: number, pageHeights?: Map<number, numbe
 /** 두 행의 셀 텍스트가 모두 동일한지 (공백 정규화 후 비교) */
 function rowTextsEqual(a: IRCell[], b: IRCell[]): boolean {
   if (a.length !== b.length) return false
-  const norm = (t: string) => t.replace(/\s+/g, "")
+  const norm = (t: string) => flowText(t).replace(/\s+/g, "")
   for (let i = 0; i < a.length; i++) {
     if (norm(a[i].text) !== norm(b[i].text)) return false
   }

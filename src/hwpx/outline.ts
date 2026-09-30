@@ -86,7 +86,9 @@ export function legalMarkerDepth(marker: string): number {
 /** 선두 명시 부호 해석 — {kind, depth, marker, rest}. keep = ❶⇒↳ 등 글리프 보존 부호(keepMarkers 옵션일 때만) */
 export function parseLeadingMarker(text: string, keepMarkers = false): { kind: "box" | "legal" | "ref" | "keep" | null; depth: number; marker: string; rest: string } {
   // 굵게가 부호를 감싼 줄("**ㅇ 전문가 자문회의** (4회)") — 부호를 굵게 밖으로 꺼낸다(항목 굵기는 스킴이 정한다)
-  const t = text.replace(/^[\s　]+/, "").replace(/^\*\*([□■ㅇ○◦●❍◎▸※-])\s*(?=\S)/u, "$1 **")
+  const t = text.replace(/^[\s　]+/, "")
+    .replace(/^(\*\*|__)([□■ㅇ○◦●❍◎▸※-])\1(?=\s|$)/u, "$2")
+    .replace(/^(\*\*|__)([□■ㅇ○◦●❍◎▸※-])\s*(?=\S)/u, "$2 $1")
   const ref = REF_RE.exec(t)
   if (ref) return { kind: "ref", depth: 0, marker: ref[1], rest: t.slice(ref[0].length).trim() }
   if (keepMarkers) {

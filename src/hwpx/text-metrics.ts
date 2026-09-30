@@ -17,7 +17,7 @@
  * 이 테이블로 근사한다(오차 수 % 이내 — 공문서 본문은 어차피 함초롬바탕 관행).
  */
 
-import { fontAdvanceEm1000, hasFontMetrics } from "./font-metrics.js"
+import { fontWidthFn, hasFontMetrics } from "./font-metrics.js"
 
 /** ASCII 0x20~0x7E advance (em×1000). 0x20은 useFontSpace=1일 때의 글꼴값(300) */
 const ASCII_W = [
@@ -121,7 +121,7 @@ function widthFnOf(faceClass: FaceClass | undefined): (cp: number) => number {
   if (faceClass === "gothic") return gothicWidthEm1000
   if (faceClass?.startsWith("font:")) {
     const face = faceClass.slice(5)
-    return (cp) => fontAdvanceEm1000(face, cp) ?? gothicWidthEm1000(cp)
+    return fontWidthFn(face) ?? gothicWidthEm1000
   }
   return charWidthEm1000
 }
@@ -252,8 +252,9 @@ export function simulateWrap(
   const breakBefore = (unitPos: number, w: number): void => {
     let bp = unitPos
     const u = text[unitPos]
+    const prevStart = (end: number): number => end - (end >= 2 && /[\uDC00-\uDFFF]/.test(text[end - 1]) && /[\uD800-\uDBFF]/.test(text[end - 2]) ? 2 : 1)
     // 시작금칙: 줄머리 금지 문자면 직전 글자 1개를 함께 내린다 (밀어내기)
-    if (u !== undefined && FORBID_START.has(u) && bp - 1 > lineStart() && text[bp - 1] !== " ") bp--
+    if (u !== undefined && FORBID_START.has(u) && prevStart(bp) > lineStart() && text[bp - 1] !== " ") bp = prevStart(bp)
     // 끝금칙: 남는 줄 끝이 여는 괄호류면 그 글자(들)도 함께 내린다
     while (bp - 1 > lineStart() && FORBID_END.has(text[bp - 1])) bp--
     if (bp <= lineStart()) bp = unitPos

@@ -686,7 +686,12 @@ function parseCell(records: HwpRecord[], lhIdx: number, end: number, ctx: Hwp5Ct
   if (isHeader) cell.isHeader = true
   if (rec.data.length >= 24 && rec.data.readUInt32LE(20) > A4_HEIGHT) cell.pageSpanning = true
   if (rec.data.length >= 34) {
-    const edges = ctx.docInfo?.borderEdges?.[rec.data.readUInt16LE(32) - 1]
+    const borderFillId = rec.data.readUInt16LE(32)
+    const definitions = ctx.docInfo?.borderEdges
+    // 1-based 목록이 확인되면 0은 선 없음이다. 정의가 없는 파일은 미상으로 유지한다.
+    const edges = borderFillId === 0 && definitions?.length
+      ? { t: false, b: false, l: false, r: false }
+      : definitions?.[borderFillId - 1]
     if (edges) cell.edges = edges
   }
   return cell

@@ -12,7 +12,7 @@
  *   - charPr/paraPr는 StyleRegistry 동적 발급 — 손계산 id 파티션 없음.
  */
 
-import { type MdBlock, generateParagraph, generateRuns } from "./md-runs.js"
+import { type MdBlock, generateParagraph, generateRuns, parseInlineMarkdown } from "./md-runs.js"
 import { type ResolvedGongmun, GongmunNumberer, computeSuppression, mmToHwpunit } from "./gongmun.js"
 import { type Scheme, type LevelStyle, pickScheme, taHu } from "./gongmun-scheme.js"
 import { buildOutline, CHAPTER_LABEL_RE, type Outline, type OutlineNode } from "./outline.js"
@@ -72,7 +72,7 @@ export function chapterLabel(index: number, style: "roman" | "number"): string {
 
 /** 렌더 텍스트(강조 문법 제거) — 폭 계산용 */
 function plain(text: string): string {
-  return text.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1").replace(/`([^`]+)`/g, "$1").replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+  return parseInlineMarkdown(text).map((span) => span.text).join("")
 }
 
 export function buildGongmunSectionV5(blocks: MdBlock[], gongmun: ResolvedGongmun, deps: GongmunEngineDeps, theme: import("./gen-ids.js").ResolvedTheme): GongmunEngineResult {
@@ -554,4 +554,3 @@ function legalDepthOf(marker: string): number {
   if (/^\([가-힣]\)$/.test(marker)) return 5
   return 6
 }
-

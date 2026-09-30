@@ -6,7 +6,7 @@
  * 근사 클래스라 여유를 더 둔다.
  */
 
-import { measureTextWidth, faceClassForGen, simulateWrap, type FaceClass } from "./text-metrics.js"
+import { measureTextWidth, faceClassForGen, simulateWrap, type FaceClass, type WrapResult } from "./text-metrics.js"
 
 export interface FitResult {
   pt: number
@@ -110,25 +110,42 @@ export function fitParagraph(text: string, font: string, pt: number, firstW: num
   const ladder: Array<[number, number]> = [[100, 0], ...SQUEEZE.filter(([r]) => r >= minRatio)]
   const base = simulateWrap(text, f, c, h, 100, "keep", { faceClass })
   if (base.lines < 2) return null
+  // 꼬리 줄 탐색과 비용 탐색은 같은 후보를 본다 — 문단 한 번 안에서만 조판 결과를 재사용한다.
+  const wraps = new Map<string, WrapResult>([["100:0", base]])
+  const looseness = new Map<string, number>()
+  const wrap = (r: number, sp: number): WrapResult => {
+    const key = `${r}:${sp}`
+    let w = wraps.get(key)
+    if (!w) { w = simulateWrap(text, f, c, h, r, "keep", { faceClass, spacingPct: sp }); wraps.set(key, w) }
+    return w
+  }
+  const looseAt = (r: number, sp: number, w: WrapResult): number => {
+    const key = `${r}:${sp}`
+    let loose = looseness.get(key)
+    if (loose === undefined) { loose = worstLooseness(text, w.starts, f, c, h, r, sp, faceClass); looseness.set(key, loose) }
+    return loose
+  }
   if (base.lastLineWidth <= c * PULL_TAIL) {
     let pull: { r: number; sp: number; amt: number } | null = null
     for (const [r, sp] of ladder) {
       const amt = squeezeOf(r, sp)
       if (amt > PULL_MAX + 1e-9 || (pull && amt >= pull.amt - 1e-9)) continue
-      const w = simulateWrap(text, f, c, h, r, "keep", { faceClass, spacingPct: sp })
-      if (w.lines < base.lines && worstLooseness(text, w.starts, f, c, h, r, sp, faceClass) <= LOOSE_LIMIT) pull = { r, sp, amt }
+      const w = wrap(r, sp)
+      if (w.lines < base.lines && looseAt(r, sp, w) <= LOOSE_LIMIT) pull = { r, sp, amt }
     }
     if (pull) return { ratio: pull.r, spacing: pull.sp }
   }
   let baseLines = 0
   let best: { r: number; sp: number; cost: number } | null = null
   for (const [r, sp] of ladder) {
-    const w = simulateWrap(text, f, c, h, r, "keep", { faceClass, spacingPct: sp })
+    const w = wrap(r, sp)
     if (!best) { if (w.lines < 2) return null; baseLines = w.lines }
     if (w.lines > baseLines) continue
     const orphan = w.lines > 1 && w.lastLineWidth <= contW * orphanRatio
-    const loose = worstLooseness(text, w.starts, f, c, h, r, sp, faceClass)
+    const loose = looseAt(r, sp, w)
     const cost = Math.max(0, loose - LOOSE_LIMIT) + (orphan ? ORPHAN_COST : 0) + squeezeOf(r, sp) * COMPRESS_COST
+    // 꼬리 줄 올리기보다 뒤에서만: 비용은 음수가 없으므로 무압축 비용 0은 이미 최선이다.
+    if (r === 100 && sp === 0 && cost === 0) return null
     if (!best || cost < best.cost - 1e-9) best = { r, sp, cost }
   }
   return best && (best.r !== 100 || best.sp !== 0) ? { ratio: best.r, spacing: best.sp } : null

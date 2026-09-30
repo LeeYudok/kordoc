@@ -183,6 +183,30 @@ ${bf(1, "NONE")}${bf(2, "SOLID")}${bf(3, "SOLID", "SOLID", "#FFFFFF")}
     assert.match(out, /나\. 단리 계산방법/)
     assert.match(out, /R= \$\\frac\{F\}\{P\}\$/)
   })
+  it("테두리 참조 0은 명시적 선 없음이고 미등록 양수 참조는 미상으로 남는다", async () => {
+    const zip = new JSZip()
+    zip.file("Contents/header.xml", header)
+    const styles = await extractHwpxStyles(zip)
+    assert.deepEqual(styles.borderEdges.get("0"), NONE)
+    assert.equal(styles.borderEdges.get("99"), undefined)
+    const blocks = parseSectionXml(sec.replace(/borderFillIDRef="[13]"/g, 'borderFillIDRef="0"'), styles)
+    assert.match(blocksToMarkdown(unframeLayoutTables(blocks)), /R= \$\\frac\{F\}\{P\}\$/)
+    const unknown = parseSectionXml(sec.replace(/borderFillIDRef="[13]"/g, 'borderFillIDRef="99"'), styles)
+    assert.equal(CELL_EDGES.get(unknown[0].table!.cells[0][0]), undefined)
+  })
+  it("접두사 없는 헤더의 테두리 정의도 참조 0 기본값에 가려지지 않는다", async () => {
+    const zip = new JSZip()
+    zip.file("Contents/header.xml", header.replace(/hh:/g, ""))
+    const styles = await extractHwpxStyles(zip)
+    assert.deepEqual(styles.borderEdges.get("2"), { t: false, b: true, l: false, r: false })
+    assert.deepEqual(styles.borderEdges.get("0"), NONE)
+  })
+  it("테두리 정의가 없는 문서는 참조 0도 미상이고 원래 격자를 보존한다", async () => {
+    const styles = await extractHwpxStyles(new JSZip())
+    assert.equal(styles.borderEdges.get("0"), undefined)
+    const blocks = parseSectionXml(sec.replace(/borderFillIDRef="[123]"/g, 'borderFillIDRef="0"'), styles)
+    assert.equal(unframeLayoutTables(blocks)[0].table, blocks[0].table)
+  })
 })
 
 describe("패치 편집본 모드 판별 (editedFromVisual)", () => {
