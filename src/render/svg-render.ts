@@ -675,12 +675,13 @@ function renderSectionToPages(
   doReflow: boolean,
   reflowMode: WrapMode,
   masters: Element[] = [],
+  hasDeletionMarkers = true,
 ): { pages: string[][]; pageH: number } {
   const { PW, PH, ML, MT, BODY_W, BODY_H } = geom
   // Tier-2 reflow — 캐시 없는 문단에 linesegarray 합성 주입. 혼합 캐시 문서(한컴
   // 저장본을 프로그램 편집해 일부 문단만 캐시 없음)도 reflow 옵션이면 진입한다 —
   // 전량 캐시 문서는 전 문단 skip(Tier-1 무회귀)이라 no-op.
-  prepareDeletedRanges(root)
+  if (hasDeletionMarkers) prepareDeletedRanges(root)
   if (doReflow) reflowSection(root, ctxBase.styles, { BODY_W, BODY_H }, reflowMode)
 
   // 페이지 분할 프리패스 — 최상위 lineseg vertpos는 페이지 로컬(페이지마다 0부터)이라
@@ -776,7 +777,13 @@ export interface InternalRender {
 export type RenderImages = Ctx["images"]
 
 /** 렌더할 구역 DOM — HWPX section*.xml 또는 HWP5 어댑터가 합성한 동형 DOM (hwp5-scene) */
-export interface SectionRoot { root: Element; index: number; masterPages?: Element[] }
+export interface SectionRoot {
+  root: Element
+  index: number
+  masterPages?: Element[]
+  /** False only when the source XML proved no deletion markers; custom DOMs default to scanning. */
+  hasDeletionMarkers?: boolean
+}
 
 export interface SectionRenderInput {
   styles: RenderStyles
@@ -801,9 +808,9 @@ export function renderSectionRoots(sections: SectionRoot[], input: SectionRender
     regions: new RegionCollector(), parentStack: [], pageBase: 0,
   }
   const rendered: RenderedSection[] = []
-  for (const { root, index, masterPages } of sections) {
+  for (const { root, index, masterPages, hasDeletionMarkers } of sections) {
     const geom = readSectionGeom(root)
-    const { pages, pageH } = renderSectionToPages(root, geom, ctxBase, input.reflow, input.reflowMode, masterPages)
+    const { pages, pageH } = renderSectionToPages(root, geom, ctxBase, input.reflow, input.reflowMode, masterPages, hasDeletionMarkers)
     rendered.push({ pages, PW: geom.PW, pageH, clipId: `pgclip${index}` })
     ctxBase.pageBase += pages.length
   }
@@ -924,7 +931,7 @@ async function renderHwpxInternal(input: ArrayBuffer | Uint8Array, options?: Ren
     if (!root) { warnings.push(`구역 ${si} XML 파싱 실패 — 생략`); continue }
     const secPr = findFirst(root, "secPr")
     const referenced = secPr ? elements(secPr).filter(el => ln(el) === "masterPage").map(el => masterPages.get(el.getAttribute("idRef") || "")).filter((el): el is Element => !!el) : []
-    roots.push({ root, index: si, masterPages: referenced })
+    roots.push({ root, index: si, masterPages: referenced, hasDeletionMarkers: secXml.includes("deleteBegin") || secXml.includes("deleteEnd") })
   }
 
   if (roots.length === 0) {

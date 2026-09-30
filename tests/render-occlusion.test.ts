@@ -1,8 +1,9 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import sharp from "sharp"
+import JSZip from "jszip"
 import { extractRenderedRegions } from "../src/render/regions.js"
-import { renderHwpxPages } from "../src/render/svg-render.js"
+import { renderHwpxPages, renderSectionRoots, assemblePageSvgs } from "../src/render/svg-render.js"
 import { buildPara, prepareDeletedRanges } from "../src/render/para-model.js"
 import { pageStories } from "../src/render/page-stories.js"
 import { createXmlParser } from "../src/hwpx/parser-shared.js"
@@ -211,4 +212,34 @@ test("nested rotations bound original shape corners once, including cancelling r
     for (let i = 0; i < data.length; i += info.channels) if (data[i] < 80 && data[i + 1] < 80 && data[i + 2] < 80) dark++
     assert.ok(dark / (info.width * info.height) > 0.9, `nested ${c.outer}/${c.inner}: crop must fit the painted rectangle`)
   }
+})
+
+test("proven marker-free XML and conservative deletion scanning produce identical output", async () => {
+  const input = await occlusionFixture([cachedPara(photo(), 1600), cachedPara(cover(), 3200)], { master: cachedPara('<hp:t>master</hp:t>') })
+  const zip = await JSZip.loadAsync(input)
+  const xml = await zip.file("Contents/section0.xml")!.async("string")
+  zip.file("Contents/section0.xml", xml.replace('</hs:sec>', '<!-- deleteBegin deleteEnd: force conservative scan --></hs:sec>'))
+  const scan = new Uint8Array(await zip.generateAsync({ type: "nodebuffer" }))
+  assert.deepEqual(await renderHwpxPages(input), await renderHwpxPages(scan))
+})
+
+test("custom DOMs default to scanning deletion ranges across paragraphs", () => {
+  const root = createXmlParser().parseFromString('<sec><p><run><ctrl><deleteBegin/></ctrl><t>hidden</t></run></p><p><run><t>hidden too</t><ctrl><deleteEnd/></ctrl><t>visible</t></run></p></sec>', "text/xml").documentElement as unknown as Element
+  const rendered = renderSectionRoots([{ root, index: 0 }], {
+    styles: { charPr: new Map(), paraAlign: new Map(), paraGeom: new Map(), borderFill: new Map() },
+    images: new Map(), warnings: [], reflow: true, reflowMode: "keep",
+  })
+  const svg = assemblePageSvgs(rendered, "hwpx").pageSvgs.get(1)!
+  assert.ok(svg.includes('visible'))
+  assert.ok(!svg.includes('hidden'))
+})
+
+test("marker-free body metadata does not skip deletion ranges in separate master stories", async () => {
+  const master = cachedPara('<hp:ctrl><hp:deleteBegin/></hp:ctrl>' + cover() + '<hp:t>hidden master</hp:t>') + cachedPara('<hp:ctrl><hp:deleteEnd/></hp:ctrl><hp:t>visible master</hp:t>', 1600)
+  const input = await occlusionFixture([cachedPara(photo(), 1600)], { master })
+  const { scene, pageSvgs } = await renderHwpxPages(input, { reflow: true })
+  assert.equal(scene.stats.shapes, 0)
+  assert.ok(pageSvgs.get(1)!.includes('visible master'))
+  assert.ok(!pageSvgs.get(1)!.includes('hidden master'))
+  assert.ok((await redPixels(input))[0] > 1000)
 })
