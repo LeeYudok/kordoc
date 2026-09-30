@@ -19,8 +19,8 @@ export function collectImageRefs(el: Element, refs: Set<string>, depth = 0): voi
 }
 
 /** 삭제 개체만 표시하는 선순회 — 본문 텍스트·경고·번호·주석 상태는 해석하지 않는다. */
-export function markDeletedObjects(node: Node, deletedObjects: WeakSet<Element>, refs: Set<string>, initialDeleteDepth = 0): void {
-  let deleteDepth = initialDeleteDepth
+export function markDeletedObjects(node: Node, deletedObjects: WeakSet<Element>, refs: Set<string>): void {
+  let deleteDepth = 0
   const walk = (parent: Node, depth: number) => {
     if (depth > MAX_XML_DEPTH) return
     const children = parent.childNodes
@@ -42,6 +42,17 @@ export function markDeletedObjects(node: Node, deletedObjects: WeakSet<Element>,
     }
   }
   walk(node, 0)
+}
+
+/** 살아있는 캡션·글상자 story의 삭제 구간은 host 문단 종료 상태와 독립이며 번호·주석 상태는 공유한다. */
+export function inIndependentDeletionStory<T>(track: { deleteDepth: number }, extract: () => T): T {
+  const hostDeleteDepth = track.deleteDepth
+  track.deleteDepth = 0
+  try {
+    return extract()
+  } finally {
+    track.deleteDepth = hostDeleteDepth
+  }
 }
 
 /** pic/shape 요소에서 이미지 참조 경로 추출 (binaryItemIDRef 또는 href) — MAX_XML_DEPTH 가드 */

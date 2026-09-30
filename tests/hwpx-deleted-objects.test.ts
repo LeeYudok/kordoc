@@ -100,6 +100,22 @@ describe("HWPX 변경추적 삭제 개체", () => {
     assert.equal((result.markdown.match(/!\[/g) ?? []).length, 1)
   })
 
+  for (const ctrl of [true, false]) it(`${ctrl ? "ctrl" : "직계"} 삭제가 살아있는 캡션 뒤에서 시작해 다음 문단까지 이어져도 캡션 이미지·글은 유지`, async () => {
+    const zip = new JSZip()
+    zip.file("mimetype", "application/hwp+zip")
+    const caption = `<hp:caption><hp:subList>${para("<hp:t>살아있는 캡션</hp:t>" + pic("live-caption"))}</hp:subList></hp:caption>`
+    const live = `<hp:pic><hp:img binaryItemIDRef="live"/>${caption}</hp:pic>`
+    zip.file("Contents/section0.xml", section(para(live + marker(true, ctrl) + pic("actual-deleted"))
+      + para(pic("also-deleted") + marker(false, ctrl) + "<hp:t>뒤 본문</hp:t>")))
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    for (const ref of ["live", "live-caption", "actual-deleted", "also-deleted"]) zip.file(`BinData/${ref}.png`, png)
+    const result = await parseHwpxDocument(await zip.generateAsync({ type: "arraybuffer" }))
+    assert.deepEqual(result.images?.map(img => img.source), ["BinData/live.png", "BinData/live-caption.png"])
+    assert.deepEqual(result.blocks.filter(b => b.type === "paragraph").map(b => b.text), ["살아있는 캡션", "뒤 본문"])
+    assert.equal(result.blocks.filter(b => b.type === "image").length, 2)
+    assert.ok(result.markdown.includes("살아있는 캡션"))
+  })
+
   it("삭제 묶음의 모든 참조를 제외하면서 같은 참조의 살아있는 사진과 미참조 이미지는 유지", async () => {
     const zip = new JSZip()
     zip.file("mimetype", "application/hwp+zip")

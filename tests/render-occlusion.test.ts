@@ -190,3 +190,25 @@ test("direct paragraph and run deletion markers preserve their existing slot pos
   assert.equal(last.chars.map(c => c.ch).join(""), "new")
   assert.equal(last.chars[3].ch, "n")
 })
+
+test("nested rotations bound original shape corners once, including cancelling rotations", async () => {
+  const cases = [
+    { outer: 0, inner: 0, box: { page: 1, x: 195, y: 175, width: 90, height: 75 } },
+    { outer: 45, inner: -45, box: { page: 1, x: 207, y: 167.5, width: 66, height: 90 } },
+    { outer: 45, inner: 45, box: { page: 1, x: 195, y: 179.5, width: 90, height: 66 } },
+  ]
+  for (const c of cases) {
+    const inner = cover({ angle: c.inner })
+    const outer = cover({ angle: c.outer, fill: '<hc:winBrush faceColor="none"/>' }).replace('</hp:rect>', `<hp:drawText><hp:subList>${cachedPara(inner)}</hp:subList></hp:drawText></hp:rect>`)
+    const input = await occlusionFixture([cachedPara(outer, 1600)])
+    const { scene } = await renderHwpxPages(input)
+    const [parent, child] = scene.regions.filter(r => r.type === "shape")
+    assert.equal(child.parentId, parent.id)
+    assert.deepEqual(child.regions[0], c.box)
+    const [crop] = await extractRenderedRegions(input, { types: ["shape"], filter: r => r.parentId === parent.id, maxWidthPx: 1191 })
+    const { data, info } = await sharp(crop.data).removeAlpha().raw().toBuffer({ resolveWithObject: true })
+    let dark = 0
+    for (let i = 0; i < data.length; i += info.channels) if (data[i] < 80 && data[i + 1] < 80 && data[i + 2] < 80) dark++
+    assert.ok(dark / (info.width * info.height) > 0.9, `nested ${c.outer}/${c.inner}: crop must fit the painted rectangle`)
+  }
+})

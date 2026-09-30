@@ -481,13 +481,15 @@ function drawObject(o: ParaObj, x: number, y: number, baseV: number, areaW: numb
 // ─── 그리기 도형 ───────────────────────────────────
 function drawShape(o: ParaObj, x: number, y: number, ctx: Ctx, depth: number): void {
   const geometry = shapeGeometry(o, x, y, ctx.defs, ctx.images, (key, msg) => warnOnce(ctx, key, msg))
-  const b = geometry.bbox
+  // Transform original corners through every ancestor and this shape's rotation
+  // before bounding once. An intermediate axis-aligned box inflates nested crops.
+  const b = geometry
+  if (geometry.rotation) ctx.regionRotations.push(geometry.rotation)
   ctx.stats.shapes++
   const shapeId = ctx.regions.add("shape", bboxOf(ctx, b.x, b.y, b.w, b.h), { parentId: parentId(ctx) })
   emit(ctx, regionOpenTag(shapeId, "shape", pageNo(ctx)))
   ctx.parentStack.push(shapeId)
   if (geometry.transform) emit(ctx, `<g transform="${geometry.transform}">`)
-  if (geometry.rotation) ctx.regionRotations.push(geometry.rotation)
   emit(ctx, geometry.svg)
   const dt = findChildByLocalName(o.el, "drawText")
   const sub = dt ? findChildByLocalName(dt, "subList") : null

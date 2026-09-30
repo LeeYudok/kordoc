@@ -6,7 +6,7 @@
  * 더 쪼개면 인위적 경계에 순환 import만 생김.
  */
 
-import { collectImageRefs, DELETABLE_OBJECT_TAGS, extractImageRef, findDescendant, findTopLevelTbls, markDeletedObjects, userShapeComment } from "./section-shape.js"
+import { collectImageRefs, DELETABLE_OBJECT_TAGS, extractImageRef, findDescendant, findTopLevelTbls, inIndependentDeletionStory, markDeletedObjects, userShapeComment } from "./section-shape.js"
 import { KordocError, sanitizeHref, stripDtd } from "../utils.js"
 import { wrapScript, tidyScriptTags } from "../script-tags.js"
 import { convertTableToText, escapeLiteralDollar, MAX_COLS, MAX_ROWS } from "../table/builder.js"
@@ -362,7 +362,7 @@ function walkSection(
 function handleShape(el: Element, sink: IRBlock[], ctx: WalkCtx): void {
   // 캡션은 삭제 개체만 미리 표시하고, 번호·주석 처리는 원래 글상자→캡션 순서로 수행한다.
   const capEl = findChildByLocalName(el, "caption")
-  if (capEl) markDeletedObjects(capEl, ctx.shared.track.deletedObjects, ctx.shared.track.deletedImageRefs, ctx.shared.track.deleteDepth)
+  if (capEl) markDeletedObjects(capEl, ctx.shared.track.deletedObjects, ctx.shared.track.deletedImageRefs)
   const imgRef = extractImageRef(el, 0, ctx.shared.track.deletedObjects)
   const drawTextChild = findDescendant(el, "drawText", 0, ctx.shared.track.deletedObjects)
 
@@ -477,7 +477,7 @@ interface SubListContent {
 
 /** caption/header/footer 등의 subList 내부 문단 텍스트 수집 */
 function collectSubListText(el: Node, ctx: WalkCtx, depth = 0): string {
-  return collectSubListContent(el, ctx, depth).text
+  return inIndependentDeletionStory(ctx.shared.track, () => collectSubListContent(el, ctx, depth).text)
 }
 
 /**
@@ -720,6 +720,10 @@ function formButtonText(el: Element, radio: boolean): string {
 
 /** drawText(글상자) 내부의 <p> 요소들에서 텍스트를 추출하여 paragraph 블록 생성 */
 function extractDrawTextBlocks(drawTextNode: Node, blocks: IRBlock[], ctx: WalkCtx): void {
+  inIndependentDeletionStory(ctx.shared.track, () => extractDrawTextStory(drawTextNode, blocks, ctx))
+}
+
+function extractDrawTextStory(drawTextNode: Node, blocks: IRBlock[], ctx: WalkCtx): void {
   const children = drawTextNode.childNodes
   if (!children) return
   for (let i = 0; i < children.length; i++) {
@@ -729,7 +733,7 @@ function extractDrawTextBlocks(drawTextNode: Node, blocks: IRBlock[], ctx: WalkC
     if (tag === "subList" || tag === "p" || tag === "para") {
       // subList 안의 <p>들을 순회
       if (tag === "subList") {
-        extractDrawTextBlocks(child, blocks, ctx)
+        extractDrawTextStory(child, blocks, ctx)
       } else {
         const info = extractParagraphInfo(child, ctx.styleMap, ctx)
         let text = info.text.trim()
