@@ -8,4 +8,4 @@
 
 GitLab의 이전 OSV 실패는 4.17.2 의존성 보안 패치로 해소됐다. 미러의 annotated 태그 정보 소실도 explicit checkout ref와 원본 ref push로 수정했다. 예상 원격 객체 SHA가 일치하는 특정 태그만 교정하는 dispatch를 실행해 v4.17.2 태그 객체·대상 커밋이 GitHub와 일치함을 직접 확인했다([성공 실행](https://github.com/chrisryugj/kordoc/actions/runs/36713304551)).
 
-4.17.3의 정상 prepublishOnly 전체 게이트와 공개 배포 확인은 진행 중이다. 한컴 실제 GUI 검증은 실행하지 않았으며, 이전에 제한을 알린 뒤 사용자가 지시한 배포 진행 범위를 따른다.
+[4.17.3](https://github.com/chrisryugj/kordoc/releases/tag/v4.17.3)을 공개 배포했다. 정상 prepublishOnly 전체 게이트, 전체 테스트 2,796개와 독립 리뷰 77개가 통과했다. HWP5 교차 표 4,244/4,244, 왕복 68표·1,897셀 모두 일치하며 퍼즈 23,700회 크래시·시간초과·지연·생성 오류는 0이다. 공개 npm 최신 버전·CLI·파일 SHA-256을 확인했고 GitHub 릴리스 파일과 일치한다. GitLab v4.17.3의 태그 객체와 대상 커밋도 GitHub와 일치한다. 한컴 실제 GUI 검증은 실행하지 않았으며, 이전에 제한을 알린 뒤 사용자가 지시한 배포 진행 범위를 따른다.
