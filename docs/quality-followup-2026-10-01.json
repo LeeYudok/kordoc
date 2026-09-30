@@ -1,7 +1,7 @@
 {
   "date": "2026-10-01",
   "version": "4.17.4",
-  "status": "validated-candidate; normal publish gates pending",
+  "status": "released",
   "baseline": {
     "version": "4.17.3",
     "commit": "b053ae9f1e7b2586fc7bbd7cedcd183ac459c3cf",
@@ -13,7 +13,8 @@
     "indexSHA256": "6a57e172c7b4c62cdfea5f98ea74b8289fdea1cd7ed3c656dc9c5a5c20e3d8d3",
     "cliSHA256": "74375949f9590db75c551f2ef21c5bcee1deca912eb5364bd7b5ca9f77783a2c",
     "qualitySnapshotIndexSHA256": "8cbfb39a8d625c9b388f5683ccf3adf15ad285b244409dd8abc529d725c9d54c",
-    "qualitySnapshotScope": "PDF/HWPX parser and generation metrics measured before the renderer-only marker-free optimization. Parser/generator components unchanged; final normal publish reruns all corpus gates."
+    "qualitySnapshotScope": "ODL measured before renderer-only marker-free optimization; parser components unchanged. Normal publish reran every corpus gate on the final build.",
+    "releasedSourceCommit": "94ddf96962a0e78c54eb0d32f2001ae7b104a0c2"
   },
   "scoringPolicy": "GT/evaluator/populations/exclusions unchanged",
   "odl": {
@@ -692,5 +693,183 @@
   "limits": [
     "Not all metrics reach 99: Korean text spacing F1 98.804; Korean PDF exact tables 97.9408; ODL structural/text tracks and forced OCR table accuracy remain below 99.",
     "Remaining HWPX GT defects are not copied into parser output or excluded to manufacture 100%."
-  ]
+  ],
+  "releaseEvidence": "release-4.17.4.json",
+  "finalGates": {
+    "allPass": true,
+    "population": {
+      "value": "hwpx 2286/pdf 1911/hwp쌍 1120",
+      "threshold": "≥ 2286/1911/1120",
+      "pass": true
+    },
+    "hwpx": {
+      "docs": 2286,
+      "refChars": 5548157,
+      "tableCount": 9865,
+      "exactCount": 9849,
+      "nestedTables": 559,
+      "gates": {
+        "recallMicro": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "recallDoc": {
+          "value": 1,
+          "threshold": 1,
+          "failDocs": 0,
+          "pass": true
+        },
+        "missRun": {
+          "failDocs": 0,
+          "threshold": "<20자",
+          "pass": true
+        },
+        "phantom": {
+          "value": 0,
+          "threshold": 0,
+          "pass": true
+        },
+        "blacklist": {
+          "failDocs": 0,
+          "pass": true
+        },
+        "tableExact": {
+          "value": 0.998378,
+          "threshold": 0.9963,
+          "pass": true
+        },
+        "cellF1": {
+          "value": 0.998581,
+          "threshold": 0.9976,
+          "pass": true
+        },
+        "contentNED": {
+          "value": 0.999953,
+          "threshold": 0.9995,
+          "pass": true
+        },
+        "cellExact": {
+          "value": 0.999982,
+          "threshold": 0.9995,
+          "pass": true
+        },
+        "orderAvg": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "orderDoc": {
+          "failDocs": 0,
+          "threshold": 1,
+          "pass": true
+        },
+        "eqPresence": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "fnPresence": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "headerPolicy": {
+          "violations": 0,
+          "pass": true
+        }
+      },
+      "pass": true
+    },
+    "hwp5": {
+      "pairs": 1120,
+      "ok": 1120,
+      "avgCrossNED": 0,
+      "avgHwpxToHwp": 1,
+      "tables": {
+        "ref": 4244,
+        "exact": 4244
+      },
+      "gates": {
+        "pairSimilarity": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "pairTableExact": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "pairCellF1": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "pairCellExact": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "pairContentNED": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "pairCoverage": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "pairErrors": {
+          "value": 0,
+          "threshold": 0,
+          "pass": true
+        }
+      },
+      "pass": true
+    },
+    "pdfTable": {
+      "pairs": 708,
+      "refTables": 2331,
+      "reordered": 5,
+      "matchedRate": 0.998284,
+      "exactRate": 0.979408,
+      "cellF1": 0.990863,
+      "cellExactRate": 0.985981,
+      "contentNED": 0.982072,
+      "parseErrors": 0,
+      "nested": {
+        "pairs": 29,
+        "refTables": 101,
+        "reordered": 0,
+        "matchedRate": 1,
+        "exactRate": 0.930693,
+        "cellF1": 0.99802,
+        "cellExactRate": 0.981723,
+        "contentNED": 0.990894
+      }
+    },
+    "pdfText": {
+      "pairs": 744,
+      "refChars": 2857775,
+      "recall": 0.99829,
+      "precision": 0.99581,
+      "order": 0.99145,
+      "spaceF1": 0.98804,
+      "parseErrors": 0,
+      "excluded": 22
+    },
+    "fuzz": {
+      "runs": 23700,
+      "incidents": 0,
+      "pass": true
+    },
+    "ocr": {
+      "charF1": 0.99178,
+      "cellF1": 0.5465,
+      "strictCerBefore": 0.09542,
+      "strictCerAfter": 0.09589
+    }
+  }
 }
