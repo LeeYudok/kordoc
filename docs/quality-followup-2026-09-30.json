@@ -4,12 +4,12 @@
   "status": "automated_validation_complete_visual_unavailable",
   "scoringPolicy": "GT/evaluator/population/exclusions unchanged",
   "unitTests": {
-    "tests": 2761,
-    "suites": 811,
-    "pass": 2761,
+    "tests": 2772,
+    "suites": 812,
+    "pass": 2772,
     "fail": 0,
     "skip": 0,
-    "scope": "B quality source before PR111 integration; PR111 tests separately 8/8"
+    "scope": "Final C quality source plus security lockfile update; full npm test after dependency installation"
   },
   "hwpx": {
     "docs": 2286,
@@ -733,7 +733,15 @@
       "files": 151,
       "unexpectedFiles": 0,
       "cliVersion": "4.17.2",
-      "sha256": "e061db874d205e5e0622e9c7143e6361aa550f17d74a7e5e1441b71cdbb4f079"
+      "sha256": "847612a9efdb58e5c042e572647cb04752dd86be6affabf4711df4f6fe3dc7c6",
+      "size": 5572237
+    },
+    "draftUrl": "https://github.com/chrisryugj/kordoc/releases/tag/untagged-46a7acafd922d5b63d61",
+    "publicTagCreated": false,
+    "mainIntegration": {
+      "qualityCommit": "3ff5280a6cb093805d56f1bbc08e79de0239092d",
+      "pushed": true,
+      "ciNode20_22_24": "passed"
     }
   },
   "hwp5BorderZero": {
@@ -1020,5 +1028,32 @@
       },
       "allDocumentQualityAndExclusionsEqualToB": true
     }
+  },
+  "dependencySecurity": {
+    "reason": "GitLab OSV pre-receive rejected original locked transitive dependencies",
+    "fastUri": {
+      "before": "3.1.7",
+      "after": "3.1.8",
+      "advisory": "https://github.com/advisories/GHSA-hrr3-gc8f-f4qj"
+    },
+    "ipAddress": {
+      "before": "10.7.0",
+      "after": "10.7.2",
+      "advisories": [
+        "https://github.com/advisories/GHSA-h3mg-xc3c-68pw",
+        "https://github.com/advisories/GHSA-j6r3-76f7-8jcv"
+      ]
+    },
+    "lockfileScope": "Only these two package entries changed; parent package ranges unchanged",
+    "auditVulnerabilities": 0,
+    "typecheck": true,
+    "unitTests": true,
+    "build": true,
+    "metadata": true,
+    "notices": true,
+    "allSourceAndEsmIndexHashesPreserved": true,
+    "cjsEsmGenerateParse": true,
+    "cjsBuildDifference": "Symlink versus local node_modules path in tsup shim comment changes chunk IDs; canonical CJS index body identical",
+    "fullCorpusGateScope": "Full prepublish gate passed on frozen C before this SDK-only dependency lockfile patch; parser ESM and source hashes remain identical"
   }
 }

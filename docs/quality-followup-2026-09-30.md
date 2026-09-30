@@ -40,3 +40,7 @@ OCR의 공정 CER·문자 F1 등은 직전 개선 결과와 동일하다. strict
 [#111](https://github.com/chrisryugj/kordoc/pull/111)은 새 테스트 8개와 CI를 확인한 뒤 병합했고 [#109](https://github.com/chrisryugj/kordoc/issues/109)는 닫았다. 진행 중 다운로드나 확인할 수 없는 소유권은 보존한다. [#110](https://github.com/chrisryugj/kordoc/pull/110)의 병렬 CLI 기능은 검토 의견을 남겼으며, 이번 최소 패치에 섞지 않았다.
 
 버전·lockfile·플러그인 메타는 4.17.2로 맞췄고 패키지 151개 파일과 CLI 버전을 확인했다. npm 게시 전 전체 자동 게이트를 통과했다. 저장소 지침의 한컴 실렌더 검증은 앱 부재로 실행할 수 없었다(맥미니 연결 이름도 미설정). 시각 게이트 통과나 npm 게시를 완료한 것으로 표시하지 않는다.
+
+main 커밋 3ff5280의 Node 20/22/24 CI는 모두 통과했다. 미러 OSV가 기존 MCP 간접 의존성 fast-uri 3.1.7 및 ip-address 10.7.0을 거부해 각각 3.1.8·10.7.2로 호환 갱신했다. 이후 전체 2,772테스트(실패·skip 0), typecheck·build·메타·고지·npm audit(취약점 0), CJS/ESM 생성·파싱 통합 검사를 통과했다. 파서 소스와 ESM index 해시는 고정 C와 동일하다. 전체 코퍼스 게이트는 이 lockfile 추가 패치 이전 C에서 통과한 기록이며, 의존성 패치 후 전체 코퍼스를 재실행했다고 표시하지 않는다.
+
+[4.17.2 릴리스 초안](https://github.com/chrisryugj/kordoc/releases/tag/untagged-46a7acafd922d5b63d61)에 패키지를 첨부했다. npm registry는 4.17.1, 공개 v4.17.2 태그 없음.
