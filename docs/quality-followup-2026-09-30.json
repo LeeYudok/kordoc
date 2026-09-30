@@ -1,7 +1,7 @@
 {
   "baselineCommit": "a4158ee88e461a23b17c9590ac17405dbf058b69",
   "date": "2026-09-30",
-  "status": "automated_validation_complete_visual_unavailable",
+  "status": "released",
   "scoringPolicy": "GT/evaluator/population/exclusions unchanged",
   "unitTests": {
     "tests": 2772,
@@ -719,30 +719,14 @@
   "targetAchieved": false,
   "release": {
     "version": "4.17.2",
-    "status": "automated_checks_passed_visual_unavailable",
-    "visual": {
-      "status": "unavailable",
-      "requiredBy": "AGENTS.md",
-      "cases": 14,
-      "reason": "Hancom Office HWP absent locally; ssh sm hostname not configured",
-      "execution": "npm run bench:visual: Unable to find application named Hancom Office HWP; stopped after this prerequisite failure"
-    },
-    "published": false,
-    "package": {
-      "path": "/tmp/kordoc-release-4.17.2/kordoc-4.17.2.tgz",
-      "files": 151,
-      "unexpectedFiles": 0,
-      "cliVersion": "4.17.2",
-      "sha256": "847612a9efdb58e5c042e572647cb04752dd86be6affabf4711df4f6fe3dc7c6",
-      "size": 5572237
-    },
-    "draftUrl": "https://github.com/chrisryugj/kordoc/releases",
-    "publicTagCreated": false,
-    "mainIntegration": {
-      "qualityCommit": "3ff5280a6cb093805d56f1bbc08e79de0239092d",
-      "pushed": true,
-      "ciNode20_22_24": "passed"
-    }
+    "status": "published",
+    "published": true,
+    "evidence": "release-4.17.2.json",
+    "sourceCommit": "89b3e52b245e168c12ab8eba78601007092fc1a3",
+    "npmUrl": "https://www.npmjs.com/package/kordoc/v/4.17.2",
+    "githubUrl": "https://github.com/chrisryugj/kordoc/releases/tag/v4.17.2",
+    "visualPassed": false,
+    "userVisualGateOverride": true
   },
   "hwp5BorderZero": {
     "production": "src/hwp5/body.ts parseCell only",
@@ -1054,7 +1038,7 @@
     "allSourceAndEsmIndexHashesPreserved": true,
     "cjsEsmGenerateParse": true,
     "cjsBuildDifference": "Symlink versus local node_modules path in tsup shim comment changes chunk IDs; canonical CJS index body identical",
-    "fullCorpusGateScope": "Full prepublish gate passed on frozen C before this SDK-only dependency lockfile patch; parser ESM and source hashes remain identical",
+    "fullCorpusGateScope": "Normal npm publish reran all prepublishOnly corpus gates with final root/demo lockfiles; exit code 0. Source and ESM hashes match frozen C.",
     "demoLockfile": {
       "fastUriBefore": "3.1.7",
       "fastUriAfter": "3.1.8",

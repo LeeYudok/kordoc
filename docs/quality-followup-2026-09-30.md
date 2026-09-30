@@ -1,5 +1,7 @@
 # kordoc 추가 품질 개선 — 2026-09-30
 
+4.17.2를 [npm](https://www.npmjs.com/package/kordoc/v/4.17.2)(latest)과 [GitHub 릴리스](https://github.com/chrisryugj/kordoc/releases/tag/v4.17.2)에 공개했다. HWP5↔HWPX 쌍의 표 대조 100%와 HWPX 자체 표 완전 일치 99.6858%는 별도 지표다. [배포 검증 기록](release-4.17.2.json)에 정상 게시 게이트·패키지 해시·실제 CLI 실행과 사용자 시각 게이트 override를 기록했다.
+
 기준 커밋은 a4158ee이며, GT·평가기·표본·제외 목록·옵션은 유지했다. 세부 근거와 실행 소스 해시는 [JSON 기록](quality-followup-2026-09-30.json)에 있다.
 
 ## 실제 품질 변화
@@ -39,10 +41,16 @@ OCR의 공정 CER·문자 F1 등은 직전 개선 결과와 동일하다. strict
 
 [#111](https://github.com/chrisryugj/kordoc/pull/111)은 새 테스트 8개와 CI를 확인한 뒤 병합했고 [#109](https://github.com/chrisryugj/kordoc/issues/109)는 닫았다. 진행 중 다운로드나 확인할 수 없는 소유권은 보존한다. [#110](https://github.com/chrisryugj/kordoc/pull/110)의 병렬 CLI 기능은 검토 의견을 남겼으며, 이번 최소 패치에 섞지 않았다.
 
-버전·lockfile·플러그인 메타는 4.17.2로 맞췄고 패키지 151개 파일과 CLI 버전을 확인했다. npm 게시 전 전체 자동 게이트를 통과했다. 저장소 지침의 한컴 실렌더 검증은 앱 부재로 실행할 수 없었다(맥미니 연결 이름도 미설정). 시각 게이트 통과나 npm 게시를 완료한 것으로 표시하지 않는다.
+버전·lockfile·플러그인 메타는 4.17.2로 맞췄고 패키지 151개 파일과 CLI 버전을 확인했다. npm 게시 전 전체 자동 게이트를 통과했다. 저장소 지침의 한컴 실렌더 검증은 앱 부재로 실행할 수 없었다(맥미니 연결 이름도 미설정). 시각 게이트는 미실행이다. 이후 사용자의 명시적 배포 진행 지시에 따라 정상 npm 게시 게이트 전부 통과 후 공개 배포를 완료했다.
 
-main 커밋 3ff5280의 Node 20/22/24 CI는 모두 통과했다. 미러 OSV가 기존 MCP 간접 의존성 fast-uri 3.1.7 및 ip-address 10.7.0을 거부해 각각 3.1.8·10.7.2로 호환 갱신했다. 이후 전체 2,772테스트(실패·skip 0), typecheck·build·메타·고지·npm audit(취약점 0), CJS/ESM 생성·파싱 통합 검사를 통과했다. 파서 소스와 ESM index 해시는 고정 C와 동일하다. 전체 코퍼스 게이트는 이 lockfile 추가 패치 이전 C에서 통과한 기록이며, 의존성 패치 후 전체 코퍼스를 재실행했다고 표시하지 않는다.
+main 커밋 3ff5280의 Node 20/22/24 CI는 모두 통과했다. 미러 OSV가 기존 MCP 간접 의존성 fast-uri 3.1.7 및 ip-address 10.7.0을 거부해 각각 3.1.8·10.7.2로 호환 갱신했다. 이후 전체 2,772테스트(실패·skip 0), typecheck·build·메타·고지·npm audit(취약점 0), CJS/ESM 생성·파싱 통합 검사를 통과했다. 파서 소스와 ESM index 해시는 고정 C와 동일하다. 추가로 실제 npm publish에서 최종 lockfile로 전체 코퍼스 게이트를 재실행했고 모두 통과했다.
 
-[4.17.2 릴리스 초안](https://github.com/chrisryugj/kordoc/releases)에 패키지를 첨부했다. npm registry는 4.17.1, 공개 v4.17.2 태그 없음.
+[4.17.2 공개 릴리스](https://github.com/chrisryugj/kordoc/releases/tag/v4.17.2)에 검증한 패키지를 첨부했다. npm registry의 latest는 4.17.2이고 공개 태그는 소스 커밋 89b3e52를 가리킨다.
 
 미러는 demo/package-lock.json도 검사하므로 데모의 fast-uri 3.1.7→3.1.8 항목도 갱신했다. 데모 npm audit도 취약점 0이며, 데모 코드는 변경하지 않았다.
+
+## 사용자 지시에 따른 배포 진행
+
+한컴 시각 검증 환경 부재를 안내한 뒤 사용자가 2026-09-30에 배포 진행을 명시했다. 이 지시가 저장소의 시각 게이트 대기 규칙보다 우선하므로, 미실행 사실은 그대로 기록하고 `npm publish --access public`의 정상 prepublishOnly 전체 게이트를 실행해 종료 코드 0으로 통과하고 공개 배포했다. HWP5↔HWPX 1,120쌍·4,244표의 대조는 100%이며 HWPX 자체 2,286문서·9,865표의 완전 일치율 99.6858%와는 다른 지표다.
+
+공개 레지스트리에서 받은 tarball SHA256은 847612a9efdb58e5c042e572647cb04752dd86be6affabf4711df4f6fe3dc7c6으로 검증 패키지·GitHub 첨부와 동일하다. npm에서 새로 실행한 CLI도 4.17.2를 표시했다. 게시 실행의 퍼즈 23,700건 사고 0, 마지막 OCR PASS 및 기존 품질 유지도 확인했다.
