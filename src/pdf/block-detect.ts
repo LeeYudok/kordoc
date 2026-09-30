@@ -131,8 +131,11 @@ export function detectTypographyHeadings(blocks: IRBlock[]): void {
     const faceWeight = new Map<string, number>()
     for (const block of page) {
       if (block.type !== "paragraph" || !block.text || !block.style?.fontName) continue
-      const face = block.style.fontName
-      faceWeight.set(face, (faceWeight.get(face) ?? 0) + block.text.length)
+      // 서체별 실제 글자 수로 센다 — 블록 대표 서체는 첫 조각 서체라, 굵은 머리말로 시작한 긴 문단("Alignment tuning. In …")이
+      // 문단 전체를 굵은 서체 몫으로 넘겨 본문 서체를 뒤집는다
+      const faces = FACE_CHARS.get(block)
+      if (faces) for (const [face, n] of faces) faceWeight.set(face, (faceWeight.get(face) ?? 0) + n)
+      else faceWeight.set(block.style.fontName, (faceWeight.get(block.style.fontName) ?? 0) + block.text.length)
     }
     const bodyFace = [...faceWeight].sort((a, b) => b[1] - a[1])[0]?.[0]
     if (!bodyFace || (faceWeight.get(bodyFace) ?? 0) < 250) continue
@@ -140,8 +143,11 @@ export function detectTypographyHeadings(blocks: IRBlock[]): void {
     // smaller distinct faces are running heads, bylines, captions and notes.
     const sizeWeight = new Map<number, number>()
     for (const block of page) {
-      if (block.type !== "paragraph" || block.style?.fontName !== bodyFace || !block.style.fontSize) continue
-      sizeWeight.set(block.style.fontSize, (sizeWeight.get(block.style.fontSize) ?? 0) + block.text!.length)
+      if (block.type !== "paragraph" || !block.style?.fontSize) continue
+      // 본문 서체 글자 수로 크기도 센다 — 굵은 머리말로 시작한 본문만 있어도 작은 캡션을 제목으로 올리지 않는다.
+      const faces = FACE_CHARS.get(block)
+      const chars = faces ? (faces.get(bodyFace) ?? 0) : block.style.fontName === bodyFace ? (block.text?.length ?? 0) : 0
+      if (chars) sizeWeight.set(block.style.fontSize, (sizeWeight.get(block.style.fontSize) ?? 0) + chars)
     }
     const bodySize = [...sizeWeight].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0
 
@@ -284,7 +290,9 @@ export function detectRepeatedPageLabels(blocks: IRBlock[]): void {
   for (const page of byPage.values()) {
     const bodyChars = new Map<string, number>()
     for (const b of page) if (b.type === "paragraph" && b.text && b.style?.fontName) {
-      bodyChars.set(b.style.fontName, (bodyChars.get(b.style.fontName) ?? 0) + b.text.length)
+      const faces = FACE_CHARS.get(b)
+      if (faces) for (const [face, n] of faces) bodyChars.set(face, (bodyChars.get(face) ?? 0) + n)
+      else bodyChars.set(b.style.fontName, (bodyChars.get(b.style.fontName) ?? 0) + b.text.length)
     }
     const bodyFace = [...bodyChars].sort((a, b) => b[1] - a[1])[0]?.[0]
     const candidates = page.filter(b => b.type === "paragraph" && b.text && b.bbox && b.style?.fontName &&

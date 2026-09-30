@@ -6,6 +6,7 @@
  * 더 쪼개면 인위적 경계에 순환 import만 생김.
  */
 
+import { collectImageRefs, DELETABLE_OBJECT_TAGS, extractImageRef, findDescendant, findTopLevelTbls, markDeletedObjects, userShapeComment } from "./section-shape.js"
 import { KordocError, sanitizeHref, stripDtd } from "../utils.js"
 import { wrapScript, tidyScriptTags } from "../script-tags.js"
 import { convertTableToText, escapeLiteralDollar, MAX_COLS, MAX_ROWS } from "../table/builder.js"
@@ -68,31 +69,6 @@ export function parseSectionXml(xml: string, styleMap?: HwpxStyleMap, warnings?:
   return blocks
 }
 
-/** pic/shape 요소에서 이미지 참조 경로 추출 (binaryItemIDRef 또는 href) — MAX_XML_DEPTH 가드 */
-function extractImageRef(el: Element, depth: number = 0): string | null {
-  if (depth > MAX_XML_DEPTH) return null
-  // HWPX: <hp:imgRect> 또는 <hp:img> 내 binaryItemIDRef 속성
-  // 또는 하위에서 img 관련 속성 탐색
-  const children = el.childNodes
-  if (!children) return null
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i] as Element
-    if (child.nodeType !== 1) continue
-    const tag = (child.tagName || child.localName || "").replace(/^[^:]+:/, "")
-    if (tag === "imgRect" || tag === "img" || tag === "imgClip") {
-      const ref = child.getAttribute("binaryItemIDRef") || child.getAttribute("href") || ""
-      if (ref) return ref
-    }
-    // lineShape > imgRect 같은 중첩 구조
-    const nested = extractImageRef(child, depth + 1)
-    if (nested) return nested
-  }
-  // 직접 속성 체크
-  const directRef = el.getAttribute("binaryItemIDRef") || ""
-  if (directRef) return directRef
-  return null
-}
-
 function walkSection(
   node: Node, blocks: IRBlock[],
   tableCtx: TableState | null, tableStack: TableState[],
@@ -105,6 +81,7 @@ function walkSection(
   for (let i = 0; i < children.length; i++) {
     const el = children[i] as Element
     if (el.nodeType !== 1) continue
+    if (ctx.shared.track.deletedObjects.has(el)) continue
 
     const tag = el.tagName || el.localName || ""
     const localTag = tag.replace(/^[^:]+:/, "")
@@ -383,8 +360,11 @@ function walkSection(
  * 도형 캡션은 문단으로 보존한다. 둘 다 없으면 SKIPPED_IMAGE 경고.
  */
 function handleShape(el: Element, sink: IRBlock[], ctx: WalkCtx): void {
-  const imgRef = extractImageRef(el)
-  const drawTextChild = findDescendant(el, "drawText")
+  // 캡션은 삭제 개체만 미리 표시하고, 번호·주석 처리는 원래 글상자→캡션 순서로 수행한다.
+  const capEl = findChildByLocalName(el, "caption")
+  if (capEl) markDeletedObjects(capEl, ctx.shared.track.deletedObjects, ctx.shared.track.deletedImageRefs, ctx.shared.track.deleteDepth)
+  const imgRef = extractImageRef(el, 0, ctx.shared.track.deletedObjects)
+  const drawTextChild = findDescendant(el, "drawText", 0, ctx.shared.track.deletedObjects)
 
   if (imgRef) {
     const block: IRBlock = { type: "image", text: imgRef, pageNumber: ctx.page }
@@ -398,7 +378,6 @@ function handleShape(el: Element, sink: IRBlock[], ctx: WalkCtx): void {
     extractDrawTextBlocks(drawTextChild, sink, ctx)
   }
   // 도형 캡션 (그림 캡션 등) — 이미지 아래 문단으로 보존
-  const capEl = findChildByLocalName(el, "caption")
   if (capEl) {
     const capText = collectSubListText(capEl, ctx)
     if (capText) sink.push({ type: "paragraph", text: capText, pageNumber: ctx.page })
@@ -408,17 +387,6 @@ function handleShape(el: Element, sink: IRBlock[], ctx: WalkCtx): void {
     const localTag = (el.tagName || el.localName || "").replace(/^[^:]+:/, "")
     ctx.warnings.push({ page: ctx.page, message: `스킵된 요소: ${localTag}`, code: "SKIPPED_IMAGE" })
   }
-}
-
-/** 도형의 사용자 입력 그림 설명 — 한컴 자동생성 대체텍스트("그림입니다." 등)는 제외 */
-function userShapeComment(el: Element): string | undefined {
-  const commentEl = findChildByLocalName(el, "shapeComment")
-  if (!commentEl) return undefined
-  const text = extractTextFromNode(commentEl)
-  if (!text) return undefined
-  if (/^그림입니다/.test(text)) return undefined
-  if (/^(?:모서리가 둥근 |둥근 )?[^\n]{1,20}입니다\.?$/.test(text)) return undefined
-  return text
 }
 
 /** 도형/중첩 콘텐츠 블록을 셀에 병합 — 텍스트는 cell.text에, 구조는 cell.blocks에 보존 */
@@ -524,7 +492,7 @@ function collectSubListContent(el: Node, ctx: WalkCtx, depth = 0, sep = "\n"): S
   if (!children) return out
   for (let i = 0; i < children.length; i++) {
     const ch = children[i] as Element
-    if (ch.nodeType !== 1) continue
+    if (ch.nodeType !== 1 || ctx.shared.track.deletedObjects.has(ch)) continue
     const tag = (ch.tagName || ch.localName || "").replace(/^[^:]+:/, "")
     if (tag === "p" || tag === "para") {
       let t = extractParagraphInfo(ch, ctx.styleMap, ctx).text
@@ -538,7 +506,7 @@ function collectSubListContent(el: Node, ctx: WalkCtx, depth = 0, sep = "\n"): S
       }
       // 문단 run 안의 중첩표 (hp:p > hp:run > hp:tbl — HWPX 표준 배치)
       const tbls: Element[] = []
-      findTopLevelTbls(ch, tbls)
+      findTopLevelTbls(ch, tbls, ctx.shared.track.deletedObjects)
       for (const tbl of tbls) {
         const built = buildSubListTable(tbl, ctx, depth)
         if (built.text) parts.push(built.text)
@@ -583,7 +551,7 @@ function drawTextParaTexts(para: Element, ctx: WalkCtx): string[] {
     if (!kids) return
     for (let i = 0; i < kids.length; i++) {
       const ch = kids[i] as Element
-      if (ch.nodeType !== 1) continue
+      if (ch.nodeType !== 1 || ctx.shared.track.deletedObjects.has(ch)) continue
       const tag = (ch.tagName || ch.localName || "").replace(/^[^:]+:/, "")
       if (tag === "tbl" || tag === "footNote" || tag === "endNote") continue
       if (tag === "drawText") { if (!inDrawText) visit(ch, depth + 1, true); continue }
@@ -618,20 +586,6 @@ function buildSubListTable(el: Element, ctx: WalkCtx, depth: number): { text: st
   return { text: flat, block: built.find(b => b.type === "table") ?? null }
 }
 
-/** 노드 하위의 최상위 tbl 수집 — tbl 내부 미진입 (셀 안 중첩표는 표 워커가 처리) */
-function findTopLevelTbls(el: Node, out: Element[], depth = 0): void {
-  if (depth > MAX_XML_DEPTH) return
-  const kids = el.childNodes
-  if (!kids) return
-  for (let i = 0; i < kids.length; i++) {
-    const ch = kids[i] as Element
-    if (ch.nodeType !== 1) continue
-    const tag = (ch.tagName || ch.localName || "").replace(/^[^:]+:/, "")
-    if (tag === "tbl") { out.push(ch); continue }
-    findTopLevelTbls(ch, out, depth + 1)
-  }
-}
-
 /**
  * <p> 내부에서 텍스트가 아닌 구조적 자식만 처리 (tbl, pic, shape). tableCtx 반환으로 상태 전파.
  * onTbl: 각 표 처리 직전 호출 — 호출자가 표 앞 텍스트 조각을 먼저 방출해
@@ -652,6 +606,7 @@ function walkParagraphChildren(
     for (let i = 0; i < kids.length; i++) {
       const el = kids[i] as Element
       if (el.nodeType !== 1) continue
+      if (ctx.shared.track.deletedObjects.has(el)) continue
       const tag = el.tagName || el.localName || ""
       const localTag = tag.replace(/^[^:]+:/, "")
 
@@ -761,22 +716,6 @@ function formButtonText(el: Element, radio: boolean): string {
   const width = Number(findChildByLocalName(el, "sz")?.getAttribute("width") ?? 0)
   const caption = (el.getAttribute("caption") ?? "").trim()
   return caption && width >= FORM_CAPTION_MIN_WIDTH ? `${mark} ${caption}` : mark
-}
-
-/** 자손에서 특정 태그명의 첫 번째 요소 탐색 (최대 깊이 5) */
-function findDescendant(node: Node, targetTag: string, depth = 0): Element | null {
-  if (depth > 5) return null
-  const children = node.childNodes
-  if (!children) return null
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i] as Element
-    if (child.nodeType !== 1) continue
-    const tag = (child.tagName || child.localName || "").replace(/^[^:]+:/, "")
-    if (tag === targetTag) return child
-    const found = findDescendant(child, targetTag, depth + 1)
-    if (found) return found
-  }
-  return null
 }
 
 /** drawText(글상자) 내부의 <p> 요소들에서 텍스트를 추출하여 paragraph 블록 생성 */
@@ -953,6 +892,11 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
       const k = kids[j] as Element
       if (k.nodeType !== 1) continue
       const ktag = (k.tagName || k.localName || "").replace(/^[^:]+:/, "")
+      if (isInDeletedRange(ctx) && DELETABLE_OBJECT_TAGS.has(ktag)) {
+        ctx!.shared.track.deletedObjects.add(k)
+        collectImageRefs(k, ctx!.shared.track.deletedImageRefs)
+        continue
+      }
       switch (ktag) {
         // 머리말/꼬리말 — 문서당 1회 수집, 본문 앞/뒤 배치
         // 페이지 번호 크롬(autoNum PAGE + 문자 없는 잔여 텍스트, 예: "- 1 -")은 본문 정보가
@@ -1040,6 +984,12 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
       if (child.nodeType !== 1) continue
 
       const tag = (child.tagName || child.localName || "").replace(/^[^:]+:/, "")
+      // 현재 위치의 삭제 상태를 기록한다 — 구조 pass 시점에는 deleteEnd를 이미 지난다.
+      if (isInDeletedRange(ctx) && DELETABLE_OBJECT_TAGS.has(tag)) {
+        ctx!.shared.track.deletedObjects.add(child)
+        collectImageRefs(child, ctx!.shared.track.deletedImageRefs)
+        continue
+      }
       switch (tag) {
         case "t": walk(child, depth + 1); break  // 자식 순회 (tab 등 하위 요소 처리)
         // 탭 — 채움(leader≠0, 목차 점선) 탭도 보통 탭. 채움선은 글이 아니라 내지 않고 뒤 글은 남긴다(PDF tab-leaders 가

@@ -600,7 +600,8 @@ function mergeSplitRow(table: IRTable, owner: (Anchor | null)[][], first: number
  *  - 열 수 동일
  *  - 좌우 경계 근접 (폭 대비 0.2 비율 이내, ODL NEIGHBOUR_TABLE_EPSILON)
  * 이면 한 표로 병합. 반복 헤더 행(첫 행 텍스트 동일)은 제거.
- * 두 조각 사이에 자기 쪽 표 조각과 가로로 겹치지 않는 블록(besideOwn)만 끼어 있으면 인접으로 본다 (그 블록은 제자리에 둔다).
+ * 두 조각 사이에 자기 쪽 표 조각과 가로로 겹치지 않는 블록(besideOwn)이나 쪽 끝·첫머리 띠의 쪽 번호(pageNumberBetween)만 끼어 있으면
+ * 인접으로 본다 (그 블록은 제자리에 둔다).
  * 같은 쪽 2단 넘김은 먼저 mergeColumnFlow 가 잇는다.
  */
 const NEIGHBOR_TABLE_EPSILON = 0.2
@@ -616,6 +617,23 @@ function besideOwn(b: IRBlock, p: IRBlock, c: IRBlock): boolean {
   const t = (b.pageNumber === p.pageNumber ? p : c).bbox!
   const bx1 = b.bbox.x, bx2 = b.bbox.x + b.bbox.width
   return bx2 <= t.x + 1 || bx1 >= t.x + t.width - 1
+}
+
+/** 쪽 번호 한 줄 — "21", "- 21 -" */
+const PAGE_NUMBER_TEXT = /^[-–—]?\s*\d{1,4}\s*[-–—]?$/
+
+/**
+ * 두 조각 사이의 쪽 번호 — 앞 조각 아래 쪽 끝 띠나 뒤 조각 위 쪽 첫머리 띠에 홀로 놓인 쪽 번호 문단. 머리글·바닥글 제거는 3쪽 이상
+ * 파싱할 때만 돌아 두 쪽만 뽑거나(-p 29-30) 제거를 끄면(--no-header-footer) 쪽 번호가 표 폭 안에 남아 이음을 막았다(응급의료기관 평가
+ * 기준집 p.29-30: 앞 쪽 끝 행 가중치 1.5 칸이 다음 쪽 두 행에 걸친 표가 두 표로 갈려 다음 쪽 행의 가중치가 빈 칸). 쪽 높이를 모르면 두지 않는다
+ */
+function pageNumberBetween(b: IRBlock, p: IRBlock, c: IRBlock, pageHeights?: Map<number, number>): boolean {
+  if (b.type !== "paragraph" || !b.bbox || !PAGE_NUMBER_TEXT.test(b.text?.trim() ?? "")) return false
+  const h = b.pageNumber ? pageHeights?.get(b.pageNumber) : undefined
+  if (!h) return false
+  if (b.pageNumber === p.pageNumber) return b.bbox.y + b.bbox.height <= Math.min(p.bbox!.y, h * PAGE_EDGE_BAND) + 1
+  if (b.pageNumber === c.pageNumber) return b.bbox.y >= Math.max(c.bbox!.y + c.bbox!.height, h * (1 - PAGE_EDGE_BAND)) - 1
+  return false
 }
 
 /** 같은 쪽에서 표 t 의 왼쪽 단에 온전히 놓인 블록 */
@@ -680,7 +698,7 @@ export function mergeCrossPageTables(blocks: IRBlock[], pageHeights?: Map<number
     if (!curr || curr.type !== "table" || !curr.table || !curr.bbox || curr.pageNumber !== prev.pageNumber + 1) continue
     // 단위 행이 양쪽에 다시 나타나면 각 쪽에서 새 표를 시작한 것이다.
     if (startsWithUnitRow(prev.table) && startsWithUnitRow(curr.table)) continue
-    const joined = j === i + 1 || blocks.slice(i + 1, j).every(b => besideOwn(b, prev, curr) || insideTable(b, prev))
+    const joined = j === i + 1 || blocks.slice(i + 1, j).every(b => besideOwn(b, prev, curr) || insideTable(b, prev) || pageNumberBetween(b, prev, curr, pageHeights))
       ? (looksContinued(prev, curr, pageHeights) && !restartsTable(blocks, i, curr.table, pageHeights) ? joinClipParts(prev, curr, pageHeights, lex) ?? false : null)
       : null
     if (joined) {
@@ -1002,7 +1020,7 @@ function chainHead(blocks: IRBlock[], i: number, pageHeights?: Map<number, numbe
     }
     const pb = tailOf(blocks[p])
     if (pb.pageNumber !== (cur.pageNumber ?? 0) - 1) break
-    if (!blocks.slice(p + 1, k).every(b => besideOwn(b, pb, cur) || insideTable(b, pb))) break
+    if (!blocks.slice(p + 1, k).every(b => besideOwn(b, pb, cur) || insideTable(b, pb) || pageNumberBetween(b, pb, cur, pageHeights))) break
     if (!looksContinued(pb, cur, pageHeights)) break
     const px = TABLE_COLXS.get(pb.table!), cx = TABLE_COLXS.get(cur.table!)
     if (!px || !cx) break

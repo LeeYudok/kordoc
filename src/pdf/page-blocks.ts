@@ -866,12 +866,7 @@ function extractBlocksWithGrids(
     }
     // A panel on the right is read after the prose column beside it.
     let lastLeft = -1
-    const beside = (b: IRBlock) => !!b.bbox && b.bbox.x + b.bbox.width <= box.x - 3 &&
-      b.bbox.y + b.bbox.height >= box.y && b.bbox.y <= box.y + box.height
-    units.forEach((unit, index) => {
-      // 옆 본문 단 — 패널 왼쪽 줄들, 패널 아래로 이어진 줄은 폭이 넓어도 같은 단이다
-      if (unit.some(beside) && unit.every(b => beside(b) || (!!b.bbox && b.bbox.y + b.bbox.height < box.y))) lastLeft = index
-    })
+    units.forEach((unit, index) => { if (isProseBesidePanel(unit, box)) lastLeft = index })
     const current = units.findIndex(unit => unit.includes(sidebar))
     if (lastLeft > current) {
       const [unit] = units.splice(current, 1)
@@ -885,6 +880,16 @@ function extractBlocksWithGrids(
     else ordered.push(b)
   }
   return mergeAdjacentTableBlocks(ordered)
+}
+
+/**
+ * 패널 왼쪽 본문 단인가 — 패널 왼쪽 줄들, 패널 아래로 이어진 줄은 폭이 넓어도 같은 단이다. 옆에서 시작해 패널 아래로
+ * 내려오며 넓어진 문단(끝줄만 패널 밑으로 삐져나감)도 밑변이 패널 밑이면 같은 단이다 (ODL 157)
+ */
+export function isProseBesidePanel(unit: IRBlock[], box: { x: number; y: number; width: number; height: number }): boolean {
+  const beside = (b: IRBlock) => !!b.bbox && b.bbox.x + b.bbox.width <= box.x - 3 &&
+    b.bbox.y + b.bbox.height >= box.y && b.bbox.y <= box.y + box.height
+  return unit.some(beside) && unit.every(b => beside(b) || (!!b.bbox && b.bbox.y < box.y))
 }
 
 /** 사이드바 패널 글 — 순서 정렬이 패널을 한 덩이로 옮긴 뒤 서체 런으로 편다 (panelBlocks) */

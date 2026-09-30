@@ -219,6 +219,127 @@ describe("세 쪽에 걸친 칸 — 이어짐 조각을 붙인 표는 끝난 쪽
   })
 })
 
+describe("쪽 번호가 두 조각 사이에 남아도 쪽 넘김 표를 잇는다", () => {
+  // 응급의료기관 평가 기준집 p.29-30 실측을 옮겼다: 앞 쪽 끝 행 "가중치 1.5" 칸이 다음 쪽 두 행까지 세로 병합으로 이어진다.
+  // 머리글·바닥글 제거는 3쪽 이상일 때만 돌아 -p 29-30·--no-header-footer 에서는 앞 쪽 쪽 번호 "21" 이 표 폭 안에 남는다
+  const H = new Map([[1, 842], [2, 842]])
+  const make = (between: IRBlock): IRBlock[] => {
+    const clip = (t: IRTable): IRTable => { CLIP_TABLES.add(t); TABLE_COLXS.set(t, [72.3, 150, 400, 542]); return t }
+    const prev = clip(grid(3, 3, [[0, 0, "구분"], [0, 1, "지표명"], [0, 2, "가중치"], [1, 0, "적시성"], [1, 1, "1) 병상포화 지수"], [1, 2, "1.2"],
+      [2, 0, "기능성"], [2, 1, "1) 중증상병해당환자 분담률"], [2, 2, "1.5"]]))
+    const curr = clip(grid(4, 3, [[0, 0, "구분"], [0, 1, "지표명"], [0, 2, "가중치"], [1, 0, null, 1, 3], [1, 1, "2) 중증상병해당환자 구성비"], [1, 2, null, 1, 2],
+      [2, 1, "3) 최종치료 제공률"], [3, 1, "5) 협진의사 수준"], [3, 2, "-"]]))
+    return [
+      { type: "table", table: prev, pageNumber: 1, bbox: { page: 1, x: 72.3, y: 75, width: 469.7, height: 637 } },
+      between,
+      { type: "table", table: curr, pageNumber: 2, bbox: { page: 2, x: 72.3, y: 98, width: 469.7, height: 660 } },
+    ]
+  }
+  const para = (text: string): IRBlock => ({ type: "paragraph", text, pageNumber: 1, bbox: { page: 1, x: 530, y: 47, width: 10, height: 10 } })
+
+  it("앞 쪽 표 아래 쪽 끝 띠의 쪽 번호는 이음을 막지 않고 제자리에 남는다", () => {
+    const blocks = make(para("21"))
+    mergeCrossPageTables(blocks, H)
+    assert.equal(blocks.length, 2)
+    assert.equal(blocks[0].type, "table")
+    assert.equal(blocks[1].text, "21")
+    const t = blocks[0].table!
+    assert.equal(t.rows, 6, "되풀이 머리 행은 빠진다")
+    assert.equal(t.cells[2][2].text, "1.5")
+    assert.equal(t.cells[2][2].rowSpan, 3, "가중치 칸이 다음 쪽 이어진 두 행까지 걸친다")
+    assert.equal(t.cells[5][2].text, "-")
+  })
+
+  it("쪽 번호 꼴 \"- 21 -\" 도 같다", () => {
+    const blocks = make(para("- 21 -"))
+    mergeCrossPageTables(blocks, H)
+    assert.equal(blocks.filter(b => b.type === "table").length, 1)
+  })
+
+  it("뒤 쪽 표 위 쪽 첫머리 띠의 쪽 번호도 건너뛴다", () => {
+    const blocks = make({ type: "paragraph", text: "22", pageNumber: 2, bbox: { page: 2, x: 290, y: 790, width: 12, height: 10 } })
+    mergeCrossPageTables(blocks, H)
+    assert.equal(blocks.filter(b => b.type === "table").length, 1)
+  })
+
+  it("같은 자리의 본문 글(표 주석)은 종전대로 두 표로 가른다", () => {
+    const blocks = make(para("※ 가중치는 권역응급의료센터 기준"))
+    mergeCrossPageTables(blocks, H)
+    assert.equal(blocks.filter(b => b.type === "table").length, 2)
+  })
+
+  it("쪽 높이를 모르면(외부 호출) 쪽 번호 예외를 두지 않는다", () => {
+    const blocks = make(para("21"))
+    mergeCrossPageTables(blocks)
+    assert.equal(blocks.filter(b => b.type === "table").length, 2)
+  })
+})
+
+describe("쪽 번호를 남긴 다중 쪽 표 — 이어짐과 새 서식을 구별한다", () => {
+  const H = new Map([[1, 842], [2, 842], [3, 842]])
+  const clip = (t: IRTable): IRTable => { CLIP_TABLES.add(t); TABLE_COLXS.set(t, [72.3, 150, 400, 542]); return t }
+  const block = (t: IRTable, page: number): IRBlock => ({ type: "table", table: clip(t), pageNumber: page,
+    bbox: { page, x: 72.3, y: 75, width: 469.7, height: 683 } })
+  const footer = (page: number, text = String(page + 20)): IRBlock => ({ type: "paragraph", text, pageNumber: page,
+    bbox: { page, x: 290, y: 47, width: 12, height: 10 } })
+
+  it("세 쪽에 걸친 빈 조각의 가중치와 세로 병합 범위를 되살리고 쪽 번호를 보존한다", () => {
+    const first = grid(2, 3, [[0, 0, "구분"], [0, 1, "지표명"], [0, 2, "가중치"],
+      [1, 0, "기능성"], [1, 1, "첫째"], [1, 2, "1.5"]])
+    const mid = grid(4, 3, [[0, 0, "구분"], [0, 1, "지표명"], [0, 2, "가중치"],
+      [1, 0, "분류 2"], [1, 1, "둘째"], [1, 2, null, 1, 3], [2, 0, "분류 3"], [2, 1, "셋째"], [3, 0, "분류 4"], [3, 1, "넷째"]])
+    const last = grid(3, 3, [[0, 0, "구분"], [0, 1, "지표명"], [0, 2, "가중치"],
+      [1, 0, "분류 5"], [1, 1, "다섯째"], [1, 2, null], [2, 0, "새 평가"], [2, 1, "여섯째"], [2, 2, "2.0"]])
+    const blocks = [block(first, 1), footer(1), block(mid, 2), footer(2), block(last, 3)]
+    mergeCrossPageTables(blocks, H)
+    assert.equal(blocks.filter(b => b.type === "table").length, 1)
+    assert.deepEqual(blocks.filter(b => b.type === "paragraph").map(b => b.text), ["21", "22"])
+    const t = blocks[0].table!
+    assert.equal(t.rows, 7)
+    assert.equal(t.cells[1][2].text, "1.5")
+    assert.equal(t.cells[1][2].rowSpan, 5)
+    assert.equal(t.cells[6][2].text, "2.0")
+  })
+
+  it("쪽 번호 너머 사슬 첫머리와 이름표가 같은 새 양식은 이전 표에 붙이지 않는다", () => {
+    const first = grid(2, 3, [[0, 0, "구분"], [0, 1, "지표명"], [0, 2, "평가 A"],
+      [1, 0, "첫 데이터"], [1, 1, "첫 내용"], [1, 2, "첫 값"]])
+    const mid = grid(1, 3, [[0, 0, "이어진 데이터"], [0, 1, "이어진 내용"], [0, 2, "이어진 값"]])
+    const nextForm = grid(2, 3, [[0, 0, "구분"], [0, 1, "지표명"], [0, 2, "평가 B"],
+      [1, 0, "다른 데이터"], [1, 1, "다른 내용"], [1, 2, "다른 값"]])
+    const blocks = [block(first, 1), footer(1), block(mid, 2), block(nextForm, 3)]
+    mergeCrossPageTables(blocks, H)
+    const tables = blocks.filter(b => b.type === "table")
+    assert.equal(tables.length, 2)
+    assert.equal(tables[0].table!.rows, 3)
+    assert.equal(tables[0].table!.cells[2][0].text, "이어진 데이터")
+    assert.equal(tables[1].table!.cells[0][2].text, "평가 B")
+    assert.equal(tables[1].pageNumber, 3)
+  })
+
+  it("양쪽에 단위 행이 있으면 쪽 끝 번호를 건너뛰어도 독립 표다", () => {
+    const form = (value: string) => grid(2, 3, [[0, 0, "(단위: 명)", 3],
+      [1, 0, "기관"], [1, 1, "인원"], [1, 2, value]])
+    const blocks = [block(form("10"), 1), footer(1), block(form("20"), 2)]
+    mergeCrossPageTables(blocks, H)
+    assert.equal(blocks.filter(b => b.type === "table").length, 2)
+    assert.equal(blocks[1].text, "21")
+  })
+
+  it("본문 영역의 숫자 문단은 쪽 번호 예외가 아니다", () => {
+    const a = grid(1, 3, [[0, 0, "A"], [0, 1, "B"], [0, 2, "C"]])
+    const b = grid(1, 3, [[0, 0, "D"], [0, 1, "E"], [0, 2, "F"]])
+    const middle = footer(2, "2026")
+    middle.bbox = { page: 2, x: 290, y: 300, width: 24, height: 10 }
+    const next = block(b, 2)
+    next.bbox = { page: 2, x: 72.3, y: 500, width: 469.7, height: 258 }
+    const blocks = [block(a, 1), middle, next]
+    mergeCrossPageTables(blocks, H)
+    assert.equal(blocks.filter(b => b.type === "table").length, 2)
+    assert.equal(blocks[1].text, "2026")
+  })
+})
+
 describe("buildClipCellGrids — 쪽 첫머리 클립 없는 띠·떨어진 조각", () => {
   const prevPage = { lastCells: [{ x1: 72.3, y1: 78.9, x2: 103, y2: 482.6 }], clips: [] }
 

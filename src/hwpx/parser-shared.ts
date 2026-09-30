@@ -79,7 +79,7 @@ export interface SectionShared {
   /** numbering id → 레벨별(1..10) 카운터. -1 = 미사용(start값으로 초기화 — 0은 start="0"의 유효값) */
   numState: Map<string, number[]>
   pageText: { headers: string[]; footers: string[] }
-  track: { deleteDepth: number; warned: boolean }
+  track: { deleteDepth: number; warned: boolean; deletedObjects: WeakSet<Element>; deletedImageRefs: Set<string> }
   /** content.hpf kordoc-layout 메타 ("default"|"gongmun") — 자사 생성 파일 왕복 채널
    *  게이트. null/미설정 = 외래 파일 (id 기반 인라인 강조·인용 복원 꺼짐) */
   kordocLayout?: string | null
@@ -98,7 +98,7 @@ export function createSectionShared(): SectionShared {
   return {
     numState: new Map(),
     pageText: { headers: [], footers: [] },
-    track: { deleteDepth: 0, warned: false },
+    track: { deleteDepth: 0, warned: false, deletedObjects: new WeakSet(), deletedImageRefs: new Set() },
     pageState: { base: 0, allUsable: true },
   }
 }

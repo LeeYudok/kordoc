@@ -173,7 +173,7 @@ export async function parseHwpxDocument(buffer: ArrayBuffer, options?: ParseOpti
   applyPageText(blocks, shared)
 
   // 이미지 블록에서 ZIP 바이너리 추출 — 전체 파싱 시 본문 미참조 BinData(꼬리말 그림·imgBrush 배경)도 스윕
-  const images = await extractImagesFromZip(zip, blocks, decompressed, warnings, !options?.pages)
+  const images = await extractImagesFromZip(zip, blocks, decompressed, warnings, !options?.pages, shared.track.deletedImageRefs)
 
   // 보이지 않는 틀 표 풀기 (v4.17.0) — 헤딩 감지 전에: 틀에서 나온 문단도 제목 후보
   const shown = options?.layoutTables === "keep" ? blocks : unframeLayoutTables(blocks, !!options?.keepTrailingEmptyCols)
