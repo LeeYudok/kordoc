@@ -289,6 +289,18 @@ export function bodyLineJoins(lines: WrapLine[], lex?: WrapLexicon): string[] {
   for (const l of lines) if (!HANGING.test(l.text) && l.right > inner) inner = l.right
   const full = (l: WrapLine) => right - l.right < BODY_FULL_TOL * l.fontSize ||
     (right - inner <= 1.2 * l.fontSize && inner - l.right < BODY_FULL_TOL * l.fontSize)
+  // 왼쪽 정렬(Word 등)은 어절 단위로 넘겨 꺾인 줄 끝이 들쭉날쭉하다 — 다음 줄 첫 어절이 이 줄 끝 남은 자리에 못 들어갔으면 꺾임.
+  // 글자 폭은 다음 줄 평균으로 어림한다
+  // 찬 줄이 절반 이상인 묶음은 양쪽 정렬이다 — 거기서 덜 찬 줄은 문단 끝줄이라 이 규칙을 쓰지 않는다
+  const ragged = lines.filter(full).length * 2 < lines.length
+  const nextWordNoRoom = (a: WrapLine, b: WrapLine) => {
+    if (!ragged) return false
+    const w = b.text.trim().match(/^\S+/)?.[0]
+    const n = [...b.text.trim()].length
+    if (!w || n === 0) return false
+    const em = (b.right - b.left) / n
+    return right - a.right < ([...w].length + 1) * em
+  }
   const pitch = (k: number) => lines[k].y - lines[k + 1].y
   const sameSize = (k: number) => Math.abs(lines[k + 1].fontSize - lines[k].fontSize) <= 0.15 * lines[k].fontSize
   // 줄쌍 간격 가운데 가장 좁은 둘 — i 번째 쌍 자신을 뺀 최솟값을 O(1) 로 (같은 글자 크기 쌍만)
@@ -306,13 +318,15 @@ export function bodyLineJoins(lines: WrapLine[], lex?: WrapLexicon): string[] {
     const fs = a.fontSize
     const others = i === i1 ? p2 : p1 // 다른 쌍이 없으면 Infinity — 상대 기준 없이 2em
     const maxPitch = Number.isFinite(others) ? Math.min(BODY_MAX_PITCH_ABS_EM * fs, Math.max(BODY_MAX_PITCH_EM * fs, others * BODY_PITCH_REL)) : BODY_MAX_PITCH_EM * fs
+    const wordWrap = !full(a) && nextWordNoRoom(a, b)
     const wraps = fs > 0
-      && full(a)
+      && (full(a) || wordWrap)
       && a.right - a.left >= BODY_MIN_WIDTH_EM * fs
       && a.y - b.y > 0 && a.y - b.y < maxPitch
       && Math.abs(b.fontSize - fs) <= 0.15 * fs
       && !startsNewItem(a.text, b.text)
-    out.push(wraps ? wrapJoiner(a.text, b.text, lex) : "\n")
+    // 줄 끝이 들쭉날쭉한 꺾임은 어절 단위 줄넘김이라 늘 어절 경계다
+    out.push(!wraps ? "\n" : wordWrap ? " " : wrapJoiner(a.text, b.text, lex))
   }
   return out
 }
