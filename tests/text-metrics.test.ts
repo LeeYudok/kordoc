@@ -108,6 +108,15 @@ describe("faceClass — 고정폭 글꼴 폭 테이블 (v4.0.6 회귀)", () => {
     assert.equal(simulateWrap(text, 9800, 9800, 1000, 100, "charAll").lines, 1)
     assert.equal(simulateWrap(text, 9800, 9800, 1000, 100, "charAll", { faceClass: "fixedPitch" }).lines, 2)
   })
+  it("미등록 글꼴명이 객체 속성과 같아도 고딕 근사 폭으로 계산한다", () => {
+    const text = "가나다 ABC 123,😀"
+    for (const face of ["constructor", "toString", "__proto__", "없는글꼴"]) {
+      const opts = { faceClass: `font:${face}` as const }
+      assert.equal(measureTextWidth(text, 1500, 97, opts), measureTextWidth(text, 1500, 97, { faceClass: "gothic" }))
+      assert.deepEqual(simulateWrap(text, 5000, 6000, 1500, 97, "keep", opts),
+        simulateWrap(text, 5000, 6000, 1500, 97, "keep", { faceClass: "gothic" }))
+    }
+  })
 })
 
 describe("markerWidth·levelIndent — 실측 폭 기반 내어쓰기", () => {

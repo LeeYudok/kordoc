@@ -113,6 +113,8 @@ export async function extractHwpxStyles(zip: JSZip, decompressed?: { total: numb
     } catch { continue }
   }
 
+  // 1-based 테두리 목록이 확인되면 참조 0은 선 없음이다. 정의가 없는 문서는 미상으로 유지한다.
+  if (result.borderEdges.size > 0 && !result.borderEdges.has("0")) result.borderEdges.set("0", { t: false, b: false, l: false, r: false })
   return result
 }
 

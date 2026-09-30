@@ -17,7 +17,7 @@
  * 이 테이블로 근사한다(오차 수 % 이내 — 공문서 본문은 어차피 함초롬바탕 관행).
  */
 
-import { fontAdvanceEm1000, hasFontMetrics } from "./font-metrics.js"
+import { fontWidthFn, hasFontMetrics } from "./font-metrics.js"
 
 /** ASCII 0x20~0x7E advance (em×1000). 0x20은 useFontSpace=1일 때의 글꼴값(300) */
 const ASCII_W = [
@@ -121,7 +121,7 @@ function widthFnOf(faceClass: FaceClass | undefined): (cp: number) => number {
   if (faceClass === "gothic") return gothicWidthEm1000
   if (faceClass?.startsWith("font:")) {
     const face = faceClass.slice(5)
-    return (cp) => fontAdvanceEm1000(face, cp) ?? gothicWidthEm1000(cp)
+    return fontWidthFn(face) ?? gothicWidthEm1000
   }
   return charWidthEm1000
 }

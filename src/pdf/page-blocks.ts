@@ -16,6 +16,7 @@ import { detectClusterTables, findTwoColumnProseCutX, type ClusterItem, type Clu
 import { type NormItem, computeBBox, dominantStyle, groupByY, mergeSuperscriptLines, mergeLineSimple } from "./text-line.js"
 import { findRuledColumnDivider } from "./ruled-columns.js"
 import { xyCutOrder } from "./xy-cut.js"
+import { splitImagePanels } from "./image-panels.js"
 import { fillBlanks } from "./blank-fills.js"
 import { detectColumnGutter, detectPersistentColumnGutter, orderByGutter, detectPanelGutters, orderByPanels, type ColRect } from "./two-column.js"
 import { detectColumns, extractWithColumns } from "./columns.js"
@@ -134,13 +135,15 @@ export function extractPageBlocksWithLines(
   // 쪽 넘김 되풀이 머리 행 클립 띠도 선 표에 맡긴다 (dropHeadBandClipGrids)
   const tableClipGrids = dropHeadBandClipGrids(dropInsetClipGrids(dropShadingClipGrids(clipGrids, lineGrids, extracted.fillRects, verticals), lineGrids), lineGrids)
   const grids = [...tableClipGrids, ...dropGridsInside(lineGrids, tableClipGrids, clipResult.containers)]
+  const figures = () => extractImageRegions(opList.fnArray, opList.argsArray, true).filter(r => r.x2 - r.x1 >= 40 && r.y2 - r.y1 >= 40)
+    .map(r => ({ x: r.x1, y: r.y1, w: r.x2 - r.x1, h: r.y2 - r.y1 }))
 
   // A rotated illustration can project a one-cell square far beyond the page.
   // Its lines are not evidence that all page text belongs to one table.
   if (grids.length === 1 && grids[0].rowYs.length === 2 && grids[0].colXs.length === 2 &&
       grids[0].bbox.x2 - grids[0].bbox.x1 > pageWidth * 1.2 &&
       grids[0].bbox.y2 - grids[0].bbox.y1 > pageHeight * 1.2) {
-    return extractPageBlocksFallback(items, pageNum, true, detectTables, lex)
+    return extractPageBlocksFallback(items, pageNum, true, detectTables, lex, figures())
   }
 
   // 가로 괘선만 있는 표(booktabs)는 표를 먼저 세우고 나머지 글은 격자 경로의 두 단·밴드 순서를 따른다
@@ -155,7 +158,7 @@ export function extractPageBlocksWithLines(
   // Repeated dense rows with explicit captions form independent table bands.
   // A broad decorative line grid can otherwise swallow the whole page.
   if (detectTables && stackedTableBands(items)) {
-    return extractPageBlocksFallback(items, pageNum, true, detectTables, lex)
+    return extractPageBlocksFallback(items, pageNum, true, detectTables, lex, figures())
   }
 
   // A small decorative box in the page margin is not a content grid. It must
@@ -174,9 +177,7 @@ export function extractPageBlocksWithLines(
   }
 
   // Fallback: 기존 휴리스틱 (선이 없는 PDF). 단 안의 그림은 글이 없는 자리라 거터 판정에 점유 사각형으로 넘긴다
-  const figures = extractImageRegions(opList.fnArray, opList.argsArray).filter(r => r.x2 - r.x1 >= 40 && r.y2 - r.y1 >= 40)
-    .map(r => ({ x: r.x1, y: r.y1, w: r.x2 - r.x1, h: r.y2 - r.y1 }))
-  return extractPageBlocksFallback(items, pageNum, true, detectTables, lex, figures)
+  return extractPageBlocksFallback(items, pageNum, true, detectTables, lex, figures())
 }
 
 // ─── 취소선 감지 (ODL StrikethroughProcessor 포팅) ─────
@@ -1088,6 +1089,8 @@ export function extractPageBlocksFallback(items: NormItem[], pageNum: number, fu
   // cluster-table detection. Otherwise paired footnotes and body lines can
   // become a single false table, and their source coordinates are lost.
   const textRects = items.map(i => ({ x: i.x, y: i.y, w: i.w, h: i.h > 0 ? i.h : i.fontSize }))
+  const imagePanels = fullPage ? splitImagePanels(items, figures) : null
+  if (imagePanels) return imagePanels.flatMap(group => extractPageBlocksFallback(group, pageNum, false, detectTables, lex))
   // 한 단 위쪽을 그림이 차지하면 글만으로는 거터가 끊겨 보인다 — 그림 사각형을 더해 쪽 전체 거터를 확정한다
   const earlyProseCut = fullPage && detectTables
     ? findTwoColumnProseCutX(clusterItems) ?? persistentGutter(textRects) ??

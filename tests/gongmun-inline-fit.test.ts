@@ -29,4 +29,10 @@ describe("공문서 표시 텍스트 조판", () => {
       assert.equal(headings[0]?.text, "사업 안내", title)
     }
   })
+  it("부호만 강조한 공문서를 다시 읽어도 본문에 강조 구분자가 남지 않는다", async () => {
+    const data = await markdownToHwpx("# 계획\n\n**ㅇ** 설명\n\n__-__ 세부\n\n**※** 참고", { gongmun: { preset: "bangchim" } })
+    const parsed = await parse(data)
+    assert.ok(parsed.success)
+    assert.deepEqual(parsed.blocks.filter(b => b.type === "paragraph").map(b => b.text), ["ㅇ 설명", "- 세부", "※ 참고"])
+  })
 })
