@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 도형 조회·삭제 범위 표시와 렌더 도형 기하·페이지 반복 요소를 관련 helper로 분리한다. 정답·평가기·벤치 표본·제외 기준은 변경하지 않았다.
 - 곡선은 LINE seg, 그림 채움은 TOTAL 모드를 검증했다. 비선형 곡선·그 외 그림 채움은 경고를 내며, 전체 변환 행렬과 사진·컨테이너 회전은 후속 검증 대상이다.
 
+- 삭제 마커가 없는 구역은 원문 확인 후 렌더 삭제 준비 순회를 생략한다. custom DOM과 독립 바탕쪽·머리말 story는 계속 검사한다. 검증 수치와 남은 한계는 `docs/quality-followup-2026-10-01.md`에 기록한다.
+
 ## [4.17.3] - 2026-09-30
 
 ### Fixed
