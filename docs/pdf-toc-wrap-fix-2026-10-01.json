@@ -1,7 +1,7 @@
 {
   "date": "2026-10-01",
   "version": "4.17.6",
-  "status": "validated-candidate-awaiting-normal-publication-gates",
+  "status": "released-and-verified",
   "baseline": {
     "version": "4.17.5",
     "sourceCommit": "d6bd3566c7915b7976c6fac8e3ad65ced0891444",
@@ -952,8 +952,36 @@
     },
     "supersededInitialDiagnostic": "Initial timing overlapped independent review checks; final run started after all agents reported CPU work complete. Initial preserved separately in /tmp/kordoc-native-toc-performance-before-review-complete-20261001.json."
   },
-  "normalPublicationGates": null,
-  "releaseEvidence": null,
+  "normalPublicationGates": {
+    "allPass": true,
+    "tests": 2893,
+    "suites": 826,
+    "fuzzCases": 23700,
+    "normalPublishExitCode": 0,
+    "evidence": "docs/release-4.17.6.json",
+    "pdfText": {
+      "beforePrecision": 0.99581,
+      "afterPrecision": 0.9958,
+      "originalAudit": "docs/pdf-toc-kats-original-audit-2026-10-01.json"
+    },
+    "ocr": {
+      "docs": 53,
+      "pages": 102,
+      "beforeStrictCER": 0.09665,
+      "afterStrictCER": 0.09589,
+      "fairCER": 0.05188,
+      "charF1": 0.99178
+    }
+  },
+  "releaseEvidence": {
+    "sourceCommit": "d998c61bf12ca5b032f62923afe46e5bc1a28e5c",
+    "releaseRecord": "docs/release-4.17.6.json",
+    "npmVersion": "4.17.6",
+    "npmLatest": "4.17.6",
+    "publicDistFilesExact": 136,
+    "githubRelease": "https://github.com/chrisryugj/kordoc/releases/tag/v4.17.6",
+    "githubGitlabTagIdentical": true
+  },
   "limits": [
     "No claim that every metric exceeds99 or100.",
     "4.17.5 native CJK/OCR heading improvements retained; writer/renderer unchanged in this patch.",

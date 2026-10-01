@@ -15,3 +15,11 @@
 외부 ODL172 원본 시각 대조에서도 Section5.1–5.5는 각자 오른쪽 쪽번호를 가진 독립 목차 항목이다. 세 옵션 모두 기존 네 연결 공백만 문단 구분으로 바뀌었고 문자·순서·제목은 유지됐다. 원 평가기의 정규화 때문에 이 경계 복구는 점수 상승으로 나타나지 않는다.
 
 ODL172의 원본·GT·출력 지문과 독립 재실행 상세는 [별도 원본 검증 자료](pdf-toc-original-172-audit-2026-10-01.json)에 보존했다.
+
+4.17.6은 정상 npm publish의 전체 게이트를 통과하고 npm latest·독립 설치 CLI·공개 ESM/CJS 생성/재파싱을 확인했다. 공개 dist136파일과 GitHub 내려받기 자산은 검증한 빌드 및 npm 파일과 일치한다. GitHub·GitLab의 main 및 주석 태그 객체도 일치했다. [릴리스 기록](release-4.17.6.json)과 [공개 릴리스](https://github.com/chrisryugj/kordoc/releases/tag/v4.17.6)에 최종 증거를 남겼다.
+
+전체53문서102쪽 OCR strict CER는 9.665→9.589%로 복구됐다. fair CER5.188%, charF1 99.178%는 유지됐다. HWPX 원본 표 일치9,849/9,865(99.8378%)·HWP5 쌍 표4,244/4,244(100%)도 유지됐다. 코퍼스·외부평가의 모든 점수가 상승한 것은 아니다.
+
+PDF text precision은 99.581→99.580%로 하락했다. 변경된 표준안 원본4쪽의 목차23행은 독립행이며, GT와 PDF 전체 정규화 글자열은 두 버전에서 같다. 원래 평가기의 최소3자 부분매칭에서 독립행 끝의 쪽번호34자가 매칭되지 않아 생긴 차이로 확인됐다. 평가기와 원 점수는 변경하지 않았다. [원본 대조](pdf-toc-kats-original-audit-2026-10-01.json)에 세부 증거를 기록했다.
+
+페이지10/10·roundtrip·PDF표/글·annex·formats·fuzz23,700(incident0)·reflow59/59·redact·OCR는 모두 원 게이트를 통과했다. 콘솔만 내는 [페이지·reflow·redact 원 출력](pdf-toc-normal-console-gates-2026-10-01.md)도 보존했다. reflow100%는 기존 자기일관성 문서 통과율이며 한컴 GUI 픽셀 일치를 뜻하지 않는다. 한컴 GUI 시각 오라클은 미실행이다.
