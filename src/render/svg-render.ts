@@ -510,7 +510,7 @@ function drawGroupByMatrix(o: ParaObj, x: number, y: number, baseV: number, area
     emit(ctx, `<g transform="matrix(${m.slice(0, 4).map(v => Math.round(v * 1e6) / 1e6).join(" ")} ${pt(m[4])} ${pt(m[5])})">`)
     const sub: ParaObj = { el: leaf, tag, index: 0, inline: true, width: w, height: h, omL: 0, omR: 0 }
     if (tag === "pic") drawPicFrame(leaf, 0, 0, w, h, "", ctx)
-    else if (SHAPE_TAGS.has(tag)) drawShape(sub, 0, 0, ctx, depth + 1, true)
+    else if (SHAPE_TAGS.has(tag)) drawShape(sub, 0, 0, ctx, depth + 1, [Math.hypot(m[0], m[1]) || 1, Math.hypot(m[2], m[3]) || 1])
     else drawObject(sub, 0, 0, baseV, areaW, ctx, depth + 1)
     emit(ctx, "</g>")
     ctx.regionRotations.pop()
@@ -519,8 +519,9 @@ function drawGroupByMatrix(o: ParaObj, x: number, y: number, baseV: number, area
 }
 
 // ─── 그리기 도형 ───────────────────────────────────
-function drawShape(o: ParaObj, x: number, y: number, ctx: Ctx, depth: number, local = false): void {
-  const geometry = shapeGeometry(o, x, y, ctx.defs, ctx.images, (key, msg) => warnOnce(ctx, key, msg), local)
+/** groupScale — 묶음 행렬 안에서 원본 좌표로 그릴 때 그 행렬의 가로·세로 배율. 글상자 글은 배율을 되돌려 그린다(아래) */
+function drawShape(o: ParaObj, x: number, y: number, ctx: Ctx, depth: number, groupScale?: [number, number]): void {
+  const geometry = shapeGeometry(o, x, y, ctx.defs, ctx.images, (key, msg) => warnOnce(ctx, key, msg), !!groupScale)
   // Transform original corners through every ancestor and this shape's rotation
   // before bounding once. An intermediate axis-aligned box inflates nested crops.
   const b = geometry
@@ -533,7 +534,15 @@ function drawShape(o: ParaObj, x: number, y: number, ctx: Ctx, depth: number, lo
   emit(ctx, geometry.svg)
   const dt = findChildByLocalName(o.el, "drawText")
   const sub = dt ? findChildByLocalName(dt, "subList") : null
-  if (sub) for (const p of elements(sub)) if (ln(p) === "p") drawPara(p, x, y, geometry.w, ctx, depth + 1)
+  // 글은 틀 자리(돌린 도형은 외접 상자 안으로 옮긴 틀, objectGeometry)에서. 묶음 안 도형은 글 줄 배치(lineseg)가 이미 배율 뒤
+  // 단위라 행렬의 배율만 되돌린다 — 글자는 늘어나지 않고 회전만 따른다 (한컴: 묶음 크기를 바꿔도 글자 크기는 그대로)
+  if (sub) {
+    const [sx, sy] = groupScale ?? [1, 1]
+    const unscale = sx !== 1 || sy !== 1
+    if (unscale) { emit(ctx, `<g transform="scale(${1 / sx} ${1 / sy})">`); ctx.regionRotations.push([1 / sx, 0, 0, 1 / sy, 0, 0]) }
+    for (const p of elements(sub)) if (ln(p) === "p") drawPara(p, geometry.x * sx, geometry.y * sy, geometry.w * sx, ctx, depth + 1)
+    if (unscale) { ctx.regionRotations.pop(); emit(ctx, "</g>") }
+  }
   if (geometry.rotation) ctx.regionRotations.pop()
   if (geometry.transform) emit(ctx, "</g>")
   ctx.parentStack.pop()

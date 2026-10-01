@@ -127,14 +127,16 @@ export function shapeGeometry(o: ParaObj, boxX: number, boxY: number, defs: stri
   const color = esc(line?.getAttribute("color") || "#000000")
   const strokeW = style === "NONE" ? 0 : Math.max(0.2, (num(line, "width", 33) / 100) * 2.834645)
   const dash = /DASH|DOT/.test(style) ? ` stroke-dasharray="${style.includes("DOT") ? "1,1.5" : "3,1.5"}"` : ""
-  const stroke = strokeW ? ` stroke="${color}" stroke-width="${strokeW.toFixed(2)}"${dash}` : ""
+  // 묶음 행렬 안(local)에서는 선 굵기를 배율로 늘리지 않는다 — 한컴은 묶음 크기를 바꿔도 선 굵기가 그대로
+  const keepWidth = local ? ` vector-effect="non-scaling-stroke"` : ""
+  const stroke = strokeW ? ` stroke="${color}" stroke-width="${strokeW.toFixed(2)}"${dash}${keepWidth}` : ""
   const fill = ` fill="${shapeFill(el, defs, images, warn)}"`
   let svg = ""
   if (o.tag === "rect") svg = `<rect x="${pt(x)}" y="${pt(y)}" width="${pt(w)}" height="${pt(h)}"${fill}${stroke}/>`
   else if (o.tag === "ellipse") svg = `<ellipse cx="${pt(x + w / 2)}" cy="${pt(y + h / 2)}" rx="${pt(w / 2)}" ry="${pt(h / 2)}"${fill}${stroke}/>`
   else if (o.tag === "line") {
     const s = findChildByLocalName(el, "startPt"), e = findChildByLocalName(el, "endPt")
-    svg = `<line x1="${pt(x + num(s, "x") * sx)}" y1="${pt(y + num(s, "y") * sy)}" x2="${pt(x + num(e, "x") * sx)}" y2="${pt(y + num(e, "y") * sy)}" stroke="${color}" stroke-width="${(strokeW || 0.3).toFixed(2)}"${dash}/>`
+    svg = `<line x1="${pt(x + num(s, "x") * sx)}" y1="${pt(y + num(s, "y") * sy)}" x2="${pt(x + num(e, "x") * sx)}" y2="${pt(y + num(e, "y") * sy)}" stroke="${color}" stroke-width="${(strokeW || 0.3).toFixed(2)}"${dash}${keepWidth}/>`
   } else if (o.tag === "polygon" || o.tag === "curv") {
     const pts = elements(el).filter(c => ln(c) === "pt").map(c => `${pt(x + num(c, "x") * sx)},${pt(y + num(c, "y") * sy)}`)
     if (pts.length >= 2) svg = `<polygon points="${pts.join(" ")}"${fill}${stroke}/>`

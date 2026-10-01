@@ -66,8 +66,10 @@ export function pushFillers(chars: ParaChar[], n: number, prId: string | null): 
  * 텍스트 1문자=1슬롯(서로게이트 쌍은 2), tab 등 문자형 컨트롤도 1슬롯을 차지한다.
  * markpen 등 래퍼 요소는 슬롯 없이 내용만 재귀한다.
  * (탭 폭은 planLines 가 탭 정지점 — 내어쓰기용 자동 탭·기본 40pt 간격 — 으로 정한다)
+ * 한컴 저장본은 변경 추적 삭제 표지(deleteBegin/End)를 hp:t 안에 둔다 — 슬롯 없이 del.deleted 만 바꾸고, 삭제 구간 글자는 빈 슬롯
+ * (파서 section-walker 와 같은 최종본). 종전엔 hp:t 안 표지를 못 읽어 지운 글을 그렸다
  */
-export function pushTextSlots(t: Element, chars: ParaChar[], prId: string | null, depth: number): void {
+export function pushTextSlots(t: Element, chars: ParaChar[], prId: string | null, depth: number, del: { deleted: number } = { deleted: 0 }): void {
   if (depth > 32) return
   const kids = t.childNodes
   if (!kids) return
@@ -75,20 +77,22 @@ export function pushTextSlots(t: Element, chars: ParaChar[], prId: string | null
     const c = kids[i]
     if (c.nodeType === 3 || c.nodeType === 4) {  // CDATA(4) 포함 — 누락 시 해당 런이 렌더에서 사라진다
       for (const cp of c.textContent ?? "") {
-        chars.push({ ch: cp, prId })
+        chars.push({ ch: del.deleted ? "" : cp, prId })
         if (cp.length === 2) chars.push({ ch: "", prId }) // UTF-16 두 번째 유닛 슬롯
       }
     } else if (c.nodeType === 1) {
       const el = c as Element
       const tag = ln(el)
-      if (tag === "tab") {
+      if (tag === "deleteBegin" || tag === "deleteEnd") {
+        del.deleted = deletionDelta(el, del.deleted)
+      } else if (tag === "tab") {
         // inline 컨트롤 8슬롯 — 첫 슬롯에 탭 표지(폭은 planLines 가 탭 정지점으로), 나머지는 필러
-        chars.push({ ch: "", prId, tab: true, tabW: num(el, "width") })
-        pushFillers(chars, 7, prId)
+        if (del.deleted) pushFillers(chars, 8, prId)
+        else { chars.push({ ch: "", prId, tab: true, tabW: num(el, "width") }); pushFillers(chars, 7, prId) }
       } else if (CHAR_CTRL_1SLOT.has(tag)) {
-        chars.push(tag === "nbSpace" ? { ch: " ", prId, nb: true } : { ch: tag === "fwSpace" ? " " : "", prId })
+        chars.push(del.deleted ? { ch: "", prId } : tag === "nbSpace" ? { ch: " ", prId, nb: true } : { ch: tag === "fwSpace" ? " " : "", prId })
       } else {
-        pushTextSlots(el, chars, prId, depth + 1)
+        pushTextSlots(el, chars, prId, depth + 1, del)
       }
     }
   }
@@ -114,7 +118,7 @@ export function prepareDeletedRanges(root: Element, depth = 0): void {
     deletedStarts.set(p, deleted)
     const scan = (el: Element, xmlDepth: number): void => {
       if (xmlDepth > 64) return
-      if (ln(el) === "ctrl") for (const ch of elements(el)) scan(ch, xmlDepth + 1)
+      if (ln(el) === "ctrl" || ln(el) === "t") for (const ch of elements(el)) scan(ch, xmlDepth + 1)
       else {
         if (ln(el) === "deleteBegin" || ln(el) === "deleteEnd") deleted = deletionDelta(el, deleted)
         deletedControls.set(el, deleted > 0)
@@ -148,9 +152,9 @@ export function buildPara(p: Element): ParaModel {
       for (const ch of elements(runEl)) {
         const cn = ln(ch)
         if (cn === "t") {
-          const start = chars.length
-          pushTextSlots(ch, chars, prId, 0)
-          if (deleted) for (let i = start; i < chars.length; i++) chars[i] = { ch: "", prId }
+          const del = { deleted }
+          pushTextSlots(ch, chars, prId, 0, del)
+          deleted = del.deleted
         } else if (OBJ_TAGS.has(cn)) {
           const sz = findChildByLocalName(ch, "sz")
           const pos = findChildByLocalName(ch, "pos")
