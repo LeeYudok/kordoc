@@ -166,6 +166,12 @@ describe("PPTX 파서", () => {
     assert.ok(md.indexOf("그룹 앞") < md.indexOf("그룹 안") && md.indexOf("그룹 안") < md.indexOf("그룹 뒤"))
   })
 
+  it("글의 리터럴 $ 와 태그 꼴 글자는 IR 규약대로 이스케이프한다 — 수식·첨자로 읽히지 않는다", async () => {
+    const result = await parse(await createPptx([{ xml: slide(sp(null, para("가격 $10 ~ $20, 닫는 태그 &lt;/sup&gt;"))) }]))
+    assert.ok(result.success)
+    assert.match(result.markdown, /가격 \\\$10 \\~ \\\$20, 닫는 태그 \\<\/sup>/)
+  })
+
   it("표의 가로·세로 병합(gridSpan·rowSpan, hMerge·vMerge 연속 칸)을 원점 칸으로 합친다", async () => {
     const tc = (text: string, attrs = "") => `<a:tc${attrs}><a:txBody><a:bodyPr/>${text ? para(text) : "<a:p/>"}</a:txBody></a:tc>`
     const table = `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="4" name="t"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm/>`

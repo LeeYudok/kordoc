@@ -14,7 +14,8 @@ import type {
   ParseOptions, ParseWarning, ExtractedImage,
 } from "../types.js"
 import { KordocError, precheckZipSize, unzipLimitBytes, stripDtd } from "../utils.js"
-import { blocksToMarkdown, buildTable } from "../table/builder.js"
+import { blocksToMarkdown, buildTable, escapeLiteralDollar } from "../table/builder.js"
+import { escapeLiteralTags } from "../script-tags.js"
 import { detectImageMime } from "../hwp5/images.js"
 import { localName, findChildByLocalName, childrenByLocalName, elementChildren, rawTextContent, MAX_XML_DEPTH } from "../shared/xml.js"
 
@@ -134,14 +135,15 @@ async function slideParts(zip: JSZip): Promise<string[]> {
 
 // ─── 글 ────────────────────────────────────────────────
 
-/** a:p 한 문단의 글 — a:r·a:fld 의 a:t, 줄바꿈 a:br 은 공백 */
+/** a:p 한 문단의 글 — a:r·a:fld 의 a:t, 줄바꿈 a:br 은 공백. IR 규약대로 리터럴 $ 는 \$, 태그 꼴 "<sub>" 는 \<sub>
+ *  (escapeLiteralDollar·escapeLiteralTags — 그대로 두면 "$10 ~ $20" 이 마크다운에서 수식이 된다) */
 function paragraphText(p: Element): string {
   let text = ""
   for (const child of elementChildren(p)) {
     const name = localName(child)
     if (name === "r" || name === "fld") {
       const t = findChildByLocalName(child, "t")
-      if (t) text += rawTextContent(t)
+      if (t) text += escapeLiteralTags(escapeLiteralDollar(rawTextContent(t)))
     } else if (name === "br") {
       text += " "
     }
