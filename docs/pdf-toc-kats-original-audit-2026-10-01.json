@@ -82,9 +82,9 @@
   },
   "exactEquality": {
     "gtMarkdown": true,
-    "gtNormalizedKey": true,
-    "pdfNormalizedKey": true,
-    "pdfNormalizedKeySha256": "b62b5b578f676feafb328b9cdae46a755c5567a04e68bb791b114e040bd71627",
+    "gtNormalizedText": true,
+    "pdfNormalizedText": true,
+    "pdfNormalizedTextSHA256": "b62b5b578f676feafb328b9cdae46a755c5567a04e68bb791b114e040bd71627",
     "pdfPlain": false
   },
   "unitChange": {
