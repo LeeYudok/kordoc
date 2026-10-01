@@ -107,6 +107,8 @@ export interface Hwp5DocState {
   /** 자동 번호 종류(0=쪽,1=각주,2=미주,3=그림,4=표,5=수식)별 다음 번호 */
   autoCounters: Map<number, number>
   headerTexts: Set<string>
+  /** 목차 항목 글 — 표 칸에서 풀려 나온 문단도 제목 추정에서 뺀다 (#121, HWPX SectionShared.tocTexts 와 같은 구실) */
+  tocTexts: Set<string>
   headerBlocks: IRBlock[]
   footerBlocks: IRBlock[]
   /** 표 후행 빈 열(앵커 있는 입력란) 보존 — ParseOptions.keepTrailingEmptyCols (#47) */
@@ -121,6 +123,7 @@ export function createHwp5DocState(): Hwp5DocState {
     outlineNumberingId: 0,
     autoCounters: new Map(),
     headerTexts: new Set(),
+    tocTexts: new Set(),
     headerBlocks: [],
     footerBlocks: [],
   }
@@ -344,6 +347,10 @@ function parseParagraph(records: HwpRecord[], start: number, end: number, ctx: H
     }
   }
 
+  if (toc.tocEntry) for (const line of text.split("\n")) if (line.trim()) {
+    ctx.doc.tocTexts.add(line.trim())
+    if (headMarker) ctx.doc.tocTexts.add(`${headMarker} ${line.trim()}`)
+  }
   return emitParagraphBlocks({
     text,
     headMarker,

@@ -327,7 +327,8 @@ function parseParaHeadings(doc: Document, map: Map<string, ParaHeadingRef>): voi
 // ─── 헤딩 감지 (스타일 기반) ────────────────────────
 
 /** HWPX 스타일 기반 헤딩 감지 */
-export function detectHwpxHeadings(blocks: IRBlock[], styleMap: HwpxStyleMap): void {
+/** tocTexts — 목차 항목 글(표 칸에서 풀려 나온 문단은 블록 표시 대신 글로 가린다, #121) */
+export function detectHwpxHeadings(blocks: IRBlock[], styleMap: HwpxStyleMap, tocTexts?: Set<string>): void {
   // outline(개요) 기반 헤딩이 이미 감지된 문서는 폰트크기 휴리스틱 생략 — outline이 권위 정보
   if (blocks.some(b => b.type === "heading")) return
 
@@ -345,7 +346,7 @@ export function detectHwpxHeadings(blocks: IRBlock[], styleMap: HwpxStyleMap): v
   }
 
   for (const block of blocks) {
-    if (block.type !== "paragraph" || !block.text || TOC_ENTRY_BLOCKS.has(block)) continue
+    if (block.type !== "paragraph" || !block.text || TOC_ENTRY_BLOCKS.has(block) || tocTexts?.has(block.text.trim())) continue
     const text = block.text.trim()
     if (text.length === 0 || text.length > 200 || /^\d+$/.test(text)) continue
 

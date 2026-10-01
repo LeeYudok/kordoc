@@ -92,6 +92,8 @@ export interface SectionShared {
   /** 실제 페이지 경계 상태 (#66) — base: 이전 섹션까지 누적 페이지 수,
    *  allUsable: 지금까지 파싱한 전 섹션이 조판 캐시(linesegarray)를 신뢰 가능 */
   pageState: { base: number; allUsable: boolean }
+  /** 목차 항목(채움 탭 + 쪽 번호 줄) 글 — 표 칸 안 목차는 틀 표 풀기가 문단을 새로 만들어 블록 표시가 사라지므로 글로도 기억한다 (#121) */
+  tocTexts: Set<string>
 }
 
 export function createSectionShared(): SectionShared {
@@ -100,6 +102,7 @@ export function createSectionShared(): SectionShared {
     pageText: { headers: [], footers: [] },
     track: { deleteDepth: 0, warned: false, deletedObjects: new WeakSet(), deletedImageRefs: new Set() },
     pageState: { base: 0, allUsable: true },
+    tocTexts: new Set(),
   }
 }
 

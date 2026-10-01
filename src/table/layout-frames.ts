@@ -59,11 +59,16 @@ function ruleGrids(t: IRTable, anchors: Anchor[]): { H: boolean[][]; V: boolean[
 
 /** 분자·분모 글 → LaTeX. 첨자 태그는 ^{}·_{}, 한글 낱말은 \text{} */
 function toTex(s: string): string {
+  // IR 이스케이프(리터럴 \$, 태그 꼴 글자 \<sub>)는 먼저 원래 글자로 — 그대로 두면 역슬래시가 다시 이스케이프돼 "\\\$5"(LaTeX 줄바꿈)가
+  // 되고, 글자 "<sub>" 가 아래첨자가 됐다. 태그 꼴 글자는 첨자 변환이 끝난 뒤 되돌린다
   return s
+    .replace(/\\\$/g, "$")
+    .replace(/\\</g, "\u0001")
     .replace(/<\/?u>/g, "")
     .replace(/([\\{}%#&_$])/g, "\\$1")
     .replace(/<sup>(.*?)<\/sup>/g, "^{$1}")
     .replace(/<sub>(.*?)<\/sub>/g, "_{$1}")
+    .replace(/\u0001/g, "<")
     .replace(/[가-힣ㄱ-ㅎㅏ-ㅣ][가-힣ㄱ-ㅎㅏ-ㅣ\s·ㆍ]*/g, m => `\\text{${m.trim()}}`)
     .trim()
 }

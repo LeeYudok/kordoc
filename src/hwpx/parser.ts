@@ -179,7 +179,7 @@ export async function parseHwpxDocument(buffer: ArrayBuffer, options?: ParseOpti
   const shown = options?.layoutTables === "keep" ? blocks : unframeLayoutTables(blocks, !!options?.keepTrailingEmptyCols)
 
   // 스타일 기반 헤딩 감지
-  detectHwpxHeadings(shown, styleMap)
+  detectHwpxHeadings(shown, styleMap, shared.tocTexts)
 
   // outline 구축
   const outline: OutlineItem[] = shown

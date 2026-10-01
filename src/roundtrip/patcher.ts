@@ -70,6 +70,12 @@ export async function patchHwpx(
     const parsed = await parseHwpxDocument(u8ToArrayBuffer(original), { layoutTables: "keep" })
     origBlocks = parsed.blocks
     const visual = await parseHwpxDocument(u8ToArrayBuffer(original))
+    // 기본 출력이 keep 과 달라도 글을 고치지 않았다면 위치 매핑 없이 원본을 그대로 돌려준다 (HWP5 patchHwp 와 같은 규칙)
+    if (parsed.markdown !== visual.markdown && editedMarkdown === visual.markdown) {
+      const verification = options?.verify === false ? undefined
+        : diffUnitLists(splitMarkdownUnits(visual.markdown), splitMarkdownUnits(editedMarkdown))
+      return { success: true, data: new Uint8Array(original), applied: 0, skipped, verification }
+    }
     if (editedFromVisual(parsed.markdown, visual.markdown, editedMarkdown)) return { success: false, applied: 0, skipped, error: LAYOUT_MODE_MISMATCH }
   } catch (err) {
     return { success: false, applied: 0, skipped, error: `원본 HWPX 파싱 실패: ${err instanceof Error ? err.message : String(err)}` }

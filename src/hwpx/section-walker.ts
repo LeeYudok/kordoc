@@ -104,14 +104,14 @@ function walkSection(
         }
         if (tableCtx) tableStack.push(tableCtx)
         const newTable: TableState = { rows: [], currentRow: [], cell: null, sourceId: el.getAttribute("id") ?? undefined }
-        walkSection(el, blocks, newTable, tableStack, ctx, depth + 1)
+        inIndependentDeletionStory(ctx.shared.track, () => walkSection(el, blocks, newTable, tableStack, ctx, depth + 1))
         tableCtx = completeTable(newTable, tableStack, blocks, ctx)
         break
       }
 
       // 표/도표 캡션 — IRTable.caption으로 보존 (v3.0, 기존 무음 드롭 수정)
       case "caption": {
-        const cap = collectSubListContent(el, ctx)
+        const cap = inIndependentDeletionStory(ctx.shared.track, () => collectSubListContent(el, ctx))
         if (cap.text) {
           if (tableCtx) {
             tableCtx.caption = (tableCtx.caption ? tableCtx.caption + "\n" : "") + cap.text
@@ -184,6 +184,7 @@ function walkSection(
           if (ph?.prefix) text = ph.prefix + " " + text
           // 목차 항목은 개요 문단 모양을 빌려도 제목이 아니다 (#121)
           headingLevel = tocEntry ? undefined : ph?.headingLevel
+          if (tocEntry) for (const line of text.split("\n")) if (line.trim()) ctx.shared.tocTexts.add(line.trim())
         }
         // 인라인 표 포함 문단 (#49/#50) — 문단 텍스트를 통째로 먼저 push하면 원문에서
         // 표가 앞설 때 순서가 역전된다. 표 경계 조각을 walkParagraphChildren의 onTbl
@@ -306,6 +307,13 @@ function walkSection(
               if (spanMode !== "foreign" && el.getAttribute("paraPrIDRef") === KORDOC_PARA_QUOTE) block.quote = true
             }
             if (!headingLevel && !block.spans && placeholderSpans) block.spans = withPrefixSpan(placeholderSpans, ph?.prefix)
+            // 제목 문단의 미기입 누름틀 안내문은 제목·목차 글에서 뺀다 — 제목 갈래는 span 을 안 보므로 "# 여기에 제목을 입력하세요" 가
+            // 나왔다(HWP5 는 안내문 run 을 지운다). 안내문뿐이면 안내문 표시 문단으로 남긴다(마크다운에서 빠지고 IR 글엔 남는다)
+            if (headingLevel && placeholderSpans) {
+              const shown = withPrefixSpan(placeholderSpans.filter(s => !s.placeholder), ph?.prefix).map(s => s.text).join("").trim()
+              if (shown) block.text = shown
+              else { block.type = "paragraph"; delete block.level; block.spans = withPrefixSpan(placeholderSpans, ph?.prefix) }
+            }
             blocks.push(block)
           } else {
             // 표 내부지만 셀 밖(비정상 경로) — 무음 드롭 대신 본문 문단으로 보존
@@ -635,12 +643,14 @@ function walkParagraphChildren(
         // 같은 줄(공백)로 이을지 결정한다 (#52 후속 — 글자취급 표는 앞뒤 텍스트와 한 줄)
         if (tableCtx) tableStack.push(tableCtx)
         const newTable: TableState = { rows: [], currentRow: [], cell: null, inline: isInlineTbl(el), sourceId: el.getAttribute("id") ?? undefined }
-        walkSection(el, blocks, newTable, tableStack, ctx, d + 1)
+        // 지운 표는 deletedObjects 가 걸렀다 — 살아 있는 표는 문단 글 뒤에 걸으므로, 표 뒤에서 시작해 다음 문단으로 이어지는 삭제
+        // 구간의 깊이가 칸 글·캡션까지 비웠다. 칸은 독립 이야기다 (도형 글상자·캡션과 같은 규칙, inIndependentDeletionStory)
+        inIndependentDeletionStory(ctx.shared.track, () => walkSection(el, blocks, newTable, tableStack, ctx, d + 1))
         tableCtx = completeTable(newTable, tableStack, blocks, ctx)
       } else if (localTag === "caption" && !inShape) {
         // ctrl 래핑 표 캡션 — 도형(rect 등) 자체 캡션은 기존 텍스트 추출 경로에 맡긴다.
         // 셀 안이면 표 caption이 아니라 개체 캡션이므로 셀 텍스트로 귀속 (오귀속 방지)
-        const cap = collectSubListContent(el, ctx)
+        const cap = inIndependentDeletionStory(ctx.shared.track, () => collectSubListContent(el, ctx))
         if (cap.text) {
           if (tableCtx?.cell) mergeBlocksIntoCell(tableCtx.cell, [{ type: "paragraph", text: cap.text, pageNumber: ctx.page }])
           else if (tableCtx) {
@@ -911,7 +921,8 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
         // 페이지 번호 크롬(autoNum PAGE + 문자 없는 잔여 텍스트, 예: "- 1 -")은 본문 정보가
         // 아니므로 방출하지 않는다
         case "header": case "footer": {
-          if (!ctx) break
+          // 변경 추적으로 지운 머리말·꼬리말은 내지 않는다 — 안쪽 글은 독립 이야기(collectSubListText)라 바깥 삭제 깊이를 0 으로 두어 되살아났다
+          if (!ctx || isInDeletedRange(ctx)) break
           const t = collectSubListText(k, ctx)
           if (t && hasPageAutoNum(k) && !/\p{L}/u.test(t)) break
           if (t) {
@@ -1021,7 +1032,8 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
           break
 
         // 양식 선택 상자·라디오 단추 — 한컴이 그리는 상자 기호와 캡션 글 (종전엔 통째로 빠졌다: form-002 "원천기술형"·서울 결재 "부분공개")
-        case "checkBtn": case "radioBtn": text += formButtonText(child, tag === "radioBtn"); break
+        // 지운 구간의 양식 단추·수식은 글처럼 내지 않는다 (최종본)
+        case "checkBtn": case "radioBtn": if (!isInDeletedRange(ctx)) text += formButtonText(child, tag === "radioBtn"); break
 
         // 하이퍼링크
         case "hyperlink": {
@@ -1073,6 +1085,7 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
         // 스크립트가 담겨 있음. hml-equation-parser 로 LaTeX 변환 후 `$...$`
         // 로 래핑. 실패/빈 스크립트면 무시 (대체 텍스트 누출 방지).
         case "equation": {
+          if (isInDeletedRange(ctx)) break
           const script = findChildByLocalName(child, "script")
           const raw = script ? extractTextFromNode(script) : ""
           if (raw.trim()) {

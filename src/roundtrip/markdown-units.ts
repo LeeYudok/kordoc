@@ -209,9 +209,9 @@ export function sanitizeText(text: string): string {
 }
 
 /** 매칭용 정규화 — sanitize + 공백 붕괴. 스캔 텍스트(IR 변환 전)와 IR 텍스트 양쪽에 적용.
- *  IR 은 리터럴 $ 를 \$ 로 담으므로(escapeLiteralDollar) 원문 쪽과 같게 푼다 */
+ *  IR 은 리터럴 $ 를 \$ 로(escapeLiteralDollar), 태그 꼴 글자 "<sub>" 를 \<sub> 로(escapeLiteralTags) 담으므로 원문 쪽과 같게 푼다 */
 export function normForMatch(text: string): string {
-  return sanitizeText(text.replace(/\\\$/g, "$")).replace(/\s+/g, " ").trim()
+  return sanitizeText(text.replace(/\\\$/g, "$").replace(/\\(?=<\/?(?:u|sup|sub)>)/g, "")).replace(/\s+/g, " ").trim()
 }
 
 /** 편집된 마크다운 텍스트 → 평문 (escapeGfm 역변환 — \| \# \< \$ \\ 포함, 없으면 hp:t 에 백슬래시가 샌다) */

@@ -267,7 +267,7 @@ export function parseHwp5Document(buffer: Buffer, options?: ParseOptions): Inter
 
   // 스타일 기반 헤딩 감지
   if (docInfo) {
-    detectHwp5Headings(flatBlocks, docInfo)
+    detectHwp5Headings(flatBlocks, docInfo, doc.tocTexts)
   }
 
   // outline 구축
@@ -314,7 +314,7 @@ function parseDocInfoFromStream(raw: Buffer | null, compressed: boolean): HwpDoc
 }
 
 /** 스타일 기반 헤딩 감지 — 큰 폰트 + 짧은 텍스트 → heading */
-function detectHwp5Headings(blocks: IRBlock[], docInfo: HwpDocInfo): void {
+function detectHwp5Headings(blocks: IRBlock[], docInfo: HwpDocInfo, tocTexts?: Set<string>): void {
   // 기본(본문) 폰트 크기 = 블록 폰트 크기의 텍스트 길이 가중 최빈값.
   // 공문서는 바탕글(10pt)과 다른 크기(13-14pt)로 본문을 쓰는 경우가 많아
   // 바탕글 스타일을 기준으로 삼으면 본문 전체가 헤딩으로 오검출된다 (실증: 보도자료 24/24).
@@ -347,7 +347,7 @@ function detectHwp5Headings(blocks: IRBlock[], docInfo: HwpDocInfo): void {
   for (const block of blocks) {
     // 개요 수준(outlineLevel)으로 이미 heading이 된 블록은 스킵
     if (block.type === "heading") continue
-    if (block.type !== "paragraph" || !block.text || TOC_ENTRY_BLOCKS.has(block)) continue
+    if (block.type !== "paragraph" || !block.text || TOC_ENTRY_BLOCKS.has(block) || tocTexts?.has(block.text.trim())) continue
     const text = block.text.trim()
     if (text.length === 0 || text.length > 200) continue
     if (/^\d+$/.test(text)) continue
