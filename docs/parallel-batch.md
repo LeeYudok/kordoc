@@ -105,4 +105,12 @@ A fresh benchmark on this rebased implementation used `BATCH_REPS=3 BATCH_JOBS=1
 
 All output hashes matched in this fresh measurement. Eight workers again add little PDF throughput over four while using more memory; the repeated PDF slowdown recorded above remains part of the evidence, rather than being discarded.
 
-An independent subagent reproduced interrupted UUID partial-download accumulation, including persistence after successful and cached retries. This low-priority cleanup follow-up is tracked in [issue #109](https://github.com/chrisryugj/kordoc/issues/109); the feature does not claim to fix it.
+An independent review originally reproduced interrupted UUID partial-download accumulation. [Issue #109](https://github.com/chrisryugj/kordoc/issues/109) was resolved separately by #111 in v4.17.2; cleanup keeps active or unverified owners and reclaims files from terminated local owners. The historical measurements above predate that fix.
+
+## Final integration validation, 2026-10-01
+
+The unchanged PR #110 head was applied to v4.17.6 main `714cc88` in an isolated checkout. Type checking, ESM/CJS/declaration builds and bundled CLI jobs-2 smoke passed. With the original corpus linked for read-only tests, the full suite passed 2,899 tests with zero failures and five Linux-only tests skipped on Darwin (2,904 total; the five platform tests pass in Linux CI). This validation precedes the independent writer optimization in v4.18.0.
+
+Actual HWP5, HWPX, PDF and DOCX inputs produced byte-identical Markdown, chunks, images and manifests for sequential and two-worker conversion. In a separate two-PDF raw JSON comparison, four `style.fontName` values differed by process-local PDF.js font IDs. These byte differences were retained; document content and assets matched. This is not a claim of raw JSON byte identity for every PDF.
+
+After both workers entered actual forced-OCR native ONNX calls with verified offline model files, SIGINT, SIGTERM, parent SIGKILL and worker crash all left zero surviving workers and no subsequent output writes. Termination checks completed in 139–249 ms including the 100 ms settled-output check. Sampled active summed RSS was 1.21–1.29 GiB; this is a lifecycle test rather than a throughput benchmark. Windows lifecycle behavior was not measured.
