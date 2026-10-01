@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 빈 표 HTML을 포함한 HWP5 기본 출력으로 무수정 패치하면 원본 바이트를 그대로 반환한다. 실제 기본 출력의 편집은 원본 구조 모드 안내와 기존 안전 게이트를 유지한다.
 - HWPX의 글 없는 양식 입력란이 보이는 표 구간의 후행 열 정리에서 마지막 셀까지 삭제되던 오류를 고친다. 기존 후행 열 정리 규칙을 유지하면서 마지막 앵커를 보존하며, 한 칸 입력란도 HTML 표로 내보내 Markdown에서 사라지지 않는다. 일반 글 셀과 원본 구조 옵션은 기존 경로를 따른다.
 
 ### Changed

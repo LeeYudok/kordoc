@@ -92,5 +92,7 @@
       "mdNew": 18260
     }
   ],
-  "guiPixelEqualityVerified": false
+  "guiPixelEqualityVerified": false,
+  "candidateSourceCommit": "5aeafcb593ef94dbc7a910da7edcd93f4bd2f352",
+  "finalPublicationValidation": "See release-4.18.1.json; cross-score build precedes the exact visual no-op patch guard, which does not alter parser outputs."
 }

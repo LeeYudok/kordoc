@@ -205,7 +205,7 @@ function anchorParagraph(text: string, level = 0): Buffer {
 }
 
 /** 합성 HWP 파일 (무압축, CFB) */
-function buildHwp(sectionParts: Buffer[], flags = 0): Uint8Array {
+function buildHwp(sectionParts: Buffer[], flags = 0, docInfo = Buffer.alloc(0)): Uint8Array {
   const fileHeader = Buffer.alloc(256)
   fileHeader.write("HWP Document File", 0, "ascii")
   fileHeader[35] = 5
@@ -213,7 +213,7 @@ function buildHwp(sectionParts: Buffer[], flags = 0): Uint8Array {
 
   const cfb = CFB.utils.cfb_new()
   CFB.utils.cfb_add(cfb, "/FileHeader", fileHeader)
-  CFB.utils.cfb_add(cfb, "/DocInfo", Buffer.alloc(0))
+  CFB.utils.cfb_add(cfb, "/DocInfo", docInfo)
   CFB.utils.cfb_add(cfb, "/BodyText/Section0", Buffer.concat(sectionParts))
   CFB.utils.cfb_add(cfb, "/PrvText", utf16("미리보기"))
   return new Uint8Array(CFB.write(cfb, { type: "buffer" }) as Buffer)
@@ -670,6 +670,47 @@ describe("patchHwp — 개체 앵커 문단 (선두 control 보존)", () => {
     const lsO = ro.find(r => r.tagId === 0x45)!
     const lsP = rp.find(r => r.tagId === 0x45)!
     assert.ok(lsO.data.equals(lsP.data), "LINE_SEG 원본 바이트 보존")
+  })
+})
+
+describe("patchHwp — 빈 표 visual 무수정", () => {
+  const fill = Buffer.alloc(26)
+  for (let k = 0; k < 4; k++) fill[2 + 6 * k] = 1
+  const table = Buffer.concat(readRecords(table2x2([["", ""], ["", ""]])).map(r => {
+    if (r.tagId === 0x48) r.data.writeUInt16LE(1, 32)
+    return rec(r.tagId, r.level, r.data)
+  }))
+  const hwp = buildHwp([paragraph("첫 안내"), table, paragraph("끝 안내")], 0, rec(0x14, 0, fill))
+  const visual = parseHwp5Document(Buffer.from(hwp)).markdown
+  const keep = parseHwp5Document(Buffer.from(hwp), { layoutTables: "keep" }).markdown
+
+  it("HTML 빈 표를 포함한 동일 visual 출력은 바이트 보존과 잔차 없는 검증", async () => {
+    assert.notEqual(keep, visual)
+    assert.ok(visual.includes("<table>"), visual)
+    const r = await patchHwp(hwp, visual)
+    assert.equal(r.success, true, r.error)
+    assert.equal(r.applied, 0)
+    assert.deepEqual(r.skipped, [])
+    assert.deepEqual(Buffer.from(r.data!), Buffer.from(hwp))
+    assert.equal(r.verification?.stats.added, 0)
+    assert.equal(r.verification?.stats.removed, 0)
+    assert.equal(r.verification?.stats.modified, 0)
+  })
+
+  it("verify:false도 바이트를 보존하고 검증 필드는 생략", async () => {
+    const r = await patchHwp(hwp, visual, { verify: false })
+    assert.equal(r.success, true, r.error)
+    assert.equal(r.applied, 0)
+    assert.deepEqual(Buffer.from(r.data!), Buffer.from(hwp))
+    assert.equal(r.verification, undefined)
+  })
+
+  it("실제 visual 편집은 기존 원본 구조 모드 요구를 유지", async () => {
+    const r = await patchHwp(hwp, visual.replace("첫 안내", "바꾼 안내"))
+    assert.equal(r.success, false)
+    assert.equal(r.applied, 0)
+    assert.equal(r.data, undefined)
+    assert.match(r.error!, /keep-layout-tables/)
   })
 })
 

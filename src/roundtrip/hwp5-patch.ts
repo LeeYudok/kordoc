@@ -300,7 +300,14 @@ export async function patchHwp(
   try {
     const kept = parseHwp5Document(originalBuf, { layoutTables: "keep" })
     origBlocks = kept.blocks
-    if (editedFromVisual(kept.markdown, parseHwp5Document(originalBuf).markdown, editedMarkdown)) return fail(LAYOUT_MODE_MISMATCH)
+    const visual = parseHwp5Document(originalBuf).markdown
+    // 기본 출력이 keep과 달라도 글을 고치지 않았다면 위치 매핑 없이 원본을 그대로 돌려준다.
+    if (kept.markdown !== visual && editedMarkdown === visual) {
+      const verification = options?.verify === false ? undefined
+        : diffUnitLists(splitMarkdownUnits(visual), splitMarkdownUnits(editedMarkdown))
+      return { success: true, data: new Uint8Array(original), applied: 0, skipped, verification }
+    }
+    if (editedFromVisual(kept.markdown, visual, editedMarkdown)) return fail(LAYOUT_MODE_MISMATCH)
   } catch (err) {
     return fail(`원본 HWP 파싱 실패: ${msg(err)}`)
   }
