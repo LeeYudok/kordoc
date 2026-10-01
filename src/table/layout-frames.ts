@@ -147,9 +147,11 @@ function bandTable(t: IRTable, anchors: Anchor[], V: boolean[][], H: boolean[][]
   // 후행 빈 열 — 띠에서 오른쪽 끝 열이 비면 자른다. 원래 표를 만들 때 builder 가 하는 트림(마크다운 가독성)을 띠 표에도 똑같이:
   // 표 전체로는 글이 있어 남은 열이 한 띠에서만 비는 경우다(결재문서 점검표 "□ | ■ | (빈 칸)" — 생성 → 재파싱 왕복이 어긋났다).
   // keepTrailingEmptyCols(#47 서식 입력란)면 builder 처럼 두고
+  // 빈 띠도 HTML로 남긴다. 후행 열 정리는 마지막 앵커를 지우기 전에 멈춘다.
+  const emptyBand = list.every(blank)
   for (let right = keepEmptyCols ? 0 : Math.max(...list.map(a => a.c + a.cs)); right > 1;) {
     const starts = list.filter(a => a.c === right - 1)
-    if (!starts.length || !starts.every(blank)) break
+    if (!starts.length || !starts.every(blank) || starts.length === list.length) break
     list = list.filter(a => a.c !== right - 1).map(a => (a.c + a.cs === right ? { ...a, cs: a.cs - 1 } : a))
     right--
   }
@@ -165,7 +167,7 @@ function bandTable(t: IRTable, anchors: Anchor[], V: boolean[][], H: boolean[][]
     a.cell.colSpan = cx.indexOf(a.c + a.cs) - c
     cells[r][c] = a.cell
   }
-  return { rows, cols, cells, hasHeader: t.hasHeader }
+  return { rows, cols, cells, hasHeader: t.hasHeader, ...(emptyBand ? { renderAsTable: true } : {}) }
 }
 
 /** 글 띠 행 → 문단. 칸이 하나면 칸 안 줄마다, 여럿이면 칸 글을 공백으로 이은 한 문단. 칸 블록은 재귀로 푼다 */
@@ -206,8 +208,13 @@ function unframeTable(t: IRTable, pageNumber: number | undefined, keepEmptyCols:
     // 표 전체가 표 띠여도 안 쓰는 격자선·선 밖 빈 칸·빈 여백 행은 접는다(한글 편집기 격자에만 있는 선, 86712 규제영향분석서 10×8 → 10×5).
     // 모양이 그대로면 원래 표 객체(sourceId·캡션·곁정보)를 둔다
     const whole = bandTable(t, anchors, V, H, 0, t.rows - 1, keepEmptyCols)
-    if (!whole || (whole.rows === t.rows && whole.cols === t.cols)) return null
-    return [{ type: "table", table: { ...t, rows: whole.rows, cols: whole.cols, cells: whole.cells }, pageNumber }]
+    if (!whole) return null
+    if (whole.rows === t.rows && whole.cols === t.cols) {
+      if (whole.renderAsTable) t.renderAsTable = true
+      return null
+    }
+    return [{ type: "table", table: { ...t, rows: whole.rows, cols: whole.cols, cells: whole.cells,
+      ...(whole.renderAsTable ? { renderAsTable: true } : {}) }, pageNumber }]
   }
   const out: IRBlock[] = []
   if (t.captionBlocks?.length) out.push(...t.captionBlocks)

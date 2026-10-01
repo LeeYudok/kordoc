@@ -127,10 +127,13 @@ export function visibleTables(grid, { borderOf, isFracPart, isEmpty }) {
     if (!keep.length) continue
     // 후행 빈 열 — 보이는 표에서 오른쪽 끝 열이 비면 자른다. 원본 표 격자에 거는 트림(builder trimAndReturn 미러, 마크다운 가독성 정책)을
     // 보이는 표에도 똑같이 건다 — 표 전체로는 글이 있어 남은 열이 한 묶음에서만 비는 경우 (2026-09-30, 생성 왕복 게이트와 같은 정책)
+    // 채점 기준 변경: 마지막 실제 칸까지 없애면 경계가 사라져 -1×-1 정답이 된다.
     for (let right = Math.max(...keep.map(v => v.c + v.cs)); right > 1;) {
       const starts = keep.filter(v => v.c === right - 1)
       if (!starts.length || starts.some(v => v.frac || !isEmpty(v.a))) break
-      keep = keep.filter(v => v.c !== right - 1).map(v => (v.c + v.cs === right ? { ...v, cs: v.cs - 1 } : v))
+      const remaining = keep.filter(v => v.c !== right - 1)
+      if (!remaining.length) break
+      keep = remaining.map(v => (v.c + v.cs === right ? { ...v, cs: v.cs - 1 } : v))
       right--
     }
     const cx = [...new Set(keep.flatMap(v => [v.c, v.c + v.cs]))].sort((p, q) => p - q)

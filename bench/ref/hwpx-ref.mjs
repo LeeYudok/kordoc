@@ -296,6 +296,7 @@ export async function extractRef(buffer) {
     if (headingParaIds.has(p.attrs?.parapridref)) counters.autoNumHeadingParas++
     let text = ""
     let inlineObj = false // 수식·양식 단추·주석 — 분수 칸 후보 제외 (분수 판정은 글만 든 칸)
+    let hasEquation = false // 채점 기준 변경: 글 비교에서 뺀 실제 수식도 빈 칸/열 판정에는 내용이다
     const structural = [] // {type:'tbl'|'shape'|'drawtext', node}
     const addText = s => { text += s }
 
@@ -359,7 +360,10 @@ export async function extractRef(buffer) {
         if (t === "equation") {
           inlineObj = true
           const script = findDesc(ch, "script")
-          if (script && textOfAll(script, counters).trim()) specials.equations++ // presence 분리 (whitelist)
+          if (script && textOfAll(script, counters).trim()) {
+            specials.equations++ // presence 분리 (whitelist)
+            hasEquation = true
+          }
           continue
         }
         if (t === "ctrl") { handleCtrl(ch); continue }
@@ -423,7 +427,7 @@ export async function extractRef(buffer) {
     const segs = text.includes("\x1E")
       ? text.split("\x1E").map(s => applyAltTextPolicy(s, null))
       : null
-    return { text: applyAltTextPolicy(text.replace(/\x1E/g, ""), counters), segs, structural, notes, inlineObj }
+    return { text: applyAltTextPolicy(text.replace(/\x1E/g, ""), counters), segs, structural, notes, inlineObj, hasEquation }
   }
 
   // 문단 주석 유닛 방출 — 조각(문단·표 셀·글상자)마다 주석 유닛. 빈 주석(번호·글 모두 없음)은
@@ -698,7 +702,8 @@ export async function extractRef(buffer) {
             break
           }
           case "p": case "para": {
-            const { text, segs, structural, notes, inlineObj } = collectPara(ch)
+            const { text, segs, structural, notes, inlineObj, hasEquation } = collectPara(ch)
+            if (hasEquation) cell.hasIrContent = true
             cell.paraCount++
             if (inlineObj || structural.length) cell.hasObject = true
             if (text.trim()) {
