@@ -1,7 +1,7 @@
 {
   "date": "2026-10-01",
   "version": "4.17.5",
-  "status": "validated-candidate-awaiting-normal-publication-gates",
+  "status": "released-with-confirmed-native-toc-boundary-regression",
   "baseline": {
     "version": "4.17.4",
     "commit": "6b771f8be29d13716bca053676a72bbdf3eb2e94",
@@ -24,7 +24,8 @@
     "groundTruthChanged": false,
     "evaluatorChanged": false,
     "populationsChanged": false,
-    "exclusionsChanged": false
+    "exclusionsChanged": false,
+    "note": "Source GT files, scorer code, populations and exclusions unchanged. Native-derived legacy OCR strict GT changes with candidate IR children; this is explicitly audited."
   },
   "odl": {
     "gtMarkdownManifestSHA256": "59c4847fe1428bb3161fdb8f7ca1d7d02e3bc57b52c3be7d27bc53f1d4a4b5b8",
@@ -2328,8 +2329,763 @@
     "HWPX original exact remains 9849/9865; remaining 16 GT defects retained.",
     "Hancom GUI visual oracle not run; prior explicit user deployment override retained.",
     "Raster ODL200 rowspan needs final composite local boundary proof.",
-    "Forced OCR strict CER and table accuracy require follow-up."
+    "Forced OCR strict CER and table accuracy require follow-up.",
+    "Post-publication original audit confirms a native independent TOC-row merge regression; tracked for source fix in 4.17.6. OCR strings unchanged, strict CER increase retained."
   ],
-  "finalGates": null,
-  "releaseEvidence": null
+  "finalGates": {
+    "allPass": true,
+    "normalPublishExitCode": 0,
+    "normalPublishLogSHA256": "c804941bef951327871185e08d9f03238f9bde8b7ca801ef85c2f5b610b50af7",
+    "population": {
+      "value": "hwpx 2286/pdf 1911/hwp쌍 1120",
+      "threshold": "≥ 2286/1911/1120",
+      "pass": true
+    },
+    "hwpx": {
+      "docs": 2286,
+      "refChars": 5548157,
+      "tableCount": 9865,
+      "exactCount": 9849,
+      "nestedTables": 559,
+      "gates": {
+        "recallMicro": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "recallDoc": {
+          "value": 1,
+          "threshold": 1,
+          "failDocs": 0,
+          "pass": true
+        },
+        "missRun": {
+          "failDocs": 0,
+          "threshold": "<20자",
+          "pass": true
+        },
+        "phantom": {
+          "value": 0,
+          "threshold": 0,
+          "pass": true
+        },
+        "blacklist": {
+          "failDocs": 0,
+          "pass": true
+        },
+        "tableExact": {
+          "value": 0.998378,
+          "threshold": 0.9963,
+          "pass": true
+        },
+        "cellF1": {
+          "value": 0.998581,
+          "threshold": 0.9976,
+          "pass": true
+        },
+        "contentNED": {
+          "value": 0.999953,
+          "threshold": 0.9995,
+          "pass": true
+        },
+        "cellExact": {
+          "value": 0.999982,
+          "threshold": 0.9995,
+          "pass": true
+        },
+        "orderAvg": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "orderDoc": {
+          "failDocs": 0,
+          "threshold": 1,
+          "pass": true
+        },
+        "eqPresence": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "fnPresence": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "headerPolicy": {
+          "violations": 0,
+          "pass": true
+        }
+      },
+      "pass": true
+    },
+    "hwp5": {
+      "pairs": 1120,
+      "ok": 1120,
+      "avgCrossNED": 0,
+      "avgHwpxToHwp": 1,
+      "tables": {
+        "ref": 4244,
+        "exact": 4244
+      },
+      "gates": {
+        "pairSimilarity": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "pairTableExact": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "pairCellF1": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "pairCellExact": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "pairContentNED": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "pairCoverage": {
+          "value": 1,
+          "threshold": 1,
+          "pass": true
+        },
+        "pairErrors": {
+          "value": 0,
+          "threshold": 0,
+          "pass": true
+        }
+      },
+      "pass": true
+    },
+    "pdfTable": {
+      "pairs": 708,
+      "refTables": 2331,
+      "reordered": 5,
+      "matchedRate": 0.998284,
+      "exactRate": 0.979408,
+      "cellF1": 0.990863,
+      "cellExactRate": 0.985981,
+      "contentNED": 0.982072,
+      "parseErrors": 0,
+      "nested": {
+        "pairs": 29,
+        "refTables": 101,
+        "reordered": 0,
+        "matchedRate": 1,
+        "exactRate": 0.930693,
+        "cellF1": 0.99802,
+        "cellExactRate": 0.981723,
+        "contentNED": 0.990894
+      }
+    },
+    "pdfText": {
+      "pairs": 744,
+      "refChars": 2857775,
+      "recall": 0.99829,
+      "precision": 0.99581,
+      "order": 0.99145,
+      "spaceF1": 0.98809,
+      "parseErrors": 0,
+      "excluded": 22
+    },
+    "roundtrip": {
+      "pass": true,
+      "corpusDocs": 75,
+      "aggregate": {
+        "fwdCovMicro": 1,
+        "bwdCovMicro": 1,
+        "tables": {
+          "ref": 68,
+          "exact": 68,
+          "cellTotal": 1897,
+          "cellExact": 1897,
+          "cellExactRate": 1
+        }
+      }
+    },
+    "annex": {
+      "hwp": {
+        "docs": 272,
+        "recall": 1,
+        "phantom": 0.00001,
+        "order": 1,
+        "tables": 346,
+        "tableExactCount": 346,
+        "tableExact": 1,
+        "cellF1": 1,
+        "eqRef": 11,
+        "eqHit": 11
+      },
+      "pdf": {
+        "docs": 272,
+        "recall": 0.99965,
+        "phantom": 0.00053,
+        "order": 1,
+        "tables": 346,
+        "tableExactCount": 336,
+        "tableExact": 0.9711,
+        "cellF1": 0.99564,
+        "eqRef": 11,
+        "eqHit": 7
+      }
+    },
+    "formats": {
+      "pass": true,
+      "population": "docx36/xlsx28/xls15/hml9/largeSheets8"
+    },
+    "fuzz": {
+      "runs": 23700,
+      "incidents": 0,
+      "pass": true,
+      "elapsedMs": 910591,
+      "gates": {
+        "crash": {
+          "value": 0,
+          "threshold": 0,
+          "pass": true
+        },
+        "hang": {
+          "value": 0,
+          "threshold": 0,
+          "pass": true
+        },
+        "noCode": {
+          "value": 0,
+          "threshold": 0,
+          "pass": true
+        },
+        "slow": {
+          "value": 0,
+          "threshold": 0,
+          "pass": true
+        },
+        "genInvalid": {
+          "value": 0,
+          "threshold": 0,
+          "pass": true
+        }
+      }
+    },
+    "reflow": {
+      "cases": 59,
+      "consistency": 1,
+      "pass": true
+    },
+    "redact": {
+      "cases": 313,
+      "referenceSpans": 284,
+      "negativeCases": 102,
+      "pass": true
+    },
+    "ocr": {
+      "before": {
+        "generatedAt": "2026-09-30T22:05:43.612Z",
+        "docs": 53,
+        "skipped": 3,
+        "pages": 102,
+        "skippedPages": [
+          {
+            "doc": "eval-perf-2024.pdf",
+            "page": 5,
+            "inlineGlyphImages": 10,
+            "reason": "텍스트층이 글줄 안 글자를 그림으로 찍음(정답 불완전)"
+          },
+          {
+            "doc": "eval-perf-2024.pdf",
+            "page": 4,
+            "inlineGlyphImages": 9,
+            "reason": "텍스트층이 글줄 안 글자를 그림으로 찍음(정답 불완전)"
+          },
+          {
+            "doc": "nanet-seoul-minutes.pdf",
+            "page": 1,
+            "glyphCoverage": 0.088,
+            "reason": "래스터에 텍스트층 글자가 그려지지 않음(글꼴 미렌더)"
+          },
+          {
+            "doc": "nanet-seoul-minutes.pdf",
+            "page": 2,
+            "glyphCoverage": 0.071,
+            "reason": "래스터에 텍스트층 글자가 그려지지 않음(글꼴 미렌더)"
+          }
+        ],
+        "cerMicro": 0.05188,
+        "cerMedian": 0.0216,
+        "charRecallMicro": 0.99001,
+        "charPrecisionMicro": 0.99355,
+        "charF1": 0.99178,
+        "hangulRecallMicro": 0.99363,
+        "cerMicroStrict": 0.09589,
+        "cerMedianStrict": 0.0719,
+        "secPerPage": 1.03,
+        "tables": {
+          "refTables": 67,
+          "matched": 52,
+          "exact": 22,
+          "matchedRate": 0.7761,
+          "exactRate": 0.3284,
+          "cellF1Mean": 0.5465,
+          "skippedRefTables": 37
+        },
+        "note": "정답=같은 PDF의 클린 텍스트층, 입력=216dpi 렌더 강제 OCR — 실스캔 노이즈/스큐 미반영(상한치). cer=v2 fair 정규화, cerStrict=v1"
+      },
+      "after": {
+        "generatedAt": "2026-10-01T00:08:35.497Z",
+        "docs": 53,
+        "skipped": 3,
+        "pages": 102,
+        "skippedPages": [
+          {
+            "doc": "eval-perf-2024.pdf",
+            "page": 5,
+            "inlineGlyphImages": 10,
+            "reason": "텍스트층이 글줄 안 글자를 그림으로 찍음(정답 불완전)"
+          },
+          {
+            "doc": "eval-perf-2024.pdf",
+            "page": 4,
+            "inlineGlyphImages": 9,
+            "reason": "텍스트층이 글줄 안 글자를 그림으로 찍음(정답 불완전)"
+          },
+          {
+            "doc": "nanet-seoul-minutes.pdf",
+            "page": 1,
+            "glyphCoverage": 0.088,
+            "reason": "래스터에 텍스트층 글자가 그려지지 않음(글꼴 미렌더)"
+          },
+          {
+            "doc": "nanet-seoul-minutes.pdf",
+            "page": 2,
+            "glyphCoverage": 0.071,
+            "reason": "래스터에 텍스트층 글자가 그려지지 않음(글꼴 미렌더)"
+          }
+        ],
+        "cerMicro": 0.05188,
+        "cerMedian": 0.0216,
+        "charRecallMicro": 0.99001,
+        "charPrecisionMicro": 0.99355,
+        "charF1": 0.99178,
+        "hangulRecallMicro": 0.99363,
+        "cerMicroStrict": 0.09665,
+        "cerMedianStrict": 0.0719,
+        "secPerPage": 0.98,
+        "tables": {
+          "refTables": 67,
+          "matched": 52,
+          "exact": 22,
+          "matchedRate": 0.7761,
+          "exactRate": 0.3284,
+          "cellF1Mean": 0.5465,
+          "skippedRefTables": 37
+        },
+        "note": "정답=같은 PDF의 클린 텍스트층, 입력=216dpi 렌더 강제 OCR — 실스캔 노이즈/스큐 미반영(상한치). cer=v2 fair 정규화, cerStrict=v1"
+      },
+      "pass": true,
+      "changedStrictDocuments": [
+        {
+          "before": {
+            "doc": "khs-budget-2014.pdf",
+            "pages": [
+              5,
+              6
+            ],
+            "gtChars": 594,
+            "dist": 2,
+            "cer": 0.0034,
+            "cerStrict": 0.1401,
+            "charRecall": 0.9966,
+            "charPrecision": 1,
+            "hangulRecall": 1,
+            "secPerPage": 0.73,
+            "tbl": null
+          },
+          "after": {
+            "doc": "khs-budget-2014.pdf",
+            "pages": [
+              5,
+              6
+            ],
+            "gtChars": 594,
+            "dist": 2,
+            "cer": 0.0034,
+            "cerStrict": 0.2294,
+            "charRecall": 0.9966,
+            "charPrecision": 1,
+            "hangulRecall": 1,
+            "secPerPage": 0.73,
+            "tbl": null
+          }
+        }
+      ]
+    }
+  },
+  "releaseEvidence": {
+    "record": "release-4.17.5.json",
+    "sourceCommit": "d6bd3566c7915b7976c6fac8e3ad65ced0891444",
+    "registryVersion": "4.17.5",
+    "distFilesExact": 136,
+    "githubRelease": "https://github.com/chrisryugj/kordoc/releases/tag/v4.17.5",
+    "githubGitlabTagIdentical": true
+  },
+  "forcedOcrNativeTocAudit": {
+    "schemaVersion": 1,
+    "document": "khs-budget-2014.pdf",
+    "pages": [
+      5,
+      6
+    ],
+    "versions": {
+      "baseline": "4.17.4",
+      "candidate": "4.17.5"
+    },
+    "execution": {
+      "command": "node bench/ocr-accuracy.mjs --doc=khs-budget-2014 --dump=./captures",
+      "sequential": true,
+      "build": false,
+      "primaryOutputOverwritten": false,
+      "productionModified": false,
+      "gtModified": false,
+      "evaluatorModified": false,
+      "populationModified": false
+    },
+    "files": {
+      "pdf": {
+        "path": "/Users/mong-e/workspace/kordoc/bench/corpus/pdf/khs-budget-2014.pdf",
+        "sha256": "690627cbae6baed93f786b644246e20e4c641fb997d68b874a257581c3cd787d"
+      },
+      "scorer": {
+        "path": "/Users/mong-e/workspace/kordoc/bench/ocr-accuracy.mjs",
+        "sha256": "314b71d3651bbbf009f35ce99201a31f2f5f864dfe5e7699b2f8e015286efd60"
+      },
+      "library": {
+        "path": "/Users/mong-e/workspace/kordoc/bench/ocr-lib.mjs",
+        "sha256": "afe830108bcb96e7586c296877684090b9fb3801f901ed18107a79f99f5c9d24"
+      },
+      "goldenPages": {
+        "path": "/Users/mong-e/workspace/kordoc/bench/ocr-pages.json",
+        "sha256": "20ebf00f4da6cabcc390940246a96314658f3af177e1842938b7525361cb9532"
+      },
+      "baselineDist": {
+        "path": "/tmp/kordoc-score-performance-baseline-20261001/dist/index.js",
+        "sha256": "6a57e172c7b4c62cdfea5f98ea74b8289fdea1cd7ed3c656dc9c5a5c20e3d8d3"
+      },
+      "candidateDist": {
+        "path": "/Users/mong-e/workspace/kordoc/dist/index.js",
+        "sha256": "3970369a211435995f52892842aa94b5b67e79e021cbdcebcb2bb510a799f991"
+      }
+    },
+    "unchangedCopiedInputs": {
+      "ocr-accuracy.mjs": {
+        "primary": "314b71d3651bbbf009f35ce99201a31f2f5f864dfe5e7699b2f8e015286efd60",
+        "baseline": "314b71d3651bbbf009f35ce99201a31f2f5f864dfe5e7699b2f8e015286efd60",
+        "candidate": "314b71d3651bbbf009f35ce99201a31f2f5f864dfe5e7699b2f8e015286efd60"
+      },
+      "ocr-lib.mjs": {
+        "primary": "afe830108bcb96e7586c296877684090b9fb3801f901ed18107a79f99f5c9d24",
+        "baseline": "afe830108bcb96e7586c296877684090b9fb3801f901ed18107a79f99f5c9d24",
+        "candidate": "afe830108bcb96e7586c296877684090b9fb3801f901ed18107a79f99f5c9d24"
+      },
+      "ocr-pages.json": {
+        "primary": "20ebf00f4da6cabcc390940246a96314658f3af177e1842938b7525361cb9532",
+        "baseline": "20ebf00f4da6cabcc390940246a96314658f3af177e1842938b7525361cb9532",
+        "candidate": "20ebf00f4da6cabcc390940246a96314658f3af177e1842938b7525361cb9532"
+      }
+    },
+    "outputs": {
+      "baseline": "/tmp/kordoc-ocr-khs-repro-20261001/baseline/bench/out/ocr-accuracy.json",
+      "candidate": "/tmp/kordoc-ocr-khs-repro-20261001/candidate/bench/out/ocr-accuracy.json",
+      "baselineCapture": "/tmp/kordoc-ocr-khs-repro-20261001/baseline/captures/khs-budget-2014.pdf.json",
+      "candidateCapture": "/tmp/kordoc-ocr-khs-repro-20261001/candidate/captures/khs-budget-2014.pdf.json",
+      "baselineText": "/tmp/kordoc-ocr-khs-repro-20261001/baseline/text-dump.json",
+      "candidateText": "/tmp/kordoc-ocr-khs-repro-20261001/candidate/text-dump.json",
+      "originalGlyphs": "/tmp/kordoc-ocr-khs-repro-20261001/original-glyphs.json",
+      "originalImages": [
+        "/tmp/kordoc-ocr-khs-repro-20261001/original-p5.png",
+        "/tmp/kordoc-ocr-khs-repro-20261001/original-p6.png"
+      ]
+    },
+    "originalGate": {
+      "aggregateStrictCer": {
+        "baseline": 0.09589,
+        "candidate": 0.09665
+      },
+      "document": {
+        "baseline": {
+          "gtLength": 564,
+          "ocrLength": 634,
+          "strictDistance": 79,
+          "strictCer": 0.1400709219858156,
+          "fairLength": 594,
+          "fairDistance": 2,
+          "fairCer": 0.003367003367003367
+        },
+        "candidate": {
+          "gtLength": 523,
+          "ocrLength": 634,
+          "strictDistance": 120,
+          "strictCer": 0.2294455066921606,
+          "fairLength": 594,
+          "fairDistance": 2,
+          "fairCer": 0.003367003367003367
+        }
+      },
+      "gateIsAuthoritative": true
+    },
+    "ocrTextEquality": {
+      "rawV1": {
+        "baseline": "3f782a45367efe4b1020b7d842be7e41c8eff217a8116ac4ce36dbcc7ea16994",
+        "candidate": "3f782a45367efe4b1020b7d842be7e41c8eff217a8116ac4ce36dbcc7ea16994",
+        "equal": true
+      },
+      "strict": {
+        "baseline": "65ae2287813de86c812dfba39dcfa5c32989a68612ad57b0ca72473bc67e35f3",
+        "candidate": "65ae2287813de86c812dfba39dcfa5c32989a68612ad57b0ca72473bc67e35f3",
+        "equal": true
+      },
+      "rawFair": {
+        "baseline": "3f782a45367efe4b1020b7d842be7e41c8eff217a8116ac4ce36dbcc7ea16994",
+        "candidate": "3f782a45367efe4b1020b7d842be7e41c8eff217a8116ac4ce36dbcc7ea16994",
+        "equal": true
+      },
+      "fair": {
+        "baseline": "7005a263aa693719541e7519084cfac9682df27d6bd66f5eaad8bf68b4d967a3",
+        "candidate": "7005a263aa693719541e7519084cfac9682df27d6bd66f5eaad8bf68b4d967a3",
+        "equal": true
+      }
+    },
+    "ocrBlocksByteIdentical": false,
+    "nativeFairTextEqual": true,
+    "diagnosticFixedBaselineGt": {
+      "auxiliaryOnly": true,
+      "replacesGate": false,
+      "strictDistance": 79,
+      "strictCer": 0.1400709219858156,
+      "fairDistance": 2,
+      "fairCer": 0.003367003367003367
+    },
+    "derivedGtCause": {
+      "code": {
+        "collector": "/Users/mong-e/workspace/kordoc/bench/ocr-lib.mjs:51",
+        "callsite": "/Users/mong-e/workspace/kordoc/bench/ocr-accuracy.mjs:184"
+      },
+      "description": "Legacy v1 flat collector omits children. Native layout changes moved an additional 41 normalized characters into children. PDF, golden page list and scorer bytes are fixed; derived v1 GT is not fixed.",
+      "additionalOmitted": [
+        {
+          "text": "가. 세입 예산 현황 총괄표 \t15",
+          "normalized": "가.세입예산현황총괄표15",
+          "length": 13
+        },
+        {
+          "text": "【광역지역발전 특별회계】 \t85",
+          "normalized": "【광역지역발전특별회계】85",
+          "length": 14
+        },
+        {
+          "text": "가. 수입 예산 현황 총괄표 \t115",
+          "normalized": "가.수입예산현황총괄표115",
+          "length": 14
+        }
+      ],
+      "additionalOmittedLength": 41,
+      "baselineLists": [
+        {
+          "text": "가. 세입 예산 현황 총괄표 \t15",
+          "children": [
+            {
+              "type": "list",
+              "text": "나. 세출 예산 현황 총괄표 \t19",
+              "pageNumber": 5,
+              "bbox": {
+                "page": 5,
+                "x": 92,
+                "y": 509,
+                "width": 432,
+                "height": 14
+              },
+              "style": {
+                "fontSize": 14,
+                "fontName": "g_d3_f4"
+              },
+              "listType": "unordered"
+            }
+          ]
+        },
+        {
+          "text": "가. 수입 예산 현황 총괄표 \t115",
+          "children": [
+            {
+              "type": "list",
+              "text": "나. 지출 예산 현황 총괄표 \t119",
+              "pageNumber": 5,
+              "bbox": {
+                "page": 5,
+                "x": 92,
+                "y": 134,
+                "width": 433,
+                "height": 14
+              },
+              "style": {
+                "fontSize": 14,
+                "fontName": "g_d3_f4"
+              },
+              "listType": "unordered"
+            }
+          ]
+        }
+      ],
+      "candidateLists": [
+        {
+          "text": "2. 세입·세출 예산 현황 총괄표 \t11 【일반회계】 \t13",
+          "children": [
+            {
+              "type": "list",
+              "text": "가. 세입 예산 현황 총괄표 \t15",
+              "pageNumber": 5,
+              "bbox": {
+                "page": 5,
+                "x": 92,
+                "y": 540,
+                "width": 432,
+                "height": 14
+              },
+              "style": {
+                "fontSize": 14,
+                "fontName": "g_d3_f4"
+              },
+              "listType": "unordered"
+            },
+            {
+              "type": "list",
+              "text": "나. 세출 예산 현황 총괄표 \t19 【광역지역발전 특별회계】 \t85",
+              "pageNumber": 5,
+              "bbox": {
+                "page": 5,
+                "x": 78,
+                "y": 478,
+                "width": 446,
+                "height": 45
+              },
+              "style": {
+                "fontSize": 14,
+                "fontName": "g_d3_f4"
+              },
+              "listType": "unordered"
+            }
+          ]
+        },
+        {
+          "text": "2. 수입·지출 예산 현황 총괄표 \t111 【문화재보호기금】 \t113",
+          "children": [
+            {
+              "type": "list",
+              "text": "가. 수입 예산 현황 총괄표 \t115",
+              "pageNumber": 5,
+              "bbox": {
+                "page": 5,
+                "x": 92,
+                "y": 165,
+                "width": 433,
+                "height": 14
+              },
+              "style": {
+                "fontSize": 14,
+                "fontName": "g_d3_f4"
+              },
+              "listType": "unordered"
+            },
+            {
+              "type": "list",
+              "text": "나. 지출 예산 현황 총괄표 \t119",
+              "pageNumber": 5,
+              "bbox": {
+                "page": 5,
+                "x": 92,
+                "y": 134,
+                "width": 433,
+                "height": 14
+              },
+              "style": {
+                "fontSize": 14,
+                "fontName": "g_d3_f4"
+              },
+              "listType": "unordered"
+            }
+          ]
+        }
+      ]
+    },
+    "geometry": {
+      "page": 5,
+      "pageBox": [
+        0,
+        0,
+        595.22,
+        842
+      ],
+      "fontSizeApprox": 14,
+      "rowPitchApprox": 30.78,
+      "rightPageNumberEdgeApprox": 524.4,
+      "independentAccountHeading": {
+        "text": "【광역지역발전 특별회계】",
+        "sourceLabel": {
+          "x": 77.88,
+          "y": 478.2803
+        },
+        "sourcePageNumber": {
+          "text": "85",
+          "x": 510.48,
+          "y": 478.2803
+        },
+        "precedingNa": {
+          "x": 91.86,
+          "y": 509.0603,
+          "pageNumber": "19"
+        },
+        "candidateMergedBbox": {
+          "x": 78,
+          "y": 478,
+          "width": 446,
+          "height": 45
+        }
+      },
+      "assessment": "Ga/Na nesting beneath a numbered parent can be valid. Independent account headings have their own bold bracket label, dot leader and page number, and must not be absorbed into the preceding Na child. Candidate native hierarchy is therefore not wholly validated against the original. No OCR text deterioration is established."
+    },
+    "sourceMechanism": {
+      "lineWrapSourceUnchangedBetweenBuilds": true,
+      "changedPaths": [
+        "/Users/mong-e/workspace/kordoc/src/pdf/xy-cut.ts",
+        "/Users/mong-e/workspace/kordoc/src/pdf/paragraph-lines.ts"
+      ],
+      "locations": {
+        "wrapBands": "/Users/mong-e/workspace/kordoc/src/pdf/xy-cut.ts:230",
+        "joins": "/Users/mong-e/workspace/kordoc/src/pdf/xy-cut.ts:239",
+        "inheritedJoin": "/Users/mong-e/workspace/kordoc/src/pdf/paragraph-lines.ts:50"
+      },
+      "description": "New wrapped-line bands preserve bodyLineJoins decisions across XY cuts and paragraph leaf subdivision. Full-width TOC labels plus right-aligned page numbers can meet the prose width/relative-pitch criteria; distinct TOC account headings are then joined. Subsequent Korean list nesting moves more text to children."
+    },
+    "nextMinimalRepro": {
+      "anonymous": true,
+      "input": "Four same-size 14pt TOC rows at 31pt pitch; each has a left label, a dot-leader gap and a right-aligned independent numeric page reference. Include a numbered parent, bracketed account heading, Ga/Na items, and the next bracketed account heading. Use coordinates rather than filename, document ID or known text.",
+      "redAssertion": "Independent account heading with its own leader/page reference remains a separate record and is not concatenated into the previous list child.",
+      "recommendedFixArea": "A conservative repeated TOC-record geometry boundary in wrap-band/paragraph line joining; do not alter the benchmark collector or flatten legitimate list hierarchy just to restore strict CER.",
+      "negativeCases": [
+        "Large-pitch justified Korean prose wrapped across an XY leaf must continue joining.",
+        "Single numeric suffix without repeated aligned page-reference column must not activate a TOC exception.",
+        "Wrapped TOC label without its own second page reference must remain one record.",
+        "Normal nested Ga/Na lists must retain their intended hierarchy."
+      ]
+    },
+    "interpretation": "Report original aggregate strict CER 9.589% to 9.665% unchanged. This regression is driven by native-derived v1 GT omission, not an increase in the OCR comparison string. Fixed-baseline GT diagnostics are supplemental only. A separate native TOC row-boundary issue is visually established; no production fix was made in this audit."
+  }
 }
