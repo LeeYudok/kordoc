@@ -6,19 +6,46 @@ const pt = (u: number): string => String(Math.round(u) / 100)
 const esc = (s: string): string => s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 export const SHAPE_TAGS = new Set(["rect", "ellipse", "line", "polygon", "curv", "curve", "arc"])
 export interface RegionRotation { angle: number; cx: number; cy: number }
+/** SVG matrix(a b c d e f) — x' = a·x + c·y + e, y' = b·x + d·y + f (HWPUNIT) */
+export type Affine = [number, number, number, number, number, number]
 interface Box { x: number; y: number; w: number; h: number }
-export function rotatedBounds(box: Box, rotations: RegionRotation[]): Box {
+export function rotatedBounds(box: Box, rotations: Array<RegionRotation | Affine>): Box {
   if (!rotations.length) return box
   let points = [[box.x, box.y], [box.x + box.w, box.y], [box.x + box.w, box.y + box.h], [box.x, box.y + box.h]]
   // SVG nested groups apply the innermost transform first.
   for (let i = rotations.length - 1; i >= 0; i--) {
-    const { angle, cx, cy } = rotations[i]
+    const r = rotations[i]
+    if (Array.isArray(r)) { points = points.map(([x, y]) => [r[0] * x + r[2] * y + r[4], r[1] * x + r[3] * y + r[5]]); continue }
+    const { angle, cx, cy } = r
     const a = angle * Math.PI / 180, c = Math.cos(a), s = Math.sin(a)
     points = points.map(([x, y]) => [cx + c * (x - cx) - s * (y - cy), cy + s * (x - cx) + c * (y - cy)])
   }
   const x = Math.min(...points.map(p => p[0])), y = Math.min(...points.map(p => p[1]))
   return { x, y, w: Math.max(...points.map(p => p[0])) - x, h: Math.max(...points.map(p => p[1])) - y }
 }
+export function mulAffine(m: Affine, n: Affine): Affine {
+  return [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3],
+    m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]]
+}
+
+/**
+ * 묶음 안 개체의 renderingInfo — transMatrix·scaMatrix·rotMatrix 를 적힌 순서로 곱하면 개체 원본(orgSz) 좌표가 최상위 묶음의
+ * 상자 좌표로 간다(e1 e2 e3 / e4 e5 e6 = x'·y' 행). 위례선 트램 보도자료 지도 묶음 실측: 지도 사진 48443×63972 → 0~42907 × 0~44754
+ * (최상위 묶음 curSz 42907×44780), 노선 곡선 첫 점 → 지도 폭 0.77 지점(한컴 PDF 와 같다). 행렬이 없으면 null
+ */
+export function renderingMatrix(el: Element): Affine | null {
+  const info = findChildByLocalName(el, "renderingInfo")
+  if (!info) return null
+  let m: Affine | null = null
+  for (const c of elements(info)) {
+    const tag = ln(c)
+    if (tag !== "transMatrix" && tag !== "scaMatrix" && tag !== "rotMatrix") continue
+    const n: Affine = [num(c, "e1", 1), num(c, "e4"), num(c, "e2"), num(c, "e5", 1), num(c, "e3"), num(c, "e6")]
+    m = m ? mulAffine(m, n) : n
+  }
+  return m
+}
+
 export interface ObjectGeometry {
   x: number; y: number; w: number; h: number
   bbox: { x: number; y: number; w: number; h: number }
@@ -26,17 +53,20 @@ export interface ObjectGeometry {
   rotation?: RegionRotation
 }
 
-/** rotationInfo is in the original object's coordinate space, not page space.
- * Use it once (rotMatrix encodes the same rotation), after scaling orgSz to curSz. */
-export function objectGeometry(el: Element, x: number, y: number, w: number, h: number): ObjectGeometry {
+/**
+ * 회전 개체 — 한컴 저장본은 sz 가 틀(curSz)을 돌린 외접 상자이고 pos·offset 이 그 상자 자리다(회전 사진 ta-pic-001-r: 13668×12686 을
+ * 34° 돌린 외접 18425×18160, rotationInfo center 가 그 상자 중심 · 270° 다각형 2536×4798 → sz 4798×2536). 틀 중심을 외접 상자(x, y, boxW, boxH)
+ * 중심에 두고 그 점을 축으로 돌린다 — 다른 회전 중심도 같은 외접 상자에 놓이면 평행 이동만 다르다. 종전엔 틀을 상자 왼쪽 위에 두고
+ * orgSz 비율로 중심을 잡아 실문서의 회전 도형이 어긋났고, 사진·묶음 개체는 회전을 읽지 않았다(#116)
+ */
+export function objectGeometry(el: Element, x: number, y: number, w: number, h: number, boxW = w, boxH = h): ObjectGeometry {
   const rot = findChildByLocalName(el, "rotationInfo")
   const angle = num(rot, "angle") % 360
   if (!angle) return { x, y, w, h, bbox: { x, y, w, h }, transform: "" }
-  const org = findChildByLocalName(el, "orgSz")
-  const cx = x + num(rot, "centerX", num(org, "width", w) / 2) * (w / (num(org, "width") || w || 1))
-  const cy = y + num(rot, "centerY", num(org, "height", h) / 2) * (h / (num(org, "height") || h || 1))
+  const cx = x + boxW / 2, cy = y + boxH / 2
+  const fx = cx - w / 2, fy = cy - h / 2
   const rotation = { angle, cx: Math.round(cx), cy: Math.round(cy) }
-  return { x, y, w, h, bbox: rotatedBounds({ x, y, w, h }, [rotation]), rotation, transform: `rotate(${angle} ${pt(cx)} ${pt(cy)})` }
+  return { x: fx, y: fy, w, h, bbox: rotatedBounds({ x: fx, y: fy, w, h }, [rotation]), rotation, transform: `rotate(${angle} ${pt(cx)} ${pt(cy)})` }
 }
 
 interface PaintImage { dataUri: string; paintId?: string }
@@ -83,10 +113,15 @@ function shapeFill(el: Element, defs: string[], images: Map<string, PaintImage>,
   return "none"
 }
 
-export function shapeGeometry(o: ParaObj, x: number, y: number, defs: string[], images: Map<string, PaintImage>, warn: (key: string, text: string) => void): ObjectGeometry & { svg: string } {
+/** local — 묶음 안 개체를 원본(orgSz) 좌표로 그린다(배율·회전은 바깥 renderingInfo 행렬 그룹이 맡는다) */
+export function shapeGeometry(o: ParaObj, boxX: number, boxY: number, defs: string[], images: Map<string, PaintImage>, warn: (key: string, text: string) => void, local = false): ObjectGeometry & { svg: string } {
   const el = o.el, org = findChildByLocalName(el, "orgSz"), cur = findChildByLocalName(el, "curSz")
   const ow = num(org, "width"), oh = num(org, "height")
-  const w = num(cur, "width") || ow || o.width, h = num(cur, "height") || oh || o.height
+  const w = (local ? ow : num(cur, "width")) || ow || num(cur, "width") || o.width
+  const h = (local ? oh : num(cur, "height")) || oh || num(cur, "height") || o.height
+  const geometry: ObjectGeometry = local ? { x: boxX, y: boxY, w, h, bbox: { x: boxX, y: boxY, w, h }, transform: "" }
+    : objectGeometry(el, boxX, boxY, w, h, o.width || w, o.height || h)
+  const { x, y } = geometry
   const sx = ow > 0 ? w / ow : 1, sy = oh > 0 ? h / oh : 1
   const line = findChildByLocalName(el, "lineShape"), style = line?.getAttribute("style") ?? "SOLID"
   const color = esc(line?.getAttribute("color") || "#000000")
@@ -104,9 +139,10 @@ export function shapeGeometry(o: ParaObj, x: number, y: number, defs: string[], 
     const pts = elements(el).filter(c => ln(c) === "pt").map(c => `${pt(x + num(c, "x") * sx)},${pt(y + num(c, "y") * sy)}`)
     if (pts.length >= 2) svg = `<polygon points="${pts.join(" ")}"${fill}${stroke}/>`
   } else if (o.tag === "curve") {
+    // CURVE 조각도 점을 잇는다 — 한컴은 곡선을 촘촘한 점(약 200 HWPUNIT 간격)으로 펴서 조각마다 담는다(위례선 트램 보도자료 실측).
+    // 종전엔 CURVE 조각이 하나라도 있으면 통째 생략해, 곡선 덮개가 가리던 자리가 드러났다(#116)
     const segs = elements(el).filter(c => ln(c) === "seg")
-    if (segs.some(s => s.getAttribute("type") !== "LINE")) warn("curve:bezier", "비선형 곡선 렌더 미지원 — 생략")
-    else if (segs.length) {
+    if (segs.length) {
       let path = "", lastX: number | undefined, lastY: number | undefined
       for (const s of segs) {
         const x1 = num(s, "x1"), y1 = num(s, "y1"), x2 = num(s, "x2"), y2 = num(s, "y2")
@@ -117,5 +153,5 @@ export function shapeGeometry(o: ParaObj, x: number, y: number, defs: string[], 
       svg = `<path d="${path}"${fill}${stroke}/>`
     }
   } else if (o.tag === "arc") svg = `<ellipse cx="${pt(x + w / 2)}" cy="${pt(y + h / 2)}" rx="${pt(w / 2)}" ry="${pt(h / 2)}" fill="none"${stroke || ` stroke="${color}" stroke-width="0.3"`}/>`
-  return { ...objectGeometry(el, x, y, w, h), svg }
+  return { ...geometry, svg }
 }

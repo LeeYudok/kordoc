@@ -30,7 +30,7 @@ import { reflowSection } from "./reflow.js"
 import { RegionCollector, type PageBBox, type RenderRegion, type RenderScene } from "./scene.js"
 import { ln, elements, num, findFirst, type Seg, type ParaChar, OBJ_TAGS, type ParaObj, type ParaModel, buildPara, prepareDeletedRanges, tabAdvance, type ExtentMemo, cellContentExtent, collectCells, measureTableHeight } from "./para-model.js"
 import { pageStories } from "./page-stories.js"
-import { shapeGeometry, rotatedBounds, SHAPE_TAGS, type RegionRotation } from "./shape-geometry.js"
+import { mulAffine, objectGeometry, renderingMatrix, shapeGeometry, rotatedBounds, SHAPE_TAGS, type Affine, type RegionRotation } from "./shape-geometry.js"
 export { buildPara, measureTableHeight, tabAdvance, type Seg, type ParaChar, type ParaModel, type ExtentMemo } from "./para-model.js"
 
 export interface RenderSvgOptions {
@@ -104,7 +104,7 @@ interface Ctx {
   pageH: number
   paintJobs: PaintJob[] | null
   /** Same ancestor rotations as the SVG groups containing this object's paint. */
-  regionRotations: RegionRotation[]
+  regionRotations: Array<RegionRotation | Affine>
 }
 interface PaintJob { page: number; layer: number; z: number; draw: () => void }
 
@@ -460,7 +460,8 @@ function drawObject(o: ParaObj, x: number, y: number, baseV: number, areaW: numb
   if (o.tag === "tbl") drawTable(o.el, x, y, ctx, depth + 1)
   else if (o.tag === "pic") drawPic(o.el, x, y, ctx)
   else if (o.tag === "container") {
-    // 그리기개체 묶음 — 자식 개체를 컨테이너 원점 기준으로 재귀 배치
+    if (drawGroupByMatrix(o, x, y, baseV, areaW, ctx, depth)) return
+    // 그리기개체 묶음(행렬 없음 — HWP5 장면) — 자식 개체를 컨테이너 원점 기준으로 재귀 배치
     for (const ch of elements(o.el)) {
       const tag = ln(ch)
       if (!OBJ_TAGS.has(tag)) continue
@@ -478,9 +479,48 @@ function drawObject(o: ParaObj, x: number, y: number, baseV: number, areaW: numb
   }
 }
 
+/**
+ * 묶음(hp:container) — 안쪽 개체마다 renderingInfo 행렬로 원본 좌표를 최상위 묶음 상자에 놓는다(배율·회전·중첩 묶음 한 번에).
+ * 최상위 묶음 자기 행렬이 그리는 상자를 묶음 자리(x, y)에 맞춘다. 종전엔 offset 만 더해 배율 묶음(지도·도식)의 그림이 작게,
+ * 곡선·도형이 엉뚱한 자리에 크게 그려졌다(#116). 행렬 없는 묶음(HWP5 장면)은 false — 종전 offset 경로
+ */
+function drawGroupByMatrix(o: ParaObj, x: number, y: number, baseV: number, areaW: number, ctx: Ctx, depth: number): boolean {
+  const top = renderingMatrix(o.el)
+  const leaves: Element[] = []
+  const collect = (el: Element): boolean => {
+    for (const ch of elements(el)) {
+      const tag = ln(ch)
+      if (!OBJ_TAGS.has(tag)) continue
+      if (tag === "container") { if (!collect(ch)) return false }
+      else if (renderingMatrix(ch)) leaves.push(ch)
+      else return false
+    }
+    return true
+  }
+  if (!top || !collect(o.el)) return false
+  const org = findChildByLocalName(o.el, "orgSz")
+  const box = rotatedBounds({ x: 0, y: 0, w: num(org, "width"), h: num(org, "height") }, [top])
+  const base: Affine = [1, 0, 0, 1, x - box.x, y - box.y]
+  for (const leaf of leaves) {
+    const m = mulAffine(base, renderingMatrix(leaf)!)
+    const tag = ln(leaf), lorg = findChildByLocalName(leaf, "orgSz")
+    const w = num(lorg, "width") || num(findChildByLocalName(leaf, "curSz"), "width")
+    const h = num(lorg, "height") || num(findChildByLocalName(leaf, "curSz"), "height")
+    ctx.regionRotations.push(m)
+    emit(ctx, `<g transform="matrix(${m.slice(0, 4).map(v => Math.round(v * 1e6) / 1e6).join(" ")} ${pt(m[4])} ${pt(m[5])})">`)
+    const sub: ParaObj = { el: leaf, tag, index: 0, inline: true, width: w, height: h, omL: 0, omR: 0 }
+    if (tag === "pic") drawPicFrame(leaf, 0, 0, w, h, "", ctx)
+    else if (SHAPE_TAGS.has(tag)) drawShape(sub, 0, 0, ctx, depth + 1, true)
+    else drawObject(sub, 0, 0, baseV, areaW, ctx, depth + 1)
+    emit(ctx, "</g>")
+    ctx.regionRotations.pop()
+  }
+  return true
+}
+
 // ─── 그리기 도형 ───────────────────────────────────
-function drawShape(o: ParaObj, x: number, y: number, ctx: Ctx, depth: number): void {
-  const geometry = shapeGeometry(o, x, y, ctx.defs, ctx.images, (key, msg) => warnOnce(ctx, key, msg))
+function drawShape(o: ParaObj, x: number, y: number, ctx: Ctx, depth: number, local = false): void {
+  const geometry = shapeGeometry(o, x, y, ctx.defs, ctx.images, (key, msg) => warnOnce(ctx, key, msg), local)
   // Transform original corners through every ancestor and this shape's rotation
   // before bounding once. An intermediate axis-aligned box inflates nested crops.
   const b = geometry
@@ -591,16 +631,27 @@ function imageSymbol(loaded: { dataUri: string; symId?: string }, ctx: Ctx): str
 
 function drawPic(pic: Element, x: number, y: number, ctx: Ctx): void {
   const sz = findChildByLocalName(pic, "sz")
-  const w = num(sz, "width", 5669), h = num(sz, "height", 5669)
+  let w = num(sz, "width", 5669), h = num(sz, "height", 5669)
+  // 돌린 사진 — sz 는 돌린 외접 상자, 그림은 curSz 틀로 그 상자 중심에 놓고 돌린다 (objectGeometry, #116)
+  const cur = findChildByLocalName(pic, "curSz")
+  const rotated = objectGeometry(pic, x, y, num(cur, "width") || w, num(cur, "height") || h, w, h)
+  if (rotated.rotation) { x = rotated.x; y = rotated.y; w = rotated.w; h = rotated.h; ctx.regionRotations.push(rotated.rotation) }
+  drawPicFrame(pic, x, y, w, h, rotated.transform, ctx)
+  if (rotated.rotation) ctx.regionRotations.pop()
+}
+
+function drawPicFrame(pic: Element, x: number, y: number, w: number, h: number, transform: string, ctx: Ctx): void {
   const img = findFirst(pic, "img")
   const ref = img?.getAttribute("binaryItemIDRef")
   const loaded = ref != null ? ctx.images.get(ref) : undefined
   const imgId = ctx.regions.add("image", bboxOf(ctx, x, y, w, h), { sourceId: ref ?? undefined, parentId: parentId(ctx) })
   emit(ctx, regionOpenTag(imgId, "image", pageNo(ctx)))
+  const close = transform ? "</g></g>" : "</g>"
+  if (transform) emit(ctx, `<g transform="${transform}">`)
   if (!loaded) {
     emit(ctx, `<rect x="${pt(x)}" y="${pt(y)}" width="${pt(w)}" height="${pt(h)}" fill="#eee" stroke="#c00" stroke-width="0.5"/>`)
     warnOnce(ctx, `img:${ref}`, `이미지 바이너리 누락: ${ref ?? "(ref 없음)"}`)
-    emit(ctx, "</g>")
+    emit(ctx, close)
     return
   }
   ctx.stats.images++
@@ -628,7 +679,7 @@ function drawPic(pic: Element, x: number, y: number, ctx: Ctx): void {
   } else {
     emit(ctx, `<use href="#${symId}" x="${pt(x)}" y="${pt(y)}" width="${pt(w)}" height="${pt(h)}"/>`)
   }
-  emit(ctx, "</g>")
+  emit(ctx, close)
 }
 
 function sniffMime(name: string, bytes: Uint8Array): string {
