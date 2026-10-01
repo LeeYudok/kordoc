@@ -1,6 +1,6 @@
 # kordoc 작업 지침
 
-kordoc — 한국 공문서(HWP 3.x·5.x, HWPX, HWPML, PDF, XLS·XLSX, DOCX, 이미지)를 Markdown·IR 로 바꾸고 비교·생성하는 파서 라이브러리.
+kordoc — 한국 공문서(HWP 3.x·5.x, HWPX, HWPML, PDF, XLS·XLSX, DOCX, PPTX, 이미지)를 Markdown·IR 로 바꾸고 비교·생성하는 파서 라이브러리.
 npm 패키지로 배포하고 라이브러리 API·CLI(`kordoc`)·MCP 서버(`kordoc-mcp`, 도구 17개)를 낸다.
 
 이 파일이 에이전트 공통 지침의 정본이다. Codex 는 이 파일을 바로 읽고, Claude Code 는 `CLAUDE.md` 의 `@AGENTS.md` 로 읽는다.
@@ -52,7 +52,7 @@ Buffer → detectFormat() [매직바이트] → 포맷별 파서 → IRBlock[] �
 
 - 파서는 마크다운을 직접 만들지 않고 `IRBlock[]` 로 정규화한다. 표는 2-pass(병합 고려 격자 크기 → 칸 배치).
 - 진입점 `src/index.ts`(`parse` 가 `detectFormat` 으로 분기 — 새 포맷은 여기), IR 타입 `src/types.ts`, 표 → 마크다운 `src/table/builder.ts`.
-- 포맷별: `src/hwpx/`(파서·생성기), `src/hwp5/`, `src/hwp3/`, `src/pdf/`(텍스트층·표·읽기 순서), `src/ocr/`, `src/docx/`, `src/xlsx/`, 렌더 `src/render/`, CLI `src/cli*`, MCP `src/mcp*`.
+- 포맷별: `src/hwpx/`(파서·생성기), `src/hwp5/`, `src/hwp3/`, `src/pdf/`(텍스트층·표·읽기 순서), `src/ocr/`, `src/docx/`, `src/pptx/`, `src/xlsx/`, 렌더 `src/render/`, CLI `src/cli*`, MCP `src/mcp*`.
 - 모듈별 역할 표와 설계 결정은 [docs/architecture.md](docs/architecture.md).
 
 ## 구현 주의
@@ -70,6 +70,7 @@ Buffer → detectFormat() [매직바이트] → 포맷별 파서 → IRBlock[] �
 - 보이지 않는 틀 표 풀기(`table/layout-frames.ts`, `layoutTables` 기본 visual)는 파서가 마크다운을 만들기 직전에 건다. 원본 표 서수가 필요한 경로(패치·세션·양식·`extractTables`)는 `layoutTables: "keep"`. PDF 는 한컴 PDF 칸 클립 격자 표에만 칸 변을 단다(워드 PDF 도 칸마다 클립을 깐다, ODL 064).
 - 첨자는 파서가 IR 글에 `<sup>`·`<sub>` 를 넣는다(밑줄 `<u>` 와 같은 방식). `scriptTags` 기본은 HWPX·HWP·DOCX 켬, PDF 끔(`stripScriptTags`),
   OCR 글은 늘 평문. PDF 는 판정을 다 한 뒤 `tagScripts` 로 넣는다 — 판정 로직에 태그가 섞이면 안 된다. 채점 정규화는 태그를 걷는다.
+  원문 글자 "<sub>"·"</sup>"·"<u>" 는 IR 에 `\<sub>` 로 담는다(`escapeLiteralTags`, 리터럴 `$` → `\$` 와 같은 규약). 새 파서 진입점에도 건다.
 - 아웃바운드는 2곳뿐(`src/pdf/formula/models.ts` 모델 다운로드, `src/watch.ts` webhook), 둘 다 `assertNetworkAllowed()` 뒤. 세 번째를 만들지 않는다
   (`docs/offline-deployment.md` 가 grep 으로 주장한다).
 - 공문서 생성(v5 official·report·plan·notice·minutes·ministry·bangchim)은 `hwpx/gen-gongmun.ts` 경로, 위계·글꼴 값은 `hwpx/gongmun-scheme.ts` 한 곳에서만
