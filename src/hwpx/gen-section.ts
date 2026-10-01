@@ -469,7 +469,10 @@ function renderListItem(block: MdBlock, blockIdx: number, ctx: SectionCtx): stri
     ctx.prevWasOrdered = false
   }
   const indentPrefix = "  ".repeat(indent)
-  return generateParagraph(indentPrefix + marker + (block.text || ""), PARA_LIST)
+  // 마커는 서식 없는 run 으로 따로 둔다 (공문서 markedParagraph 와 같은 방식) — 본문에 이어 붙여
+  // 인라인 파싱하면 '*' 마커가 본문의 **굵게**·*기울임* 과 짝지어져 글머리가 사라지고 별표가 남는다
+  const markerRun = `<hp:run charPrIDRef="${CHAR_NORMAL}"><hp:t>${escapeTextXml(indentPrefix + marker)}</hp:t></hp:run>`
+  return `<hp:p paraPrIDRef="${PARA_LIST}" styleIDRef="0">${markerRun}${generateRuns(block.text || "")}</hp:p>`
 }
 
 function renderHr(ctx: SectionCtx): string {
