@@ -108,6 +108,46 @@ describe("XY-cut preserves the paragraph assembler's supported wide line pitch",
     }
   })
 
+  it("keeps independent aligned TOC records across the parent wrap-band path", () => {
+    const records = ["2. Complete inventory", "【Account A】", "가. Revenue inventory", "나. Expense inventory", "【Account B】"]
+    const rows = records.flatMap((label, k) => {
+      const x = k === 2 || k === 3 ? 92 : 78
+      const y = 600 - k * 31
+      return [item(label, x, y, 220, 14), item("\t", x + 224, y, 510 - x - 225, 14), item(String(11 + k * 2), 510, y, 14, 14)]
+    })
+    assert.deepEqual(paragraphs(rows), records.map((label, k) => label + " \t" + (11 + k * 2)))
+  })
+
+  it("keeps independent TOC records in a short-pitch leaf without fresh parent bands", () => {
+    const rows = [700, 677].flatMap((y, k) => [item("Independent account " + k, 78, y, 220, 14),
+      item("\t", 302, y, 207, 14), item(String(21 + k * 2), 510, y, 14, 14)])
+    const blocks = extractPageBlocksFallback(rows, 1, false, false)
+    assert.deepEqual(blocks.map(b => b.text), ["Independent account 0 \t21", "Independent account 1 \t23"])
+  })
+
+  it("does not reinterpret one isolated numeric suffix as a repeated TOC column", () => {
+    const rows = [item("An ordinary full line of prose ending in", 72, 700, 400), item("2026", 500, 700, 24),
+      item("a continuation without its own page reference", 72, 670, 452), item("and the final sentence.", 72, 640, 100)]
+    const out = paragraphs(rows)
+    assert.equal(out.length, 1)
+    assert.ok(out[0]?.includes("2026 a continuation"))
+  })
+
+  it("keeps a wrapped TOC label that reaches its page reference on the following line", () => {
+    const rows = [item("A long entry filling the available reading region", 72, 700, 452, 14),
+      item("continued label", 72, 677, 210, 14), item("\t", 286, 677, 223, 14), item("31", 510, 677, 14, 14),
+      item("A separate complete entry", 72, 654, 210, 14), item("\t", 286, 654, 223, 14), item("33", 510, 654, 14, 14)]
+    assert.deepEqual(paragraphs(rows), ["A long entry filling the available reading region continued label \t31", "A separate complete entry \t33"])
+  })
+
+  it("keeps a completed TOC entry separate from the next wrapped label", () => {
+    const rows = [item("A complete preceding entry", 78, 700, 220, 14), item("\t", 302, 700, 207, 14), item("31", 510, 700, 14, 14),
+      item("A long entry filling the available reading region", 72, 677, 452, 14),
+      item("continued label", 72, 654, 210, 14), item("\t", 286, 654, 223, 14), item("33", 510, 654, 14, 14),
+      item("A separate complete entry", 72, 631, 210, 14), item("\t", 286, 631, 223, 14), item("35", 510, 631, 14, 14)]
+    assert.deepEqual(paragraphs(rows), ["A complete preceding entry \t31", "A long entry filling the available reading region continued label \t33", "A separate complete entry \t35"])
+  })
+
   it("does not join repeated standalone CJK labels", () => {
     const rows = [700, 672, 644, 616].map(y => item("（著作权人60% - 出版社40%）", 322, y, 159, 11))
     assert.deepEqual(paragraphs(rows), rows.map(r => r.text))

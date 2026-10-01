@@ -3,7 +3,7 @@ import { attachDropCaps } from "./local-regions.js"
 import { WrapLexicon, bodyLineJoins, wrapJoiner, startsNewItem, PARA_LAST_LINE } from "./line-wrap.js"
 import { computeBBox, dominantStyle, mergeLineSimple, sortLineByX, type NormItem } from "./text-line.js"
 import { tagScripts } from "./script-items.js"
-import { XY_WRAP_BANDS } from "./xy-cut.js"
+import { XY_WRAP_BANDS, tocRecordBoundaries } from "./xy-cut.js"
 
 /** 문단 블록의 서체별 글자 수 — 앞머리만 굵은 문장("Definition 1. A universe…")은 서체 차이로 제목이 아니다 */
 export const FACE_CHARS = new WeakMap<IRBlock, Map<string, number>>()
@@ -53,6 +53,8 @@ export function pushLineParagraphs(out: IRBlock[], yLines: NormItem[][], pageNum
       joins[i] = wrapJoiner(geo[i].text, geo[i + 1].text, lex)
     }
   }
+  // Completed TOC entries remain independent even inside a short-pitch leaf.
+  for (const i of tocRecordBoundaries(lines.map(line => line.items))) joins[i] = "\n"
   // 큰 글자로 따로 선 장 번호("2")는 아래 제목 줄과 다른 문단이다 (ODL 021)
   for (let i = 0; i + 1 < geo.length; i++) {
     if (/^\d{1,2}$/.test(geo[i].text.trim()) && geo[i].fontSize >= geo[i + 1].fontSize * 1.2) joins[i] = "\n"

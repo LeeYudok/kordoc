@@ -226,18 +226,54 @@ function inheritedWrapBands(items: NormItem[]): WrapBand[] {
   return sameLeaf ? validWrapBands(items, XY_WRAP_BANDS.get(items[0]) ?? []) : []
 }
 
+/** Two completed records with a shared page-number column are independent rows.
+ * tab-leaders keeps the leader's geometry as a whitespace item. Require a separate
+ * numeric run and a wide label-to-number gap; a bare number at a prose end is not proof. */
+export function tocRecordBoundaries(rows: NormItem[][]): Set<number> {
+  const out = new Set<number>()
+  if (rows.length < 2) return out
+  const records = rows.map((row, index) => {
+    const visible = row.filter(i => i.text.trim()).sort((a, b) => a.x - b.x)
+    let start = visible.length - 1
+    if (start < 1 || !/^\d+$/.test(visible[start].text.trim())) return null
+    for (; start > 0; start--) {
+      const a = visible[start - 1], b = visible[start]
+      if (!/^\d+$/.test(a.text.trim()) || b.x - (a.x + a.w) > 0.5 * b.fontSize) break
+    }
+    const nums = visible.slice(start), label = visible.slice(0, start).filter(i => !/^[·.⋯…]{4,}$/.test(i.text.trim()))
+    const fs = nums[0].fontSize
+    if (!/^\d{1,4}$/.test(nums.map(i => i.text.trim()).join("")) || fs <= 0 ||
+        !label.some(i => /[\p{L}]/u.test(i.text)) ||
+        nums[0].x - Math.max(...label.map(i => i.x + i.w)) < Math.max(2 * fs, 30)) return null
+    return { right: Math.max(...nums.map(i => i.x + i.w)), fs, index }
+  }).filter(record => record !== null).sort((a, b) => a.right - b.right)
+  // A wrapped label can intervene between completed entries in the same page column.
+  // Protect only boundaries after completed records, leaving its own wrap intact.
+  for (let i = 0; i + 1 < records.length; i++) {
+    const a = records[i], b = records[i + 1]
+    if (Math.abs(a.right - b.right) <= 0.5 * Math.min(a.fs, b.fs) &&
+        Math.abs(a.fs - b.fs) <= 0.15 * Math.min(a.fs, b.fs)) {
+      if (a.index + 1 < rows.length) out.add(a.index)
+      if (b.index + 1 < rows.length) out.add(b.index)
+    }
+  }
+  return out
+}
+
 /** Fresh wrap evidence is needed only for a region with a possible horizontal cut. */
 function wrappedLineBands(items: NormItem[], inherited: WrapBand[]): WrapBand[] {
   // Reuse the paragraph assembler's width, pitch, font and new-item guards before
   // cutting a wide line-spacing band (e.g. 30pt pitch in a 10pt body).
-  const lines = groupByY(items).map(row => {
+  const rows = groupByY(items)
+  const records = tocRecordBoundaries(rows)
+  const lines = rows.map(row => {
     const box = computeBBox(row, 0)
     return { text: mergeLineSimple(row).replace(/<\/?u>|~~/g, ""), left: box.x, right: box.x + box.width,
       y: row.reduce((n, i) => n + i.y, 0) / row.length, fontSize: dominantStyle(row)?.fontSize ?? 0,
       sources: row.map(item => ({ item, state: { ...item } })) }
   })
   const joins = bodyLineJoins(lines)
-  const fresh = lines.slice(0, -1).flatMap((line, i) => joins[i] === "\n" || line.text.trim() === lines[i + 1].text.trim() ? [] :
+  const fresh = lines.slice(0, -1).flatMap((line, i) => joins[i] === "\n" || records.has(i) || line.text.trim() === lines[i + 1].text.trim() ? [] :
     [{ top: line.y, bottom: lines[i + 1].y, sources: [...line.sources, ...lines[i + 1].sources] }])
   const freshKeys = new Set(fresh.map(b => `${b.top}:${b.bottom}`))
   return [...inherited.filter(b => !freshKeys.has(`${b.top}:${b.bottom}`)), ...fresh].sort((a, b) => b.top - a.top)
