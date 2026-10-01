@@ -1,6 +1,6 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
-import { detectClusterTables, findTwoColumnProseCutX, type ClusterItem } from "../src/pdf/cluster-detector.js"
+import { detectClusterTables, findTwoColumnProseCutX, sideTabGlyphs, type ClusterItem } from "../src/pdf/cluster-detector.js"
 
 /** 헬퍼: 간단한 텍스트 아이템 생성 */
 function item(text: string, x: number, y: number, w = 40, fontSize = 12): ClusterItem {
@@ -116,5 +116,39 @@ describe("findTwoColumnProseCutX (2단 조판 본문 판별)", () => {
     huge.push({ text: "오염", x: 1e9, y: 700, w: 10, h: 12, fontSize: 12, fontName: "T" })
     findTwoColumnProseCutX(huge)
     assert.ok(performance.now() - t0 < 1000, "오염 좌표에서 1초 내 반환해야 함")
+  })
+})
+
+describe("sideTabGlyphs — 쪽 옆 세로 색인 탭", () => {
+  // 왼쪽 띠(x=37)에 한 자씩 찍힌 탭 글자 + 그 오른쪽 본문 줄(마지막 줄이 짧게 꺾임, 낱말마다 아이템)
+  const tab = "응급의료기관평가기준집"
+  const tabItems = [...tab].map((ch, k) => item(ch, 37, 700 - k * 12, 9, 9))
+  const body: ClusterItem[] = [
+    item("○ (목 적) 기존의 응급의료기관 평가와 재지정 평가를 통합 평가 체계로 일원화함으로써", 77, 700, 460, 10),
+    item("응급의료기관", 96, 676, 71, 10), item("평가부터", 171, 676, 47, 10), item("시행", 222, 676, 24, 10), item(")", 246, 676, 4, 10),
+    item("○ (평가체계)", 77, 652, 70, 10),
+    item("- 1차 년도 : 서면평가", 90, 628, 125, 10),
+    item("- 2차 년도 : 서면평가", 90, 604, 125, 10),
+    item("- 3차 년도 : 현지평가, 재지정 평가 통합 시행", 90, 580, 260, 10),
+    item("※ 전 지표는 매년 관리·운영 하여야 하며, 3년 주기 평가 지표는 전체 대상 기간을 평가 함", 97, 566, 410, 10),
+  ]
+
+  it("탭 글자 기둥을 찾는다(왼쪽·오른쪽)", () => {
+    assert.equal(sideTabGlyphs([...tabItems, ...body]).size, tab.length)
+    const mirrored = [...tabItems.map(i => ({ ...i, x: 560 })), ...body]
+    assert.equal(sideTabGlyphs(mirrored).size, tab.length)
+  })
+
+  it("탭 글자와 옆 본문 줄을 표로 묶지 않는다", () => {
+    assert.deepEqual(detectClusterTables([...tabItems, ...body], 1), [])
+  })
+
+  it("표의 번호 열(줄마다 다른 칸과 같은 줄)은 탭이 아니다", () => {
+    const rows: ClusterItem[] = []
+    for (let k = 0; k < 8; k++) {
+      rows.push(item(String(k + 1), 50, 400 - k * 20, 7), item(`항목${k + 1}`, 120, 400 - k * 20), item(`${(k + 1) * 100}`, 300, 400 - k * 20))
+    }
+    assert.equal(sideTabGlyphs(rows).size, 0)
+    assert.ok(detectClusterTables(rows, 1).length > 0)
   })
 })
