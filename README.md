@@ -342,11 +342,16 @@ for (const p of r.pageQuality ?? []) if (p.needsOcr) console.log(`p${p.page} 검
 
 ## 💻 CLI
 
+[병렬 변환 성능 측정과 제한 사항](docs/parallel-batch.md)
+
+`--jobs N`은 상주 프로세스 N개로 파일 단위 병렬 변환을 실행합니다(기본 1). `--jobs > 1`의 다중 입력은 `-d`가 필요하며, 확장자를 제외한 파일 이름이 서로 달라야 합니다. 일부 파일이 실패해도 나머지는 계속 처리하고 종료 코드는 실패로 설정합니다. 완료 로그와 실패 JSON은 완료 순서로 나옵니다. 프로세스 수만큼 메모리 사용이 늘고, 작은 파일은 오히려 느릴 수 있습니다. OCR은 자체 네이티브 스레드도 사용합니다. 단일 문서의 페이지 병렬화나 JavaScript/MCP API 변경은 포함하지 않습니다.
+
 ```bash
 # 변환
 npx kordoc 사업계획서.hwpx                           # 터미널 출력
 npx kordoc 보고서.hwp -o 보고서.md                   # 파일 저장 (그림은 images/보고서/)
 npx kordoc *.pdf -d ./변환결과/                      # 일괄 변환
+npx kordoc *.pdf --jobs 4 -d ./변환결과/             # 병렬 변환 (상주 프로세스 4개)
 npx kordoc 검토서.hwpx --format json                # JSON (blocks + pages + metadata)
 npx kordoc 검토서.pdf --format chunks               # RAG 구조 청크 JSON (breadcrumb + 표 독립 청크)
 npx kordoc 보고서.hwpx --pages 1-3                   # 쪽 범위
