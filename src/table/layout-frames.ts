@@ -85,7 +85,9 @@ function mergeFractions(t: IRTable, anchors: Anchor[], H: boolean[][], V: boolea
     if (!d || d.cs !== u.cs || u.rs !== 1 || d.rs !== 1 || !fractionPart(u.cell) || !fractionPart(d.cell)) continue
     // 표 온 폭을 차지하는 두 칸은 칸 두 개짜리 표(2×1 분수 표)일 때만 — 서식 끝 "…귀하"·"210mm×297mm" 칸, 제목과 본문 줄이
     // 가로선 하나로 나뉜 모양이 분수로 잡혔다 (정답 그림 대조: 오탐 10건 → 0, 진짜 분수 9개 유지)
-    if (u.cs === t.cols && anchors.length !== 2) continue
+    // 옆 열이 빈 여백 칸뿐이어도 온 폭과 같다 (임금채권보장법 시행규칙 재산목록: 왼쪽 빈 열 하나 때문에 "…장 귀하"·"210mm×297mm" 가 분수로)
+    const besideText = anchors.some(a => a !== u && a !== d && a.r <= d.r && a.r + a.rs > u.r && a.cell.text.trim())
+    if (!besideText && anchors.filter(a => a.cell.text.trim()).length !== 2) continue
     const bar = d.r, c1 = u.c, c2 = u.c + u.cs
     // 막대: 두 칸 사이 가로선이 두 칸 폭에만 — 옆 칸까지 이어지면 가로선만 긋는 표의 행 구분이다
     let ok = true

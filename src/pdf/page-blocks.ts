@@ -614,7 +614,8 @@ function extractBlocksWithGrids(
 
     // 쪽 옆 띠의 단원 탭 표 — 틀 칸에 중첩시키지 않는다(틀 칸 글이 이 표 위쪽 끝에서 갈려 읽기 순서가 깨진다).
     // 쪽 블록으로 두면 여러 쪽 변환에서 removeSideTabs 가 자리 되풀이로 뺀다 (#112)
-    if (numCols === 1 && isSideTabTable(grid.bbox, irTable, items.filter(it => !tableItems.includes(it)), pageWidth, pageHeight)) {
+    const ownItems = numCols === 1 ? new Set(tableItems) : null
+    if (ownItems && isSideTabTable(grid.bbox, irTable, items.filter(it => !ownItems.has(it)), pageWidth, pageHeight)) {
       SIDE_TAB_TABLES.add(irTable)
       blocks.push({ type: "table", table: irTable, pageNumber: pageNum, bbox: { page: pageNum, x: grid.bbox.x1, y: grid.bbox.y1, width: gridW, height: grid.bbox.y2 - grid.bbox.y1 } })
       continue

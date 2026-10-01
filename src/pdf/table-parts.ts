@@ -324,6 +324,22 @@ const LABEL_ROOM = 1.5
 const HANGING_MIN = 0.5
 const HANGING_TOL = 1
 
+/** 항목 머리 차례 — 한글 가나다(가~하, 거~허, 고~호 …)·숫자 */
+const KO_ITEMS = "가나다라마바사아자차카타파하거너더러머버서어저처커터퍼허고노도로모보소오조초코토포호구누두루무부수우주추쿠투푸후"
+const ITEM_MARK = /^\s*(?:([가-힣])\.|(\d{1,3})[.)]|\(([가-힣\d]{1,3})\))(?=\s)/
+
+/** 뒤 글이 앞 글 첫머리 항목의 바로 다음 항목(같은 꼴)으로 시작하는가 — "커." 다음 "터.", "3." 다음 "4.", "(나)" 다음 "(다)" */
+export function nextItemHead(prev: string, next: string): boolean {
+  const a = ITEM_MARK.exec(prev), b = ITEM_MARK.exec(next)
+  if (!a || !b) return false
+  const succ = (x: string, y: string) => /^\d+$/.test(x) ? /^\d+$/.test(y) && Number(y) === Number(x) + 1
+    : KO_ITEMS.indexOf(x) >= 0 && KO_ITEMS.indexOf(y) === KO_ITEMS.indexOf(x) + 1
+  if (a[1] && b[1]) return succ(a[1], b[1])
+  if (a[2] && b[2]) return succ(a[2], b[2]) && prev.trimStart()[a[2].length] === next.trimStart()[b[2].length]
+  if (a[3] && b[3]) return succ(a[3], b[3])
+  return false
+}
+
 /**
  * 앞 쪽 칸(u)의 글이 뒤 쪽 칸(d)으로 이어지는지 — 앞 쪽 끝줄이 칸 글 폭 오른끝까지 차 있으면 문단 중간에서 끊긴 것이다
  * (줄은 다음 어절이 안 들어갈 때만 바뀐다). 가운데 정렬 칸은 끝줄이 가장 긴 줄일 뿐이어도 오른끝에 닿으므로, 왼끝에서
@@ -564,6 +580,12 @@ function mergeSplitRow(table: IRTable, owner: (Anchor | null)[][], first: number
     // "세립토 비율 | KS F 2309"). 같은 글이면 문단마다 붙는 표지다 (신구조문 대비표 "<신 설>" 이 큰 행 두 조각에 하나씩)
     const norm = (c: IRCell): string => flowText(c.text).replace(/\s+/g, "")
     if (pairs.some(([u, d]) => hasContent(d.cell) && norm(cell(d)) !== norm(cell(u)) && lineEnded(cell(u), colXs[u.c], colXs[u.c + u.cs], cell(d)))) return false
+    // 한 칸은 앞 조각 머리 항목의 바로 다음 항목으로 시작하고("커. …" / "터. …"), 다른 칸은 두 조각 모두 서로 다른 한 줄 값이면("법 제47조" /
+    // "법 제45조") 새 행이다 — 좁은 칸 끝줄 "2) 2회 이상 위반" 이 꽉 차 보여 다음 쪽 새 행을 앞 행에 잇고 ○ 표시까지 섞었다(총포화약법
+    // 행정처분기준, 4.17.0 회귀). 칸 안 목록이 "가. …" / "나. …" 로 이어지는 대비표는 다른 칸 값이 같거나(<신 설>) 비어 있다
+    const oneLine = (c: IRCell): boolean => CELL_LINES.get(c)?.length === 1
+    if (pairs.some(([u, d]) => nextItemHead(cell(u).text, cell(d).text))
+      && pairs.some(([u, d]) => hasContent(u.cell) && hasContent(d.cell) && oneLine(cell(u)) && oneLine(cell(d)) && norm(cell(u)) !== norm(cell(d)))) return false
     const flows = ([u, d]: [Anchor, Anchor]): boolean => continuesAcross(cell(u), cell(d), colXs[u.c], colXs[u.c + u.cs]) || clauseContinues(cell(u), cell(d))
     // 괘선 없는 쪽 경계(3)는 글 증거 없이 합친다 — 앞 쪽 빈 칸 뒤 글(새 칸)이 없을 때만 (쪽 끝 빈 행 다음 새 표 행, 노인복지법 운영기준)
     if (!(cut.open && !newCell)) {

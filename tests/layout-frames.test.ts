@@ -133,6 +133,13 @@ describe("unframeLayoutTables", () => {
       [["첨부", 1, 1, NONE], ["없음", 1, 1, NONE]],
     ], 2)
     assert.ok(!md([{ type: "table", table: form }]).includes("\\frac"))
+    // 왼쪽에 빈 여백 열이 하나 있어도 온 폭과 같다 (임금채권보장법 시행규칙 재산목록 "…장 귀하" / "210mm×297mm")
+    const margin = table([
+      [["", 1, 1, NONE], ["재산목록 본문 칸", 4, 1, { ...BOX, b: false }]],
+      [["", 1, 1, NONE], ["○○지방고용노동청(지청)장 귀하", 4, 1, B]],
+      [["", 1, 1, NONE], ["210mm×297mm(백상지 80g/㎡)", 4, 1, NONE]],
+    ], 5)
+    assert.ok(!md([{ type: "table", table: margin }]).includes("\\frac"))
     const frac = table([[["F", 1, 1, B]], [["P", 1, 1, NONE]]], 1)
     assert.match(md([{ type: "table", table: frac }]), /\$\\frac\{F\}\{P\}\$/)
   })

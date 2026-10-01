@@ -143,6 +143,18 @@ describe("sideTabGlyphs — 쪽 옆 세로 색인 탭", () => {
     assert.deepEqual(detectClusterTables([...tabItems, ...body], 1), [])
   })
 
+  it("쪽 맨 왼쪽의 글머리 기호 기둥(▷·◦)은 탭이 아니다 — 책·장 이름은 글자·숫자다", () => {
+    const rows: ClusterItem[] = []
+    for (let k = 0; k < 8; k++) rows.push(item("▷", 40, 600 - k * 12, 8, 9), item(`목록 항목 ${k + 1} 의 본문 글`, 60, 604 - k * 12, 200, 9))
+    assert.equal(sideTabGlyphs(rows).size, 0)
+  })
+
+  it("쪽의 다른 글보다 안쪽에 선 한 글자 기둥(서식 표의 세로 칸 이름)은 탭이 아니다", () => {
+    const label = [..."응시자격요건"].map((ch, k) => item(ch, 70, 600 - k * 12, 9, 9))
+    const body = [item("■ 공고문 제목은 쪽 왼끝에서 시작한다", 40, 680, 300), item("① 학사학위를 취득한 후 6년 이상 경력", 100, 590, 300)]
+    assert.equal(sideTabGlyphs([...label, ...body]).size, 0)
+  })
+
   it("표의 번호 열(줄마다 다른 칸과 같은 줄)은 탭이 아니다", () => {
     const rows: ClusterItem[] = []
     for (let k = 0; k < 8; k++) {

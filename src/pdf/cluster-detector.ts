@@ -176,7 +176,7 @@ const SIDE_TAB_MIN = 6
  * 여러 쪽 되풀이로 걷는 removeSideTabs(side-tabs.ts)는 표 감지 뒤에 돌고, 한 쪽만 변환(pages)하면 되풀이도 없다. 그 전에
  * 이 글자 기둥이 표의 첫(끝) 열 앵커가 되면 옆 본문 줄("○ (평가체계)"·"- 1차 년도 : 서면평가")이 모두 2열 이상 맞는 행이 되어
  * 본문이 표로 묶이고, 탭 글자가 첫 열 칸("료 기"·"관 평")으로 들어간다.
- * 기둥: 같은 x 의 한 글자 아이템이 SIDE_TAB_MIN 개 이상, 글자 높이 3배 안 간격으로 쌓였고, 기둥과 세로로 겹치는 다른 글이 모두
+ * 기둥: 같은 x 의 한 글자 아이템이 SIDE_TAB_MIN 개 이상, 글자 높이 3배 안 간격으로 쌓였고, 쪽의 다른 글이 모두
  * 한쪽(오른쪽 또는 왼쪽)으로 글자 하나 이상 떨어져 있으며, 기둥 글자의 40% 이상이 제 baseline 줄에 혼자 선다(본문 줄 간격과
  * 탭 글자 간격이 어긋난다). 표의 번호 열(1⏎2⏎3…)은 글자마다 같은 줄에 다른 칸이 있어 걸리지 않는다.
  */
@@ -192,6 +192,8 @@ export function sideTabGlyphs<T extends Pick<ClusterItem, "text" | "x" | "y" | "
   }
   for (const col of cols) {
     if (col.length < SIDE_TAB_MIN) continue
+    // 책·장 이름은 글자·숫자다 — 글머리 기호 기둥(▷·◦·□, 쪽 맨 왼쪽 목록)은 탭이 아니다
+    if (col.filter(g => /[\p{L}\p{N}]/u.test(g.text)).length < col.length * 0.8) continue
     col.sort((a, b) => b.y - a.y)
     const fs = [...col.map(i => i.fontSize)].sort((a, b) => a - b)[col.length >> 1]
     if (col.slice(1).some((it, k) => col[k].y - it.y > fs * 3)) continue
@@ -199,7 +201,10 @@ export function sideTabGlyphs<T extends Pick<ClusterItem, "text" | "x" | "y" | "
     const top = col[0].y + fs, bottom = col[col.length - 1].y - fs
     const others = items.filter(i => !members.has(i) && i.y <= top && i.y >= bottom)
     const left = Math.min(...col.map(i => i.x)), right = Math.max(...col.map(i => i.x + i.w))
-    const outside = others.every(i => i.x >= right + fs) || others.every(i => i.x + i.w <= left - fs)
+    // 쪽의 다른 글이 모두 한쪽 바깥에 있어야 한다(높이가 겹치는 글만이 아니라) — 서식 표의 행 번호 열(1⏎2⏎…⏎9, 빈 행)·세로로 쓴
+    // 칸 이름·"-" 자리표시 열도 한 글자 기둥이라, 높이 겹침만 보면 표에서 빠져 쪽 앞에 한 글자씩 나왔다(4.18.2 회귀)
+    const rest = items.filter(i => !members.has(i) && i.text.trim())
+    const outside = rest.every(i => i.x >= right + fs) || rest.every(i => i.x + i.w <= left - fs)
     if (!outside) continue
     const alone = col.filter(g => !others.some(i => Math.abs(i.y - g.y) <= Y_TOL)).length
     if (alone < col.length * 0.4) continue
