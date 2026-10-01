@@ -180,11 +180,11 @@ const SIDE_TAB_MIN = 6
  * 한쪽(오른쪽 또는 왼쪽)으로 글자 하나 이상 떨어져 있으며, 기둥 글자의 40% 이상이 제 baseline 줄에 혼자 선다(본문 줄 간격과
  * 탭 글자 간격이 어긋난다). 표의 번호 열(1⏎2⏎3…)은 글자마다 같은 줄에 다른 칸이 있어 걸리지 않는다.
  */
-export function sideTabGlyphs(items: ClusterItem[]): Set<ClusterItem> {
-  const found = new Set<ClusterItem>()
+export function sideTabGlyphs<T extends Pick<ClusterItem, "text" | "x" | "y" | "w" | "fontSize">>(items: T[]): Set<T> {
+  const found = new Set<T>()
   const singles = items.filter(i => i.fontSize > 0 && [...i.text.trim()].length === 1)
   if (singles.length < SIDE_TAB_MIN) return found
-  const cols: ClusterItem[][] = []
+  const cols: T[][] = []
   for (const it of [...singles].sort((a, b) => a.x - b.x)) {
     const c = cols.find(col => Math.abs(col[0].x - it.x) <= Math.max(1.5, it.fontSize * 0.25))
     if (c) c.push(it)

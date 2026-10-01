@@ -12,7 +12,7 @@ import { buildClipCellGrids, dropGridsInside, type ClipPage } from "./clip-cells
 import { dropShadingClipGrids, dropInsetClipGrids, dropHeadBandClipGrids } from "./table-grid.js"
 import { chainShortSegments } from "./line-extract.js"
 import { extractLines, preprocessLines, filterPageBorderLines, closeOpenTableEdges, bridgeSplitColumnVerticals, buildTableGrids, extractCells, mapTextToCells, cellTextToString, normalizeUndersegmentedTable, type TextItem, type TableGrid, type LineSegment } from "./line-detector.js"
-import { detectClusterTables, findTwoColumnProseCutX, type ClusterItem, type ClusterTableResult } from "./cluster-detector.js"
+import { detectClusterTables, findTwoColumnProseCutX, sideTabGlyphs, type ClusterItem, type ClusterTableResult } from "./cluster-detector.js"
 import { type NormItem, computeBBox, dominantStyle, groupByY, mergeSuperscriptLines, mergeLineSimple } from "./text-line.js"
 import { findRuledColumnDivider } from "./ruled-columns.js"
 import { xyCutOrder } from "./xy-cut.js"
@@ -40,6 +40,7 @@ import { bridgeSkippedRowVerticals } from "./vertical-bridge.js"
 import { splitSidebarTitleRegion, splitTrailingColumnRegion, panelBlocks } from "./local-regions.js"
 import { pushLineParagraphs } from "./paragraph-lines.js"
 import { isChartTable, isExamLayoutTable, isFormulaTable, isTableOfContents, tocBlock } from "./table-roles.js"
+import { isSideTabTable, SIDE_TAB_TABLES } from "./side-tabs.js"
 import { splitTwoColumnProse, figureColumnBands, topTableBand, tieredHeaderTable, stackedTableBands, threeColumnCards, threeColumnInfographic } from "./page-regions.js"
 
 /** 쪽 사이로 넘기는 칸 이어짐 상태 — 앞 쪽 번호와 그 쪽 클립 사실 (다음 쪽 첫 클립이 앞 쪽 마지막 칸의 이어짐인지 가른다, clip-cells) */
@@ -65,6 +66,14 @@ export function extractPageBlocksWithLines(
   if (items.length === 0) {
     if (carry) carry.clip = undefined
     return []
+  }
+  // 쪽 옆 세로 책등·색인 탭 글자 기둥은 글 흐름(표 감지·XY-Cut)에서 뺀다 — 같은 높이 본문 제목을 XY-Cut 이 세로로 자르고("1-2) 폭력 대비" |
+  // "및 대응의 적절성"), 클러스터 표의 첫 열이 됐다(#112·#119). 글자마다 쪽 블록으로 앞에 두면 여러 쪽 변환에서 removeSideTabs 가 뺀다
+  const tab = sideTabGlyphs(items)
+  if (tab.size) {
+    const glyphs: IRBlock[] = [...tab].sort((a, b) => b.y - a.y)
+      .map(g => ({ type: "paragraph", text: g.text.trim(), pageNumber: pageNum, bbox: computeBBox([g], pageNum), style: dominantStyle([g]) }))
+    return [...glyphs, ...extractPageBlocksWithLines(items.filter(i => !tab.has(i)), pageNum, opList, pageWidth, pageHeight, extraLines, detectTables, carry, lexicon)]
   }
   // 줄 꺾임 이음 판정의 어휘 증거 — 이 쪽 줄 글을 먼저 더해 쪽 안 어디서 판정하든 쪽 전체가 증거가 된다
   const lex = lexicon ?? new WrapLexicon()
@@ -603,6 +612,13 @@ function extractBlocksWithGrids(
     if (!hasContent && !emptyPart) continue
     if (emptyPart) EMPTY_PARTS.add(irTable)
 
+    // 쪽 옆 띠의 단원 탭 표 — 틀 칸에 중첩시키지 않는다(틀 칸 글이 이 표 위쪽 끝에서 갈려 읽기 순서가 깨진다).
+    // 쪽 블록으로 두면 여러 쪽 변환에서 removeSideTabs 가 자리 되풀이로 뺀다 (#112)
+    if (numCols === 1 && isSideTabTable(grid.bbox, irTable, items.filter(it => !tableItems.includes(it)), pageWidth, pageHeight)) {
+      SIDE_TAB_TABLES.add(irTable)
+      blocks.push({ type: "table", table: irTable, pageNumber: pageNum, bbox: { page: pageNum, x: grid.bbox.x1, y: grid.bbox.y1, width: gridW, height: grid.bbox.y2 - grid.bbox.y1 } })
+      continue
+    }
     // 중첩 클립 그리드 — 틀 셀이 처리될 때 그 셀의 blocks 로 들어간다 (틀은 면적이 커서 뒤에 온다)
     if (grid.clipParent) {
       const nb: BoundingBox = { page: pageNum, x: grid.bbox.x1, y: grid.bbox.y1, width: grid.bbox.x2 - grid.bbox.x1, height: grid.bbox.y2 - grid.bbox.y1 }

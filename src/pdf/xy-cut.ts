@@ -323,7 +323,12 @@ function findVerticalCutWithOutlierFilter(items: NormItem[], minGap: number): Cu
     // 본문에서 가짜 컬럼 갭이 만들어지므로 70% 이상 유지될 때만 재시도
     if (filtered.length >= 2 && filtered.length < items.length && filtered.length >= items.length * 0.7) {
       const filteredCut = findVerticalCut(filtered)
-      if (filteredCut.gap > edgeCut.gap && filteredCut.gap >= minGap) {
+      // 뺀 좁은 조각이 컷 자리에 걸쳐 같은 줄 양옆에 글을 두면 쪽번호가 아니라 줄 안 낱말이다 — 한 줄 제목
+      // "1-2) 폭력 대비 및 대응의 적절성" 의 "및"(11pt)을 빼고 낸 23pt 틈으로 제목이 두 블록으로 갈렸다
+      const sameRow = (a: NormItem, b: NormItem) => Math.abs(a.y - b.y) <= Math.max(a.fontSize, b.fontSize) * 0.5
+      const inLine = items.some(r => r.w < narrowThreshold && r.x < filteredCut.position && r.x + r.w > filteredCut.position &&
+        filtered.some(o => sameRow(o, r) && o.x + o.w <= r.x + 1) && filtered.some(o => sameRow(o, r) && o.x >= r.x + r.w - 1))
+      if (filteredCut.gap > edgeCut.gap && filteredCut.gap >= minGap && !inLine) {
         return filteredCut
       }
     }

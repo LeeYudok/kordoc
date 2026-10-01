@@ -167,3 +167,38 @@ describe("XY-cut preserves the paragraph assembler's supported wide line pitch",
     assert.deepEqual(texts, ["Left column line 0", "Left column line 1", "Left column line 2", "Right column line 0", "Right column line 1", "Right column line 2"])
   })
 })
+
+describe("XY-cut narrow-element filter", () => {
+  it("does not split a one-line title at a short word between its neighbours ('1-2) 폭력 대비 및 대응의 적절성')", () => {
+    // 응급의료기관 평가 기준집 64쪽 실측 좌표 — "및"(11pt)을 쪽번호류로 빼면 "대비"~"대응의" 사이가 23pt 틈으로 보였다
+    const row = [item("1-2)", 71, 748, 26, 13), item("폭력", 103, 748, 23, 13), item("대비", 133, 748, 23, 13),
+      item("및", 162, 748, 11, 13), item("대응의", 179, 748, 34, 13), item("적절성", 220, 748, 34, 13)]
+    assert.equal(xyCutOrder(row, 21).length, 1)
+  })
+
+  it("still cuts a two-column gutter blocked only by a page number on its own row", () => {
+    const left = [700, 680, 660].map(y => item("왼쪽 단 본문 글줄입니다 이어지는 내용", 72, y, 200))
+    const right = [700, 680, 660].map(y => item("오른쪽 단 본문 글줄입니다 이어지는 내용", 320, y, 200))
+    const pageNo = item("12", 285, 620, 10)
+    const groups = xyCutOrder([...left, ...right, pageNo], 15)
+    assert.ok(groups.some(g => g.length === 3 && g.every(i => i.x === 72)))
+  })
+})
+
+describe("side index tab glyphs leave the page text flow", () => {
+  it("emits each tab glyph as its own located block and keeps the body paragraphs whole (#112)", () => {
+    const tab = [..."응급의료기관평가기준집"].map((ch, k) => item(ch, 37, 700 - k * 12, 9, 9))
+    const body = [
+      item("○ (목 적) 기존의 응급의료기관 평가와 재지정 평가를 통합 평가 체계로 일원화함으로써", 77, 700, 460),
+      item("응급의료기관", 96, 676, 71), item("평가부터", 171, 676, 47), item("시행", 222, 676, 24), item(")", 246, 676, 4),
+      item("○ (평가체계)", 77, 652, 70),
+      item("- 1차 년도 : 서면평가", 90, 628, 125),
+      item("- 2차 년도 : 서면평가", 90, 604, 125),
+    ]
+    const blocks = extractPageBlocksWithLines([...tab, ...body], 1, { fnArray: [], argsArray: [] }, 595, 842, undefined, true)
+    assert.deepEqual(blocks.slice(0, tab.length).map(b => [b.text, b.bbox?.x]), tab.map(t => [t.text, 37]))
+    const rest = blocks.slice(tab.length)
+    assert.ok(rest.every(b => b.type !== "table"))
+    assert.ok(rest.every(b => !tab.some(t => b.text?.includes(t.text) && b.text.length === 1)))
+  })
+})
