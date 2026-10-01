@@ -8,7 +8,7 @@
 
 import { collectImageRefs, DELETABLE_OBJECT_TAGS, extractImageRef, findDescendant, findTopLevelTbls, inIndependentDeletionStory, markDeletedObjects, userShapeComment } from "./section-shape.js"
 import { KordocError, sanitizeHref, stripDtd } from "../utils.js"
-import { wrapScript, tidyScriptTags } from "../script-tags.js"
+import { escapeLiteralTags, wrapScript, tidyScriptTags } from "../script-tags.js"
 import { convertTableToText, escapeLiteralDollar, MAX_COLS, MAX_ROWS } from "../table/builder.js"
 import type { IRBlock, IRCell, IRSpan, IRTable, InlineStyle, ParseWarning } from "../types.js"
 import { hmlToLatex } from "./equation.js"
@@ -26,6 +26,7 @@ import {
 } from "./parser-shared.js"
 import type { HwpxStyleMap } from "./styles.js"
 import { resolveParaHeading } from "./para-heading.js"
+import { takeTocLeaders, TOC_ENTRY_BLOCKS, TOC_LEADER } from "../toc-entry.js"
 import { completeTable } from "./table-build.js"
 import { detectHwpxSectionPages } from "./page-boundary.js"
 import { noteAttrsOf, noteAutoNumOf, noteRefMark, readSectionNoteFormats } from "./notes.js"
@@ -172,7 +173,7 @@ function walkSection(
         // 실제 페이지 갱신 (#66) — 프리패스 맵은 top-level 문단만 담아 중첩 문단은 자연 상속
         const paraPg = ctx.paraPage?.get(el)
         if (paraPg !== undefined && ctx.pageBase !== undefined) ctx.page = ctx.pageBase + paraPg + 1
-        const { text: rawText, href, footnote, style, segments, placeholderSpans } = extractParagraphInfo(el, ctx.styleMap, ctx)
+        const { text: rawText, href, footnote, style, segments, placeholderSpans, tocEntry } = extractParagraphInfo(el, ctx.styleMap, ctx)
         let text = rawText
         let headingLevel: number | undefined
         // 자동번호/글머리표/개요 접두 재현 (v3.0). 텍스트 유무와 무관하게 호출 —
@@ -181,7 +182,8 @@ function walkSection(
         const ph = resolveParaHeading(el, ctx)
         if (text) {
           if (ph?.prefix) text = ph.prefix + " " + text
-          headingLevel = ph?.headingLevel
+          // 목차 항목은 개요 문단 모양을 빌려도 제목이 아니다 (#121)
+          headingLevel = tocEntry ? undefined : ph?.headingLevel
         }
         // 인라인 표 포함 문단 (#49/#50) — 문단 텍스트를 통째로 먼저 push하면 원문에서
         // 표가 앞설 때 순서가 역전된다. 표 경계 조각을 walkParagraphChildren의 onTbl
@@ -268,6 +270,7 @@ function walkSection(
             }
             const block: IRBlock = { type: headingLevel ? "heading" : "paragraph", text, pageNumber: ctx.page }
             if (headingLevel) block.level = headingLevel
+            if (tocEntry) TOC_ENTRY_BLOCKS.add(block)
             if (style) block.style = style
             if (href) block.href = href
             if (footnote) block.footnoteText = footnote
@@ -768,6 +771,8 @@ interface ParagraphInfo {
   segments?: string[]
   /** 미기입 누름틀 안내문이 든 문단 — 안내문 조각만 placeholder 표시한 span (마크다운에서 뺀다, IR 글엔 남긴다) */
   placeholderSpans?: IRSpan[]
+  /** 목차 항목(줄마다 글 + 채움 탭 + 쪽 번호) — 제목으로 올리지 않는다 (#121) */
+  tocEntry?: boolean
 }
 
 /** 누름틀 안내문 구간 표지 — 문단 글 정리(공백 붕괴·링크 삽입·절단)를 거친 뒤 span 으로 가른다 */
@@ -867,7 +872,7 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
     if (open?.rangeIdx !== undefined) linkRanges[open.rangeIdx].end = text.length
     // 미기입 누름틀: 값 자리 글이 안내문 그대로면 표지로 감싼다 (글은 IR 에 남고 마크다운에서만 빠진다)
     if (open?.guide !== undefined && open.start !== undefined) {
-      const value = text.slice(open.start).replace(/\\\$/g, "$")
+      const value = text.slice(open.start).replace(/\\([$<])/g, "$1")
       if (value && (value === open.guide || value.trimEnd() === open.guide)) {
         text = text.slice(0, open.start) + PH_OPEN + text.slice(open.start) + PH_CLOSE
       }
@@ -980,8 +985,8 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
           }
         } else {
           // \x1E는 인라인 표 경계 마커로 예약 — 원문 혼입 방지 (#49/#50).
-          // 리터럴 $ 는 \$ — $…$ 는 아래 수식 스팬 전용 (escapeLiteralDollar)
-          text += escapeLiteralDollar(t.replace(/\x1E/g, ""))
+          // 리터럴 $ 는 \$ — $…$ 는 아래 수식 스팬 전용 (escapeLiteralDollar), 태그 모양 글자 "<sub>" 는 \<sub> (escapeLiteralTags, #122)
+          text += escapeLiteralTags(escapeLiteralDollar(t.replace(/\x1E/g, "")))
         }
         continue
       }
@@ -1000,7 +1005,8 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
         // 점 채움을 탭 하나로 바꾸고 쪽 번호를 남기는 것과 같다). 종전엔 채움 탭 뒤를 쪽 번호로 보고 잘라, 목차 쪽 번호만이 아니라
         // 일정표 "사용자 의견조사 ····· '26년 8~9월"(gate-fill 36646162)의 일정, 줄바꿈 뒤 다음 목차 항목
         // "<참고2> 직종별사업체노동력조사 개요"(rhwp issue6044)까지 사라졌다
-        case "tab": text += "\t"; break
+        // (채움 탭은 목차 항목 판정까지 TOC_LEADER 표지로 들고 가다 보통 탭으로 바꾼다 — toc-entry.ts)
+        case "tab": text += /^(?:|0|NONE)$/i.test(child.getAttribute("leader") ?? "") ? "\t" : TOC_LEADER; break
         case "br":
           if ((child.getAttribute("type") || "line") === "line") text += "\n"
           break
@@ -1128,6 +1134,11 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
   // run 마다 감싼 첨자 태그 정리(이웃 합치기·공백은 밖으로) — 링크 치환이 글 위치를 다 쓴 뒤
   text = tidyScriptTags(text)
 
+  // 목차 항목(채움 탭 + 쪽 번호 줄) 판정 — 채움 탭 표지는 여기서 보통 탭이 된다 (#121)
+  const toc = takeTocLeaders(text)
+  text = toc.text
+  const tocEntry = toc.tocEntry
+
   const cleanParaText = (raw: string): string => {
     let t = raw.replace(/[ \t]+/g, " ").trim()
     // 한글 이미지 OLE 대체 텍스트 필터링 ("그림입니다. 원본 그림의 이름: ...")
@@ -1177,7 +1188,7 @@ function extractParagraphInfo(para: Element, styleMap?: HwpxStyleMap, ctx?: Walk
     }
   }
 
-  return { text: cleanText, href, footnote, style, segments, placeholderSpans }
+  return { text: cleanText, href, footnote, style, segments, placeholderSpans, ...(tocEntry ? { tocEntry } : {}) }
 }
 
 /** 자동번호 접두가 붙은 문단이면 접두를 평문 span 으로 앞에 — span 을 이으면 블록 글과 같다 */

@@ -9,6 +9,7 @@
 import { buildTable, convertTableToText, MAX_COLS, MAX_ROWS } from "../table/builder.js"
 import type { CellContext, IRBlock, IRTable, InlineStyle } from "../types.js"
 import { CELL_EDGES, type Edges } from "../table/layout-frames.js"
+import { TOC_ENTRY_BLOCKS } from "../toc-entry.js"
 
 /** 글자처럼 취급 표 자리 표지 — 문단 글을 표 앞뒤로 나눈다 (HWPX section-walker 와 같은 문자) */
 export const INLINE_TABLE_MARK = "\x1E"
@@ -35,6 +36,8 @@ export interface ParaEmitInput {
   headMarker: string | null
   /** 개요 제목 수준 (0 = 본문) */
   headingLevel: number
+  /** 목차 항목(채움 탭 + 쪽 번호 줄) — 글자 크기·"제N장" 제목 추정에서 뺀다 (#121) */
+  tocEntry?: boolean
   style?: InlineStyle
   /** 각주/미주 ("1) 내용") */
   footnotes: string[]
@@ -101,6 +104,7 @@ export function emitParagraphBlocks(p: ParaEmitInput): IRBlock[] {
       pageNumber,
     }
     if (p.headingLevel > 0) block.level = p.headingLevel
+    if (p.tocEntry) TOC_ENTRY_BLOCKS.add(block)
     if (style) {
       block.style = style
       if (style.strike || style.underline) block.text = headMarker ? `${headMarker} ${decorate(trimmed)}` : decorate(trimmed)

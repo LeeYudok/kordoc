@@ -223,8 +223,9 @@ export function escapeGfm(text: string): string {
   })
   const escaped = masked
     // 원문의 리터럴 역슬래시 + ASCII 구두점은 CommonMark 가 이스케이프로 읽어 역슬래시를 지운다("C:\.Pls"·
-    // "cd \!*"·"{} \;") → \\ 로. IR 규약 이스케이프 \$(escapeLiteralDollar)·\|(convertTableToText)는 그대로 (v4.14.3)
-    .replace(/\\(?=[!-#%-\/:-@\[-\x60{}~])/g, "\\\\")
+    // "cd \!*"·"{} \;") → \\ 로. IR 규약 이스케이프 \$(escapeLiteralDollar)·\|(convertTableToText)·태그 모양 원문 글자 \<sub>
+    // (script-tags escapeLiteralTags)는 그대로 (v4.14.3, #122)
+    .replace(/\\(?=[!-#%-\/:-@\[-\x60{}~])(?!<\/?(?:u|sup|sub)>)/g, "\\\\")
     .replace(/([~*_`])/g, "\\$1")
     .replace(/(?<!\\)\|/g, "\\|")
     .replace(/^([ \t]*)(?=#{1,6}(?:[ \t]|$))/gm, "$1\\")
@@ -653,7 +654,8 @@ export function visibleText(b: IRBlock): string {
  * 셀 줄바꿈 <br> 은 이 뒤에 넣으므로 원문 글자 "<br>"(&lt;br&gt;)와 갈린다. 읽는 쪽은 utils unescapeHtml
  */
 export function escapeHtmlCellText(text: string): string {
-  return escapeHtml(text).replace(/&lt;(\/?)(u|sup|sub)&gt;/g, "<$1$2>")
+  // 태그 모양 원문 글자(IR \<sub>, escapeLiteralTags)는 HTML 에 역슬래시 이스케이프가 없어 &lt;sub&gt; 로 (#122)
+  return escapeHtml(text).replace(/(\\)?&lt;(\/?)(u|sup|sub)&gt;/g, (_, esc, sl, tag) => esc ? `&lt;${sl}${tag}&gt;` : `<${sl}${tag}>`)
 }
 
 /** 셀 내부 콘텐츠 → HTML — blocks(중첩표/다중문단) 있으면 구조 보존 재귀 렌더링 */

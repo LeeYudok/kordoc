@@ -5,7 +5,7 @@
  * w:p → paragraph/heading, w:tbl → table, w:drawing → image.
  */
 
-import { wrapScript, tidyScriptTags } from "../script-tags.js"
+import { escapeLiteralTags, wrapScript, tidyScriptTags } from "../script-tags.js"
 import JSZip from "jszip"
 import { ListCounter } from "./numbering.js"
 import { symbolChar } from "./symbol-font.js"
@@ -279,7 +279,7 @@ function parseFootnotes(xml: string): Map<string, string> {
       const runs = findElements(p, "r")
       for (const r of runs) {
         const tElements = getChildElements(r, "t")
-        for (const t of tElements) texts.push(t.textContent ?? "")
+        for (const t of tElements) texts.push(escapeLiteralTags(t.textContent ?? ""))
       }
     }
     notes.set(id, texts.join("").trim())
@@ -330,7 +330,7 @@ function extractRun(r: Element): RunResult {
   // t/br/cr/tab/sym을 문서 순서대로 수집 — br·cr은 줄바꿈, tab은 공백 (무시하면 텍스트 융합), sym은 기호 글꼴 글자(°·×·μ, #105)
   let text = ""
   for (const el of effectiveChildElements(r)) {
-    if (matchesLocal(el, "t")) text += el.textContent ?? ""
+    if (matchesLocal(el, "t")) text += escapeLiteralTags(el.textContent ?? "") // 태그 모양 글자 "<sub>" 는 \<sub> (#122)
     else if (matchesLocal(el, "br") || matchesLocal(el, "cr")) text += "\n"
     else if (matchesLocal(el, "tab")) text += " "
     else if (matchesLocal(el, "sym")) text += symbolChar(getAttr(el, "font"), getAttr(el, "char"))

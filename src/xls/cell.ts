@@ -7,6 +7,7 @@
  * 참조: docs/biff8-spec.md §3.4, §3.5
  */
 
+import { escapeLiteralTags } from "../script-tags.js"
 import {
   OP_NUMBER,
   OP_RK,
@@ -213,14 +214,14 @@ export function extractSheetCells(
         const h = readCellHeader(rec.data)
         if (h && rec.data.length >= 10) {
           const isst = rec.data.readUInt32LE(6)
-          cells.push({ row: h.row, col: h.col, value: sst[isst] ?? "" })
+          cells.push({ row: h.row, col: h.col, value: escapeLiteralTags(sst[isst] ?? "") }) // 태그 모양 글자 "<sub>" 는 \<sub> (#122)
         }
         break
       }
       case OP_LABEL: {
         const h = readCellHeader(rec.data)
         if (h) {
-          cells.push({ row: h.row, col: h.col, value: decodeLabelString(rec.data) })
+          cells.push({ row: h.row, col: h.col, value: escapeLiteralTags(decodeLabelString(rec.data)) })
         }
         break
       }
@@ -237,7 +238,7 @@ export function extractSheetCells(
               cells.push({
                 row: h.row,
                 col: h.col,
-                value: decodeFormulaStringRecord(next.data),
+                value: escapeLiteralTags(decodeFormulaStringRecord(next.data)),
               })
               i = j // String 레코드까지 건너뛰기
             } else {

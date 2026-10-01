@@ -10,7 +10,7 @@
  * text-clean(마크다운 정리), formula-ocr(수식).
  */
 
-import { stripScriptTags } from "../script-tags.js"
+import { escapeLiteralTags, stripScriptTags } from "../script-tags.js"
 import type { InternalParseResult, IRBlock, DocumentMetadata, ExtractedImage, ParseOptions, ParseWarning, OutlineItem } from "../types.js"
 import { KordocError } from "../utils.js"
 import { parsePageRange, hasRequestedPagesAfter } from "../page-range.js"
@@ -267,6 +267,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
         // 리터럴 $ 는 \$ — $…$ 는 수식 스팬 전용(IR 규약, HWPX·HWP5 와 같음). 종전엔 "단가(US $) … 금액(US $)" 사이가
         // 마크다운에서 수식으로 읽혀 사라졌다(야생생물 신고서·어셈블리 "lda $30,-16($30)"). 심볼 글꼴 복원 뒤라야 글자 표가 안 어긋난다
         for (const it of visible) if (it.text.includes("$")) it.text = escapeLiteralDollar(it.text)
+        // 태그 모양 원문 글자 "<sub>"·"</sup>" 는 \<sub> — 첨자 끔(기본)·평문이 원문 글자까지 걷던 것 (#122, escapeLiteralTags)
+        for (const it of visible) if (it.text.includes("<")) it.text = escapeLiteralTags(it.text)
         // 한컴 수식 글꼴 글자 → $…$ 수식 스팬 (HWPX·HWP5 수식 출력과 같은 모양, 리터럴 $ 이스케이프 뒤)
         wrapEquationRuns(visible, face => faceNames.get(face))
 

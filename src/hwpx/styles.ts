@@ -10,6 +10,7 @@ import { HEADING_RATIO_H1, HEADING_RATIO_H2, HEADING_RATIO_H3 } from "../types.j
 import { createXmlParser, findChildByLocalName, MAX_DECOMPRESS_SIZE } from "./parser-shared.js"
 import type { ScriptKind } from "../script-tags.js"
 import type { Edges } from "../table/layout-frames.js"
+import { TOC_ENTRY_BLOCKS } from "../toc-entry.js"
 
 // ─── HWPX 스타일 정보 ──────────────────────────────
 
@@ -344,7 +345,7 @@ export function detectHwpxHeadings(blocks: IRBlock[], styleMap: HwpxStyleMap): v
   }
 
   for (const block of blocks) {
-    if (block.type !== "paragraph" || !block.text) continue
+    if (block.type !== "paragraph" || !block.text || TOC_ENTRY_BLOCKS.has(block)) continue
     const text = block.text.trim()
     if (text.length === 0 || text.length > 200 || /^\d+$/.test(text)) continue
 

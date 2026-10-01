@@ -69,7 +69,9 @@ describe("HWPX 채움 탭 — 뒤 글을 남긴다", () => {
   it("채움 없는 탭과 같은 결과 — 채움선(점)은 글로 내지 않는다", async () => {
     const withLeader = await parseOk(await makeHwpx(p(`제1장 개요${tab(3)}1`)), "a.hwpx")
     const plain = await parseOk(await makeHwpx(p(`제1장 개요${tab(0)}1`)), "b.hwpx")
-    assert.deepEqual(texts(withLeader.blocks), texts(plain.blocks))
+    assert.deepEqual(withLeader.blocks.map(b => b.text), plain.blocks.map(b => b.text))
+    // 채움 탭 + 쪽 번호 줄은 목차 항목이라 제목으로 올리지 않는다 (#121) — 채움 없는 탭 줄은 종전대로 "제N장" 제목
+    assert.deepEqual([withLeader.blocks[0].type, plain.blocks[0].type], ["paragraph", "heading"])
     assert.ok(!/[·.]{2,}/.test(withLeader.markdown), withLeader.markdown)
   })
 })

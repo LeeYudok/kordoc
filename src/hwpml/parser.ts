@@ -3,6 +3,7 @@
 import { DOMParser } from "@xmldom/xmldom"
 import type { IRBlock, IRCell, IRTable, InternalParseResult, ParseOptions, ParseWarning, DocumentMetadata, OutlineItem } from "../types.js"
 import { blocksToMarkdown, buildTable } from "../table/builder.js"
+import { escapeLiteralTags } from "../script-tags.js"
 import { parsePageRange } from "../page-range.js"
 import { KordocError, stripDtd } from "../utils.js"
 import type { CellContext } from "../types.js"
@@ -262,7 +263,7 @@ function collectCharText(node: Element, parts: string[], depth: number = 0): voi
       // 글에 붙는다("추진체계3", formats/hml mof-*. HWPX·HWP5 채움 탭과 같은 정책)
       for (const c of Array.from(el.childNodes)) {
         const t = c.nodeType === 1 ? (localName(c as Element) === "TAB" ? "\t" : textContent(c)) : c.nodeType === 3 || c.nodeType === 4 ? c.nodeValue ?? "" : ""
-        if (t) parts.push(t)
+        if (t) parts.push(escapeLiteralTags(t)) // 태그 모양 글자 "<sub>" 는 \<sub> (#122)
       }
     } else if (tag === "TABLE" || tag === "PICTURE" || tag === "SHAPEOBJECT") {
       // 단락 내 테이블/이미지는 별도 블록으로 처리되므로 스킵

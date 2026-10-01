@@ -14,6 +14,7 @@ import type { IRBlock, DocumentMetadata, InternalParseResult, ParseOptions, Pars
 import { HEADING_RATIO_H1, HEADING_RATIO_H2, HEADING_RATIO_H3 } from "../types.js"
 import { assertDecryptedDocInfo, assertSupportedEncryptVersion, decryptPasswordStream, readEncryptVersion } from "./pw-crypto.js"
 import { KordocError } from "../utils.js"
+import { TOC_ENTRY_BLOCKS } from "../toc-entry.js"
 import { parsePageRange } from "../page-range.js"
 import { detectHwp5SectionPages, type Hwp5SectionPageDetect } from "./page-boundary.js"
 import { indexHwp5Tables } from "./table-ids.js"
@@ -346,7 +347,7 @@ function detectHwp5Headings(blocks: IRBlock[], docInfo: HwpDocInfo): void {
   for (const block of blocks) {
     // 개요 수준(outlineLevel)으로 이미 heading이 된 블록은 스킵
     if (block.type === "heading") continue
-    if (block.type !== "paragraph" || !block.text) continue
+    if (block.type !== "paragraph" || !block.text || TOC_ENTRY_BLOCKS.has(block)) continue
     const text = block.text.trim()
     if (text.length === 0 || text.length > 200) continue
     if (/^\d+$/.test(text)) continue

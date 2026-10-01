@@ -3,6 +3,7 @@
 import type { ScriptKind } from "../script-tags.js"
 import { inflateRawSync, inflateSync } from "zlib"
 import { KordocError } from "../utils.js"
+import { TOC_LEADER } from "../toc-entry.js"
 import type { Edges } from "../table/layout-frames.js"
 
 // ─── 레코드 태그 상수 ────────────────────────────────
@@ -391,9 +392,11 @@ export interface ParaTextState {
   ctrlIdx: number
   fieldStack: Array<{ start: number; ctrlIdx: number }>
   fieldRanges: HwpFieldRange[]
-  /** 리터럴 "$" 를 LITERAL_DOLLAR_MARK 한 글자로 — 본문 파서만 켠다. 필드 범위가 글자 위치라
+  /** 리터럴 "$"·"<" 를 LITERAL_DOLLAR_MARK·LITERAL_LT_MARK 한 글자로 — 본문 파서만 켠다. 필드 범위가 글자 위치라
    *  두 글자 "\$" 를 바로 넣지 않고, 필드 처리 뒤 본문 파서가 "\$" 로 바꾼다(escapeLiteralDollar 규약) */
   dollarMark?: boolean
+  /** 채움 탭을 TOC_LEADER 표지로 — 본문 파서만 켜고 문단 글을 다 모은 뒤 takeTocLeaders 로 보통 탭이 된다 */
+  tocLeaders?: boolean
   /** 글자 위치(문단 WCHAR 순번)의 첨자 종류 — 문단 글자 모양(PARA_CHAR_SHAPE) 위치표로 본문 파서가 채운다.
    *  있으면 첨자 글자를 <sup>·<sub> 로 감싼다(제어 문자·개체 자리에서는 닫는다) */
   scriptAt?: (pos: number) => ScriptKind | null
@@ -405,6 +408,14 @@ export interface ParaTextState {
 
 /** 리터럴 "$" 표지 (dollarMark) — 유니코드 비문자라 문서 글에 나오지 않는다 */
 export const LITERAL_DOLLAR_MARK = "\uFDD0"
+/** 리터럴 "<" 표지 (dollarMark 와 함께) — 첨자 태그(scriptAt)와 원문 글자 "<sub>" 를 가른다 (#122, escapeLiteralTags) */
+export const LITERAL_LT_MARK = "\uFDD1"
+const LITERAL_LT_TAG = /\uFDD1(?=\/?(?:u|sup|sub)>)/g
+
+/** 필드 처리 뒤 리터럴 "<" 표지를 글로 — 태그 모양("<sub>"·"</sup>"·"<u>")이면 \<, 아니면 < (escapeLiteralTags 규약) */
+export function resolveLiteralLt(text: string): string {
+  return text.includes(LITERAL_LT_MARK) ? text.replace(LITERAL_LT_TAG, "\\<").replaceAll(LITERAL_LT_MARK, "<") : text
+}
 
 export function createParaTextState(): ParaTextState {
   return { text: "", ctrlIdx: 0, fieldStack: [], fieldRanges: [] }
@@ -494,8 +505,9 @@ export function appendParaText(state: ParaTextState, data: Buffer, resolveContro
       // ── inline 타입 (2바이트 + 14바이트 확장) ──
       // 확장 u16[7] 중 [2] 의 하위 바이트 = 채움 모양(0 없음·3 점선 …), 상위 = 탭 종류+1 (rhwp tab_extended 실측).
       // 채움 탭도 보통 탭 — 채움선은 글이 아니고 뒤 글(목차 쪽 번호 등)은 남긴다 (HWPX section-walker "tab" 과 같은 정책)
+      // 본문 파서(tocLeaders)는 목차 항목 판정까지 채움 탭을 TOC_LEADER 표지로 받는다 (#121)
       case CHAR_TAB:
-        result += "\t"
+        result += state.tocLeaders && i + 6 <= data.length && (data.readUInt16LE(i + 4) & 0xff) !== 0 ? TOC_LEADER : "\t"
         if (i + 14 <= data.length) i += 14
         break
 
@@ -540,7 +552,7 @@ export function appendParaText(state: ParaTextState, data: Buffer, resolveContro
               break
             }
           }
-          result += ch === 0x24 && state.dollarMark ? LITERAL_DOLLAR_MARK : String.fromCharCode(ch)
+          result += !state.dollarMark ? String.fromCharCode(ch) : ch === 0x24 ? LITERAL_DOLLAR_MARK : ch === 0x3c ? LITERAL_LT_MARK : String.fromCharCode(ch)
         }
         break
     }

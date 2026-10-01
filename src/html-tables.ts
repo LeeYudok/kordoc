@@ -9,7 +9,7 @@ const TABLE_TAG = /(<\/?(?:table|tr|th|td)\b[^>]*>)/i
 /** 파이프 칸 글 → HTML 칸 글: Markdown 이스케이프를 풀고 &·<·> 를 이스케이프하되 kordoc 이 칸에 넣는 태그는 둔다 */
 function pipeCellToHtml(cell: string): string {
   return cell
-    .split(/(<br>|<\/?(?:u|sup|sub)>|<img\b[^>]*>)/)
+    .split(/(<br>|(?<!\\)<\/?(?:u|sup|sub)>|<img\b[^>]*>)/)
     .map((part, i) => i % 2 ? part : part
       .replace(/\\([\\`*_{}[\]()#+\-.!|~<>$])/g, "$1")
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"))

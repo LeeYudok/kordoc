@@ -2,7 +2,7 @@
 
 import { tidyScriptTags, type ScriptKind } from "../script-tags.js"
 import {
-  extractEquationText, createParaTextState, appendParaText, LITERAL_DOLLAR_MARK, TAG_PARA_HEADER, TAG_PARA_TEXT, TAG_CHAR_SHAPE,
+  extractEquationText, createParaTextState, appendParaText, LITERAL_DOLLAR_MARK, LITERAL_LT_MARK, resolveLiteralLt, TAG_PARA_HEADER, TAG_PARA_TEXT, TAG_CHAR_SHAPE,
   TAG_CTRL_HEADER, TAG_LIST_HEADER, TAG_TABLE, TAG_EQEDIT, TAG_SHAPE_COMPONENT, TAG_SHAPE_COMPONENT_CONTAINER,
   TAG_SHAPE_COMPONENT_PICTURE, type HwpRecord, type HwpDocInfo, type IndexedControlResolver,
 } from "./record.js"
@@ -15,6 +15,7 @@ import {
 import type { CellContext, IRBlock, IRTable, ParseOptions, ParseWarning, InlineStyle } from "../types.js"
 import type { Edges } from "../table/layout-frames.js"
 import { sanitizeHref } from "../utils.js"
+import { takeTocLeaders } from "../toc-entry.js"
 
 /** 중첩표/글상자 재귀 깊이 상한 — 표 "중첩 단계" 기준.
  *  실무 문서 중첩은 2~3단이라 8이면 충분하며, 바이너리 파싱 비용상
@@ -261,6 +262,7 @@ function parseParagraph(records: HwpRecord[], start: number, end: number, ctx: H
   // 텍스트 렌더링 — 확장 컨트롤 인덱스 ↔ CTRL_HEADER 순서 매핑
   const state = createParaTextState()
   state.dollarMark = true
+  state.tocLeaders = true
   state.scriptAt = scriptLookup(charShapeRuns, ctx.docInfo)
   const resolver: IndexedControlResolver = (idx, id) => {
     let ctrl = idx >= 0 && idx < ctrls.length ? ctrls[idx] : undefined
@@ -288,7 +290,7 @@ function parseParagraph(records: HwpRecord[], start: number, end: number, ctx: H
       const anchor = text.slice(r.start, r.end)
       if (ctrl.guide !== undefined) {
         if (ctx.doc.includeFieldPlaceholders) continue
-        const plain = anchor.replaceAll(LITERAL_DOLLAR_MARK, "$") // 안내문 원문과 맞댄다
+        const plain = anchor.replaceAll(LITERAL_DOLLAR_MARK, "$").replaceAll(LITERAL_LT_MARK, "<") // 안내문 원문과 맞댄다
         if (plain === ctrl.guide || plain.trimEnd() === ctrl.guide) {
           text = text.slice(0, r.start) + text.slice(r.end)
           applied.push([r.start, r.end])
@@ -305,8 +307,12 @@ function parseParagraph(records: HwpRecord[], start: number, end: number, ctx: H
   }
   // 리터럴 $ → \$ (필드 위치를 다 쓴 뒤라 이제 두 글자로 늘려도 된다, escapeLiteralDollar 규약)
   if (text.includes(LITERAL_DOLLAR_MARK)) text = text.replaceAll(LITERAL_DOLLAR_MARK, "\\$")
+  text = resolveLiteralLt(text)
   // 글자마다 여닫은 첨자 태그 정리 — HWPX section-walker 와 같은 꼴로
   text = tidyScriptTags(text)
+  // 목차 항목(채움 탭 + 쪽 번호 줄) 판정 — 채움 탭 표지는 여기서 보통 탭이 된다 (#121, HWPX 와 같은 규칙)
+  const toc = takeTocLeaders(text)
+  text = toc.text
 
   // 문단번호/글머리표/개요 처리 (DocInfo PARA_SHAPE headType)
   let headingLevel = 0
@@ -316,8 +322,8 @@ function parseParagraph(records: HwpRecord[], start: number, end: number, ctx: H
     : null
   if (ps && ps.headType > 0) {
     if (ps.headType === 1) {
-      // 개요 — paraLevel 0-6 → heading 1-6 (개요 7수준은 H6로 클램프)
-      headingLevel = Math.min(ps.paraLevel + 1, 6)
+      // 개요 — paraLevel 0-6 → heading 1-6 (개요 7수준은 H6로 클램프). 목차 항목은 개요 문단 모양을 빌려도 제목이 아니다
+      if (!toc.tocEntry) headingLevel = Math.min(ps.paraLevel + 1, 6)
     }
     if (ps.headType === 1 || ps.headType === 2) {
       // 개요/번호 → NUMBERING 카운터 전진 + ^N 치환
@@ -342,6 +348,7 @@ function parseParagraph(records: HwpRecord[], start: number, end: number, ctx: H
     text,
     headMarker,
     headingLevel,
+    tocEntry: toc.tocEntry,
     style: ctx.docInfo && charShapeIds.length > 0 ? resolveCharStyle(charShapeIds, ctx.docInfo) : undefined,
     footnotes: ctrls.filter(c => c.footnote).map(c => c.footnote!),
     // 컨트롤 파생 블록 (표/이미지/글상자) — 컨트롤 순서대로

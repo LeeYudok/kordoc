@@ -13,6 +13,7 @@ import type {
 } from "../types.js"
 import { KordocError, precheckZipSize, unzipLimitBytes, stripDtd } from "../utils.js"
 import { blocksToMarkdown, MAX_COLS } from "../table/builder.js"
+import { escapeLiteralTags } from "../script-tags.js"
 import { sheetToBlocks, type SheetMerge } from "./sheet-blocks.js"
 
 // ─── 상수 ────────────────────────────────────────────
@@ -89,7 +90,7 @@ function collectRichText(root: Element): string {
       const el = children[i] as Element
       const local = el.localName || el.tagName?.replace(/^[^:]+:/, "") || ""
       if (local === "rPh") continue
-      if (local === "t") out += el.textContent ?? ""
+      if (local === "t") out += escapeLiteralTags(el.textContent ?? "") // 태그 모양 글자 "<sub>" 는 \<sub> (#122)
       else walk(el)
     }
   }
