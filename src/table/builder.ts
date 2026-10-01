@@ -656,13 +656,8 @@ export function visibleText(b: IRBlock): string {
  * 셀 줄바꿈 <br> 은 이 뒤에 넣으므로 원문 글자 "<br>"(&lt;br&gt;)와 갈린다. 읽는 쪽은 utils unescapeHtml
  */
 export function escapeHtmlCellText(text: string): string {
-  // HTML 에는 역슬래시 이스케이프가 없다 — 태그 모양 원문 글자(IR \<sub>, escapeLiteralTags)는 &lt;sub&gt; 로 (#122), 리터럴 $(IR \$)는
-  // $ 로 (파이프 표를 HTML 로 바꾸는 htmlTables 와 같게). 수식 스팬 안의 \$ 는 LaTeX 이스케이프라 그대로 둔다
-  const spans: string[] = []
-  const masked = text.replace(/(?<!\\)\$(?:\\[^\n]|[^\\$\n])*\$/g, m => { spans.push(m); return `\u0000${spans.length - 1}\u0000` })
-    .replace(/\\\$/g, "$")
-  return escapeHtml(masked).replace(/(\\)?&lt;(\/?)(u|sup|sub)&gt;/g, (_, esc, sl, tag) => esc ? `&lt;${sl}${tag}&gt;` : `<${sl}${tag}>`)
-    .replace(/\u0000(\d+)\u0000/g, (_, n) => escapeHtml(spans[Number(n)]))
+  // 태그 모양 원문 글자(IR \<sub>, escapeLiteralTags)는 HTML 에 역슬래시 이스케이프가 없어 &lt;sub&gt; 로 (#122)
+  return escapeHtml(text).replace(/(\\)?&lt;(\/?)(u|sup|sub)&gt;/g, (_, esc, sl, tag) => esc ? `&lt;${sl}${tag}&gt;` : `<${sl}${tag}>`)
 }
 
 /** 셀 내부 콘텐츠 → HTML — blocks(중첩표/다중문단) 있으면 구조 보존 재귀 렌더링 */

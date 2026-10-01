@@ -94,7 +94,6 @@ test("an unfilled click-here guide in a heading paragraph is kept out of the hea
   assert.match(shown.markdown, /^# 여기에 제목을 입력하세요/)
 })
 
-test("HTML table cells show a literal $ as $ but keep LaTeX escapes inside math spans", () => {
-  assert.equal(escapeHtmlCellText("가격 \\$5 \\<sub>x"), "가격 $5 &lt;sub&gt;x")
-  assert.equal(escapeHtmlCellText("$\\frac{\\$5}{2}$ 원"), "$\\frac{\\$5}{2}$ 원")
+test("HTML table cells keep a literal \\$ escaped (several $ in one cell would read as a math span)", () => {
+  assert.equal(escapeHtmlCellText("가격 \\$30 … \\$26 \\<sub>x"), "가격 \\$30 … \\$26 &lt;sub&gt;x")
 })
