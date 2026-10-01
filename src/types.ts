@@ -189,8 +189,8 @@ export interface DocumentMetadata {
   pageCount?: number
   /**
    * 페이지 경계 신뢰도 (#66) — "layout": 조판 정보 기반 실제 페이지
-   * (한컴 저장본 HWP/HWPX·PDF·COM), "section": 섹션 단위 근사
-   * (조판 캐시 없는 생성 파일). HWP/HWPX/PDF에서만 설정된다.
+   * (한컴 저장본 HWP/HWPX·PDF·COM, PPTX 슬라이드), "section": 섹션 단위 근사
+   * (조판 캐시 없는 생성 파일). HWP/HWPX/PDF·PPTX에서만 설정된다.
    */
   pageMode?: "layout" | "section"
   /** 문서 포맷 버전 (예: HWP "5.1.0.1") */
@@ -384,7 +384,7 @@ export type ErrorCode =
 
 // ─── 파싱 결과 (discriminated union) ────────────────
 
-/** 감지된 파일 형식. pptx는 감지만 지원하며 파싱 시 UNSUPPORTED_FORMAT을 반환한다. */
+/** 감지된 파일 형식 */
 export type FileType = "hwpx" | "hwp" | "hwp3" | "hwpml" | "pdf" | "xlsx" | "xls" | "docx" | "pptx" | "image" | "unknown"
 
 interface ParseResultBase {

@@ -7,7 +7,7 @@
 
 > *대한민국에서 둘째가라면 서러울 문서지옥. 거기서 7년 버틴 공무원이 만들었습니다.*
 
-HWP 3.x/5.x, HWPX, HWPML, PDF, XLS, XLSX, DOCX, 이미지(PNG/JPG/WebP) — 관공서 문서를 파싱·비교·생성합니다. [English](./README-EN.md)
+HWP 3.x/5.x, HWPX, HWPML, PDF, XLS, XLSX, DOCX, PPTX, 이미지(PNG/JPG/WebP) — 관공서 문서를 파싱·비교·생성합니다. [English](./README-EN.md)
 
 - 📊 **PDF 공개 벤치 1위** — opendataloader-bench 200문서 종합 0.960, 공개 12개 파서(상용 포함)보다 높음 (OCR 끄면 0.937·쪽당 0.04초)
 - 🇰🇷 **한국 공문서 표 무손실** — 원본 HWPX 를 정답으로 채점해 HWPX 표 13,041개가 칸까지 일치
@@ -72,7 +72,7 @@ PDF·OCR 의존성은 기본으로 설치됩니다(줄이려면 `--omit=optional
 
 | 기능 | 내용 |
 | --- | --- |
-| 📄 **문서 → Markdown** | HWP·HWPX·PDF·DOCX·XLS(X)·이미지를 Markdown + 구조 IR(`IRBlock[]`)로 |
+| 📄 **문서 → Markdown** | HWP·HWPX·PDF·DOCX·XLS(X)·PPTX·이미지를 Markdown + 구조 IR(`IRBlock[]`)로 |
 | 📊 **표 복원** | 원본에서 보이는 모습 그대로: 선이 그어진 표는 병합·중첩까지 표로, 테두리 없는 틀은 글로, 칸으로 조립한 분수는 수식으로. 선 없는 PDF 표, 신구조문대비표까지 |
 | 🔍 **신구대조표** | 두 문서 차이를 블록·셀 단위로 (HWP ↔ HWPX 교차 비교) |
 | 📝 **Markdown → HWPX** | AI 가 쓴 글을 표·수식·차트 포함 HWPX 로 |
@@ -171,7 +171,7 @@ if (result.success) {
 }
 ```
 
-- `pages` 는 블록에 쪽 번호가 붙는 포맷(HWP·HWPX·PDF, XLS(X)는 시트 = 한 쪽)에서만 나옵니다. 쪽을 매기지 않는 DOCX 에서는 필드를 생략합니다.
+- `pages` 는 블록에 쪽 번호가 붙는 포맷(HWP·HWPX·PDF, XLS(X)는 시트 = 한 쪽, PPTX 는 슬라이드 = 한 쪽)에서만 나옵니다. 쪽을 매기지 않는 DOCX 에서는 필드를 생략합니다.
 - 쪽 경계 신뢰도는 `metadata.pageMode` — `"layout"`(조판 캐시 기반 실제 쪽) / `"section"`(섹션 근사).
 
 **파싱 옵션** (`parse(buffer, options)` · CLI 플래그)
@@ -458,7 +458,7 @@ Windows 에서 Claude Desktop 이 `.cmd` 를 못 찾으면 `"command": "cmd", "a
 
 | 도구 | 설명 |
 |------|------|
-| `parse_document` | HWP/HWPX/PDF/XLSX/DOCX → Markdown (메타데이터 포함) |
+| `parse_document` | HWP/HWPX/PDF/XLSX/DOCX/PPTX → Markdown (메타데이터 포함) |
 | `detect_format` | 매직 바이트로 포맷 감지 |
 | `parse_metadata` | 메타데이터만 빠르게 |
 | `parse_pages` | 특정 쪽 범위만 |
@@ -486,13 +486,13 @@ Windows 에서 Claude Desktop 이 `.cmd` 를 못 찾으면 `"command": "cmd", "a
 |------|------|
 | `parse(buffer, options?)` | 포맷 자동 감지 → Markdown + `IRBlock[]` (파일 경로 문자열도 받음) |
 | `parseHwpx` · `parseHwp` · `parseHwp3` · `parseHwpml` | HWPX · HWP 5.x · HWP 3.x(1996~2002) · HWPML 전용 — 모두 `(buffer, options?)` |
-| `parsePdf` · `parseDocx` · `parseXlsx` · `parseXls` | PDF · DOCX · XLSX · XLS(Excel 97~2003, BIFF8) 전용 |
+| `parsePdf` · `parseDocx` · `parsePptx` · `parseXlsx` · `parseXls` | PDF · DOCX · PPTX · XLSX · XLS(Excel 97~2003, BIFF8) 전용 |
 | `parseImage(buffer, options?)` | 이미지(PNG/JPG/WebP) 전용 — 내장 OCR 상시 적용 |
 | `detectFormat(buffer)` | 동기 매직 바이트 감지 — 하위 호환을 위해 ZIP 은 `hwpx`, OLE2 는 `hwp` 반환 |
 | `await detectZipFormat(buffer)` | ZIP 내부 구조로 `hwpx`·`xlsx`·`docx`·`pptx`·`unknown` 구분 |
 | `detectOle2Format(buffer)` | OLE2 내부 스트림으로 `hwp`·`xls`·`unknown` 구분 |
 
-PPTX 는 감지만 합니다(`parse()` 는 `UNSUPPORTED_FORMAT`). ZIP 종류를 가르려면 `detectFormat()` 이 `hwpx` 일 때 `await detectZipFormat(buffer)` 를 쓰세요.
+ZIP 종류를 가르려면 `detectFormat()` 이 `hwpx` 일 때 `await detectZipFormat(buffer)` 를 쓰세요.
 
 ### 비교 · 양식 · 편집
 
@@ -572,6 +572,7 @@ import type {
 | **XLSX** (Excel) | ZIP + XML DOM | 공유 문자열, 병합 셀, 다중 시트, 수식 표시, 날짜 셀 ISO 변환, 대형 시트 스트리밍 |
 | **XLS** (Excel 97~2003) | OLE2 + BIFF8 | Workbook 스트림, SST 공유 문자열, 셀·시트 추출 |
 | **DOCX** (Word) | ZIP + XML DOM | 스타일 헤딩, 번호 매기기(실제 번호 라벨), 각주, 하이퍼링크, 이미지 추출 |
+| **PPTX** (PowerPoint) | ZIP + XML DOM | 발표 순서(sldIdLst), 슬라이드 = 쪽, 제목 개체 틀 헤딩, 본문 글머리 목록(2단), 병합 표, 발표자 노트(인용), 이미지 추출, 숨긴 슬라이드 제외. 차트·SmartArt 글은 경고만 |
 | **이미지** (PNG/JPG/WebP) | sharp + 내장 OCR | 스크린샷·스캔 이미지 직접 입력, 래스터 괘선으로 표 복원 |
 
 ---

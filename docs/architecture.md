@@ -17,7 +17,7 @@ Buffer → detectFormat() [매직바이트] → 포맷별 파서 → IRBlock[] �
 | `src/index.ts` | 메인 API (`parse`, `parseHwpx`, `parseHwp`, `parseHwp3`, `parsePdf`, `parseXlsx`, `parseDocx`) |
 | `src/types.ts` | IR 타입 (`IRBlock`, `IRTable`, `IRCell`, `ParseResult`), 공통 상수 |
 | `src/utils.ts` | 공용 유틸 (`toArrayBuffer`, `sanitizeError`, `precheckZipSize`, `sanitizeHref`, `classifyError`, `stripDtd`, `safeMin/Max`, `unescapeHtml`, `routeConsoleToStderr`) |
-| `src/detect.ts` | 매직바이트 기반 포맷 감지, `detectZipFormat()`으로 HWPX/XLSX/DOCX 구분 |
+| `src/detect.ts` | 매직바이트 기반 포맷 감지, `detectZipFormat()`으로 HWPX/XLSX/DOCX/PPTX 구분 |
 | `src/hwpx/parser.ts` | HWPX 파싱 엔트리 (구현은 8모듈로 분리 — 재수출 허브) |
 | `src/hwpx/section-walker.ts` | 섹션 XML 워커 (문단/표/도형 상호재귀 클러스터) |
 | `src/hwpx/styles.ts` | head.xml 스타일/번호매기기 파싱 + 스타일 기반 헤딩 감지 |
@@ -122,6 +122,7 @@ Buffer → detectFormat() [매직바이트] → 포맷별 파서 → IRBlock[] �
 | `src/xlsx/parser.ts` | XLSX(ZIP+XML) 파싱, 공유 문자열/병합 셀 처리 |
 | `src/xlsx/sheet-blocks.ts` | XLSX·XLS 공용 시트 → 표: 글 있는 행·열만 펼침(빈 행·열 제외·병합은 남은 행·열로 축소, #91), 열 수에 따른 칸 예산·절단 경고 |
 | `src/docx/parser.ts` | DOCX(ZIP+XML) 파싱, 스타일/번호매기기/각주 처리 |
+| `src/pptx/parser.ts` | PPTX(ZIP+XML) 파싱 — sldIdLst 발표 순서, 슬라이드 = 쪽(pageNumber·pageMode layout), 개체 틀별 헤딩/목록/문단, a:tbl 병합(hMerge·vMerge 연속 칸 제외 + colAddr/rowAddr 직접 배치), 발표자 노트 quote 문단, 숨긴 슬라이드 제외 |
 | `src/table/builder.ts` | 2-pass 그리드 테이블 빌더 + 마크다운 변환, `escapeHtmlCellText`로 HTML 칸 원문 이스케이프. 캡션 안 표(`captionBlocks`)는 `captionToMarkdown`/`captionToHtml` 이 표로 낸다 |
 | `src/table/layout-frames.ts` | 보이지 않는 틀 표 풀기 `unframeLayoutTables`(v4.17.0, `layoutTables` 기본 visual): 파서가 칸마다 단 보이는 변(`CELL_EDGES`: HWPX borderFill·HWP5 BORDER_FILL·한컴 PDF 칸 클립 격자의 실제 획)으로 ① 위아래 두 칸 사이 가로선만 보이는 짧은 한 줄 칸 쌍을 `$\frac{}{}$` 로 합치고(표 온 폭 두 칸은 2×1 표만) ② 세로선이 보이는 행·온 폭 가로선 사이 칸 둘 이상인 행을 표 띠로 남겨 새 표로 다시 짠다(안 쓰는 격자선·선 밖 빈 칸·빈 여백 행·후행 빈 열 접기). 나머지 행은 문단, 칸 안 표는 재귀. 곁정보 없는 표는 그대로. 그림 칸은 `CONTENT_CELLS`(PDF) |
 | `src/render/svg-render.ts` | 레이아웃 보존 렌더 — HWPX 조판 캐시(lineseg·cellAddr·pos)를 SVG 절대배치로. 문단·표·이미지·도형 region 기록 + `<g data-kordoc-*>` 래퍼. 포맷 무관 단계 `renderSectionRoots`(구역 DOM→페이지 버퍼)·`assemblePageSvgs`(페이지별 standalone SVG) 를 HWPX·HWP5 어댑터가 공유 (#75) |

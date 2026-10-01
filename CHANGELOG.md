@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- PPTX(PowerPoint) 파싱을 추가한다(#80 후속). 감지만 하고 `UNSUPPORTED_FORMAT` 을 돌려주던 PPTX 를 `parse()`·`parsePptx()`·CLI·MCP(`parse_document`·`parse_metadata`·`detect_format`, `.pptx` 확장자)에서 읽는다. 슬라이드는 `presentation.xml` 의 발표 순서(`p:sldIdLst`)를 따르고 한 장이 한 쪽(`pageNumber`, `metadata.pageMode: "layout"`)이라 `pages` 가 슬라이드별로 나온다. 제목 개체 틀은 헤딩(표지 `ctrTitle` 1단, `title` 2단), 본문 개체 틀은 글머리 목록(수준 1 이상은 하위 항목, `buNone`·`buAutoNum` 존중), 글상자는 문단, 그룹 도형은 그리는 순서대로 펼친다. 표는 `gridSpan`·`rowSpan` 원점 칸으로 병합하고 `hMerge`·`vMerge` 연속 칸은 뺀다. 발표자 노트는 그 쪽 끝 인용(`quote`) 문단, 그림은 DOCX 와 같은 `image_NNN` 추출(`images: false` 존중), 메타데이터는 `docProps/core.xml`. 쪽 번호·날짜·바닥글 개체 틀은 버리고, 숨긴 슬라이드는 쪽 번호를 지킨 채 건너뛰며 `HIDDEN_TEXT_FILTERED`, 차트·SmartArt 는 글을 읽지 않고 `UNSUPPORTED_ELEMENT` 경고를 낸다. ZIP 가드는 DOCX 와 같은 100MB 상한(그림 파트 분리)에 엔트리 10000·슬라이드 2000 상한.
+
+### Changed
+
+- PPTX 를 미지원 오류로 고정하던 #80 회귀 테스트를 지원 동작으로 바꾼다. 채우기(`hwpx-preserve`)·패치·렌더는 종전대로 `pptx` 포맷명을 밝히며 거부한다.
+
 ### Fixed
 
 - PDF 쪽 옆 세로 색인 탭(책자형 문서가 쪽 바깥 띠에 한 자씩 세로로 찍는 책·장 이름) 글자가 테두리 없는 표 감지의 첫(끝) 열 앵커가 되어, 옆 본문 줄("○ (평가체계)"·"- 1차 년도 : 서면평가")을 탭 조각("료 기"·"관 평")이 첫 열에 든 가짜 표로 묶던 문제를 고친다. 같은 x 에 한 글자 6개 이상이 글자 높이 3배 안 간격으로 쌓이고, 세로로 겹치는 다른 글이 모두 한쪽으로 떨어져 있으며, 그 글자의 40% 이상이 제 줄에 혼자 서는 기둥(`sideTabGlyphs`)은 클러스터 표 후보에서 뺀다. 표의 번호 열은 글자마다 같은 줄에 다른 칸이 있어 걸리지 않는다. 여러 쪽 되풀이로 걷는 `removeSideTabs` 는 표 감지 뒤에 돌고 한 쪽 변환(`-p N`)에서는 되풀이가 없어 막지 못했다. 2026 응급의료기관 평가 기준집(한컴 PDF 327쪽): 쪽별 변환(-p N)에서는 27쪽의 가짜 표 29개(2쪽은 같은 탭 옆 영역에서 두 개씩), 전체 변환에서는 가짜 표 28개가 문단으로 돌아온다. 선 표는 표 단위 대조에서 하나도 빠지지 않았고 한글 재현율도 그대로다.
