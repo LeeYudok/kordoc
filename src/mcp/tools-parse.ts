@@ -127,7 +127,7 @@ export function registerParseTools(server: McpServer): void {
 
   server.tool(
     "detect_format",
-    "파일의 포맷을 매직 바이트와 컨테이너 내부 구조로 감지합니다 (hwpx, hwp, hwp3, hwpml, pdf, xls, xlsx, docx, pptx, image, unknown). PPTX는 감지만 지원합니다.",
+    "파일의 포맷을 매직 바이트와 컨테이너 내부 구조로 감지합니다 (hwpx, hwp, hwp3, hwpml, pdf, xls, xlsx, docx, pptx, image, unknown).",
     {
       file_path: z.string().min(1).describe("감지할 파일의 절대 경로"),
     },
@@ -192,8 +192,6 @@ export function registerParseTools(server: McpServer): void {
           if (detectOle2Format(buffer) === "xls") effectiveFormat = "xls"
         }
         switch (effectiveFormat) {
-          case "pptx":
-            throw new KordocError("PPTX 파일은 지원하지 않는 파일 형식입니다.")
           case "hwp":
             metadata = extractHwp5MetadataOnly(Buffer.from(buffer))
             break
@@ -212,7 +210,8 @@ export function registerParseTools(server: McpServer): void {
           case "hwpml":
           case "xls":
           case "xlsx":
-          case "docx": {
+          case "docx":
+          case "pptx": {
             // 전용 metadata 추출기가 없는 포맷은 전체 파싱 후 metadata 반환
             const result = await parse(buffer)
             metadata = result.success ? result.metadata : undefined

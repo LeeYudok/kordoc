@@ -7,7 +7,7 @@
 
 > *Korea's document hell is second to none. Built by a civil servant who survived seven years in it.*
 
-HWP 3.x/5.x, HWPX, HWPML, PDF, XLS, XLSX, DOCX, images (PNG/JPG/WebP) — parse, compare and generate the documents Korean government offices run on. [한국어](./README.md)
+HWP 3.x/5.x, HWPX, HWPML, PDF, XLS, XLSX, DOCX, PPTX, images (PNG/JPG/WebP) — parse, compare and generate the documents Korean government offices run on. [한국어](./README.md)
 
 - 📊 **#1 on the public PDF benchmark** — opendataloader-bench (200 documents) overall 0.960, above all 12 published parsers (commercial included) (OCR off: 0.937 at 0.04 s per page)
 - 🇰🇷 **Korean tables as they look** — scored against what the original HWPX shows, 99.6% of 9,865 visible tables match cell for cell; invisible-border layout frames become text and cell-built fractions become `$\frac{}{}$`
@@ -72,7 +72,7 @@ PDF and OCR dependencies are installed by default (`--omit=optional` slims the i
 
 | Feature | What it does |
 | --- | --- |
-| 📄 **Document → Markdown** | HWP · HWPX · PDF · DOCX · XLS(X) · images to Markdown + structured IR (`IRBlock[]`) |
+| 📄 **Document → Markdown** | HWP · HWPX · PDF · DOCX · XLS(X) · PPTX · images to Markdown + structured IR (`IRBlock[]`) |
 | 📊 **Tables** | As they look in the original: ruled tables keep merges and nesting, invisible-border layout frames become text, cell-built fractions become equations. Borderless PDF tables and clause comparison tables too |
 | 🔍 **Redline** | Block- and cell-level differences between two documents (HWP ↔ HWPX works) |
 | 📝 **Markdown → HWPX** | AI-written text back to HWPX, with tables, equations and charts |
@@ -171,7 +171,7 @@ if (result.success) {
 }
 ```
 
-- `pages` appears only for formats whose blocks carry page numbers (HWP · HWPX · PDF; XLS(X): one sheet = one page). DOCX, which has no page numbering, omits the field.
+- `pages` appears only for formats whose blocks carry page numbers (HWP · HWPX · PDF; XLS(X): one sheet = one page; PPTX: one slide = one page). DOCX, which has no page numbering, omits the field.
 - Page-boundary reliability is `metadata.pageMode` — `"layout"` (real pages from the typesetting cache) / `"section"` (section approximation).
 
 **Parse options** (`parse(buffer, options)` · CLI flag)
@@ -458,7 +458,7 @@ On Windows, if Claude Desktop can't find `.cmd`, use `"command": "cmd", "args": 
 
 | Tool | Description |
 |------|-------------|
-| `parse_document` | HWP/HWPX/PDF/XLSX/DOCX → Markdown (with metadata) |
+| `parse_document` | HWP/HWPX/PDF/XLSX/DOCX/PPTX → Markdown (with metadata) |
 | `detect_format` | format detection via magic bytes |
 | `parse_metadata` | fast metadata only |
 | `parse_pages` | a page range only |
@@ -486,13 +486,13 @@ On Windows, if Claude Desktop can't find `.cmd`, use `"command": "cmd", "args": 
 |----------|-------------|
 | `parse(buffer, options?)` | auto format detection → Markdown + `IRBlock[]` (a file path string works too) |
 | `parseHwpx` · `parseHwp` · `parseHwp3` · `parseHwpml` | HWPX · HWP 5.x · HWP 3.x (1996–2002) · HWPML only — all `(buffer, options?)` |
-| `parsePdf` · `parseDocx` · `parseXlsx` · `parseXls` | PDF · DOCX · XLSX · XLS (Excel 97–2003, BIFF8) only |
+| `parsePdf` · `parseDocx` · `parsePptx` · `parseXlsx` · `parseXls` | PDF · DOCX · PPTX · XLSX · XLS (Excel 97–2003, BIFF8) only |
 | `parseImage(buffer, options?)` | images (PNG/JPG/WebP) only — built-in OCR always on |
 | `detectFormat(buffer)` | synchronous magic-byte detection — returns `hwpx` for ZIP and `hwp` for OLE2 for backward compatibility |
 | `await detectZipFormat(buffer)` | ZIP entries → `hwpx` · `xlsx` · `docx` · `pptx` · `unknown` |
 | `detectOle2Format(buffer)` | OLE2 streams → `hwp` · `xls` · `unknown` |
 
-PPTX is detected only (`parse()` returns `UNSUPPORTED_FORMAT`). To tell ZIP formats apart, call `await detectZipFormat(buffer)` when `detectFormat()` returns `hwpx`.
+To tell ZIP formats apart, call `await detectZipFormat(buffer)` when `detectFormat()` returns `hwpx`.
 
 ### Compare · forms · editing
 
@@ -572,6 +572,7 @@ import type {
 | **XLSX** (Excel) | ZIP + XML DOM | shared strings, merged cells, multiple sheets, formula display, date cells to ISO, large-sheet streaming |
 | **XLS** (Excel 97–2003) | OLE2 + BIFF8 | Workbook stream, SST shared strings, cell/sheet extraction |
 | **DOCX** (Word) | ZIP + XML DOM | style-based headings, numbering (real number labels), footnotes, hyperlinks, image extraction |
+| **PPTX** (PowerPoint) | ZIP + XML DOM | presentation order (sldIdLst), one slide = one page, title placeholders as headings, two-level body bullet lists, merged tables, speaker notes (as quotes), image extraction, hidden slides skipped. Chart/SmartArt text: warning only |
 | **Images** (PNG/JPG/WebP) | sharp + built-in OCR | screenshots and scans as direct input, tables recovered from raster rules |
 
 ---

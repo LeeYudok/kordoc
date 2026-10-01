@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- PPTX(PowerPoint) 파싱을 추가한다(#80 후속). 감지만 하고 `UNSUPPORTED_FORMAT` 을 돌려주던 PPTX 를 `parse()`·`parsePptx()`·CLI·MCP(`parse_document`·`parse_metadata`·`detect_format`, `.pptx` 확장자)에서 읽는다. 슬라이드는 `presentation.xml` 의 발표 순서(`p:sldIdLst`)를 따르고 한 장이 한 쪽(`pageNumber`, `metadata.pageMode: "layout"`)이라 `pages` 가 슬라이드별로 나온다. 제목 개체 틀은 헤딩(표지 `ctrTitle` 1단, `title` 2단), 본문 개체 틀은 글머리 목록(수준 1 이상은 하위 항목, `buNone`·`buAutoNum` 존중), 글상자는 문단, 그룹 도형은 그리는 순서대로 펼친다. 표는 `gridSpan`·`rowSpan` 원점 칸으로 병합하고 `hMerge`·`vMerge` 연속 칸은 뺀다. 발표자 노트는 그 쪽 끝 인용(`quote`) 문단, 그림은 DOCX 와 같은 `image_NNN` 추출(`images: false` 존중), 메타데이터는 `docProps/core.xml`. 쪽 번호·날짜·바닥글 개체 틀은 버리고, 숨긴 슬라이드는 쪽 번호를 지킨 채 건너뛰며 `HIDDEN_TEXT_FILTERED`, 차트·SmartArt 는 글을 읽지 않고 `UNSUPPORTED_ELEMENT` 경고를 낸다. ZIP 가드는 DOCX 와 같은 100MB 상한(그림 파트 분리)에 엔트리 10000·슬라이드 2000 상한.
+
+### Changed
+
+- PPTX 를 미지원 오류로 고정하던 #80 회귀 테스트를 지원 동작으로 바꾼다. 채우기(`hwpx-preserve`)·패치·렌더는 종전대로 `pptx` 포맷명을 밝히며 거부한다.
+
 ## [4.18.0] - 2026-10-01
 
 ### Added

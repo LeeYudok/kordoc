@@ -1,4 +1,4 @@
-/** #80: unsupported PPTX must remain an explicit failure across CLI and MCP. */
+/** #80: PPTX is parsed across CLI and MCP; write paths (fill·patch) still reject it by its refined format name. */
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
@@ -29,47 +29,48 @@ async function makeZip(parts: Record<string, string>): Promise<Buffer> {
   return zip.generateAsync({ type: "nodebuffer" })
 }
 
+const SLIDE_TEXT = "PPTX surface slide"
+
 function makePptx(): Promise<Buffer> {
+  const ns = `xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`
   return makeZip({
     "[Content_Types].xml": `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
       <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
     </Types>`,
-    "ppt/presentation.xml": `<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:sldIdLst/></p:presentation>`,
+    "ppt/presentation.xml": `<p:presentation ${ns}><p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst></p:presentation>`,
+    "ppt/_rels/presentation.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+      <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
+    </Relationships>`,
+    "ppt/slides/slide1.xml": `<p:sld ${ns}><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2" name="t"/><p:cNvSpPr/><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr>
+      <p:txBody><a:bodyPr/><a:p><a:r><a:t>${SLIDE_TEXT}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
   })
 }
 
 for (const format of ["markdown", "json", "chunks"]) {
-  test(`#80 CLI ${format}: PPTX returns failure JSON and leaves output untouched`, { timeout: 30000 }, async () => {
+  test(`#80 CLI ${format}: PPTX converts like other formats`, { timeout: 30000 }, async () => {
     const dir = mkdtempSync(join(tmpdir(), "kordoc-pptx-cli-"))
     try {
       const input = join(dir, "presentation.pptx")
       const output = join(dir, "output.txt")
       writeFileSync(input, await makePptx())
-      // Exercise both no output creation and no overwrite of an existing file.
-      if (format === "json") writeFileSync(output, "existing output")
 
       const result = spawnSync(process.execPath, [
         "--import", "tsx", CLI, input, "--format", format, "--output", output, "--silent",
       ], { cwd: ROOT, encoding: "utf-8", timeout: 20000, env: { ...process.env, KORDOC_OFFLINE: "1" } })
 
       assert.ifError(result.error)
-      assert.equal(result.status, 1, result.stderr)
-      const failure = JSON.parse(result.stdout)
-      assert.equal(failure.success, false)
-      assert.equal(failure.fileType, "pptx")
-      assert.equal(failure.code, "UNSUPPORTED_FORMAT")
-      assert.match(failure.error, /PPTX/)
-      assert.match(failure.error, /지원하지 않/)
-      assert.match(result.stderr, /PPTX/)
-      if (format === "json") assert.equal(readFileSync(output, "utf-8"), "existing output")
-      else assert.equal(existsSync(output), false)
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(existsSync(output), true)
+      const written = readFileSync(output, "utf-8")
+      assert.match(written, new RegExp(SLIDE_TEXT))
+      if (format === "json") assert.equal(JSON.parse(written).fileType, "pptx")
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
   })
 }
 
-test("#80 MCP: unsupported PPTX and supported ZIP metadata stay distinct", { timeout: 60000 }, async (t) => {
+test("#80 MCP: PPTX parses, write paths name the refined format, ZIP metadata stays distinct", { timeout: 60000 }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "kordoc-pptx-mcp-"))
   const client = new Client({ name: "pptx-regression", version: "1.0.0" })
   const transport = new StdioClientTransport({
@@ -106,12 +107,19 @@ test("#80 MCP: unsupported PPTX and supported ZIP metadata stay distinct", { tim
       assert.equal(result.text, `${renamed}: pptx`)
     })
 
-    for (const tool of ["parse_document", "parse_metadata"]) {
-      await t.test(`${tool} rejects PPTX content behind a .hwpx extension`, async () => {
-        const result = await callTool(tool, renamed)
-        assert.equal(result.isError, true, result.text)
-        assert.match(result.text, /PPTX/)
-        assert.match(result.text, /지원하지 않/)
+    for (const path of [renamed, original]) {
+      await t.test(`parse_document reads PPTX content (${path.slice(-5)})`, async () => {
+        const result = await callTool("parse_document", path)
+        assert.notEqual(result.isError, true, result.text)
+        assert.match(result.text, new RegExp(SLIDE_TEXT))
+      })
+      await t.test(`parse_metadata reports pptx with core.xml metadata (${path.slice(-5)})`, async () => {
+        const result = await callTool("parse_metadata", path)
+        assert.notEqual(result.isError, true, result.text)
+        const metadata = JSON.parse(result.text)
+        assert.equal(metadata.format, "pptx")
+        assert.equal(metadata.title, TITLE)
+        assert.equal(metadata.pageCount, 1)
       })
     }
 
@@ -146,14 +154,11 @@ test("#80 MCP: unsupported PPTX and supported ZIP metadata stay distinct", { tim
       })
     }
 
-    for (const tool of ["detect_format", "parse_document", "parse_metadata"]) {
-      await t.test(`${tool} continues to reject the unsupported .pptx extension`, async () => {
-        const result = await callTool(tool, original)
-        assert.equal(result.isError, true, result.text)
-        assert.match(result.text, /지원하지 않는 확장자/)
-        assert.match(result.text, /\.pptx/)
-      })
-    }
+    await t.test("detect_format accepts the .pptx extension", async () => {
+      const result = await callTool("detect_format", original)
+      assert.notEqual(result.isError, true, result.text)
+      assert.equal(result.text, `${original}: pptx`)
+    })
 
     const supported: Record<string, Record<string, string>> = {
       hwpx: {
