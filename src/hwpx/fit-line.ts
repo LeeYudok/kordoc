@@ -6,7 +6,7 @@
  * 근사 클래스라 여유를 더 둔다.
  */
 
-import { measureTextWidth, faceClassForGen, simulateWrap, type FaceClass, type WrapResult } from "./text-metrics.js"
+import { measureTextWidth, faceClassForGen, simulateWrap, prepareWrap, type FaceClass, type WrapResult } from "./text-metrics.js"
 
 export interface FitResult {
   pt: number
@@ -110,13 +110,14 @@ export function fitParagraph(text: string, font: string, pt: number, firstW: num
   const ladder: Array<[number, number]> = [[100, 0], ...SQUEEZE.filter(([r]) => r >= minRatio)]
   const base = simulateWrap(text, f, c, h, 100, "keep", { faceClass })
   if (base.lines < 2) return null
+  const prepared = prepareWrap(text, "keep", { faceClass })
   // 꼬리 줄 탐색과 비용 탐색은 같은 후보를 본다 — 문단 한 번 안에서만 조판 결과를 재사용한다.
   const wraps = new Map<string, WrapResult>([["100:0", base]])
   const looseness = new Map<string, number>()
   const wrap = (r: number, sp: number): WrapResult => {
     const key = `${r}:${sp}`
     let w = wraps.get(key)
-    if (!w) { w = simulateWrap(text, f, c, h, r, "keep", { faceClass, spacingPct: sp }); wraps.set(key, w) }
+    if (!w) { w = simulateWrap(text, f, c, h, r, "keep", { faceClass, spacingPct: sp, prepared }); wraps.set(key, w) }
     return w
   }
   const looseAt = (r: number, sp: number, w: WrapResult): number => {
@@ -167,11 +168,12 @@ export function fitCharBreaks(text: string, font: string, pt: number, firstW: nu
   const h = pt * 100
   const k = safety(faceClass, 0.95)
   if (!text.split(/ +/).some((w) => measureTextWidth(w, h, 100, { faceClass }) > contW * k)) return null
+  const prepared = prepareWrap(text, "charAll", { faceClass })
   let best: { r: number; sp: number; amt: number } | null = null
   for (const [r, sp] of [[100, 0] as [number, number], ...SQUEEZE.filter(([r]) => r >= minRatio)]) {
     const amt = squeezeOf(r, sp)
     if (amt > PULL_MAX + 1e-9 || (best && amt >= best.amt - 1e-9)) continue
-    const wrapAt = (s: number) => simulateWrap(text, firstW * s, contW * s, h, r, "charAll", { faceClass, spacingPct: sp }).starts
+    const wrapAt = (s: number) => simulateWrap(text, firstW * s, contW * s, h, r, "charAll", { faceClass, spacingPct: sp, prepared }).starts
     const starts = wrapAt(1)
     if (wrapAt(0.99).join() !== starts.join() || wrapAt(1.01).join() !== starts.join()) continue
     if (!starts.slice(1).every((s) => text[s - 1] === " " || LIST_BREAK.has(text[s - 1]))) continue

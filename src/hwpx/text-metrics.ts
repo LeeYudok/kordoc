@@ -180,9 +180,31 @@ const FORBID_END = new Set([..."$([{£¥〈《「『【〔$([{₩"])
 
 export type WrapMode = "keep" | "charAll"
 
+interface PreparedWrap { units: string[]; advances: number[]; steps: number[] }
+
+/** 한 문단의 장평·자간 후보 사이에서 문자 해독과 글꼴 폭표 조회만 재사용한다. */
+export function prepareWrap(text: string, mode: WrapMode, opts?: MeasureOptions): PreparedWrap {
+  const widthEm = widthFnOf(opts?.faceClass), spaceEm = opts?.spaceEm ?? SPACE_EM_FIXED
+  const advances: number[] = [], steps: number[] = []
+  let i = 0
+  for (const ch of text) {
+    const cp = ch.codePointAt(0)!
+    advances[i] = isSpaceCp(cp) ? spaceEm : widthEm(cp)
+    steps[i] = ch.length
+    i += ch.length
+  }
+  return { units: splitWrapUnits(text, mode), advances, steps }
+}
+
+function splitWrapUnits(text: string, mode: WrapMode): string[] {
+  return text.match(mode === "keep" ? / +|[^ ]+/gu : / +|(?:[\x21-\x7e]+|[^ ])(?:\u00a0(?:[\x21-\x7e]+|[^ \u00a0])?)*/gu) ?? []
+}
+
 export interface WrapOptions extends MeasureOptions {
   /** UTF-16 단위별 실폭(HWPUNIT) — 주면 height·장평·폭 클래스 대신 쓴다(여러 run 문단, 탭 전진폭) */
   widths?: number[]
+  /** 같은 text·mode·글꼴·공백 폭으로 준비한 원 폭 — 한 문단 압축 후보에만 재사용 */
+  prepared?: PreparedWrap
 }
 
 export interface WrapResult {
@@ -218,17 +240,23 @@ export function simulateWrap(
   const EPS = 0.5
   const spaceEm = opts?.spaceEm ?? SPACE_EM_FIXED
   const spacing = opts?.spacingPct ?? 0
-  const widthEm = widthFnOf(opts?.faceClass)
+  const prepared = opts?.prepared
+  const widthEm = prepared ? null : widthFnOf(opts?.faceClass)
   const k = (height * ratioPct) / 100 / 1000
   const unitW = opts?.widths
   /** i 위치(UTF-16) 글자 ch 의 폭 — widths 가 있으면 그 값(서로게이트 쌍은 두 칸 합) */
   const charWAt = (i: number, ch: string): number => {
     if (unitW) return (unitW[i] ?? 0) + (ch.length === 2 ? unitW[i + 1] ?? 0 : 0)
+    if (prepared) return prepared.advances[i] * (1 + spacing / 100) * k
     const cp = ch.codePointAt(0)!
-    return (isSpaceCp(cp) ? spaceEm : widthEm(cp)) * (1 + spacing / 100) * k
+    return (isSpaceCp(cp) ? spaceEm : widthEm!(cp)) * (1 + spacing / 100) * k
   }
   const rangeW = (from: number, to: number): number => {
     let w = 0
+    if (prepared && !unitW) {
+      for (let i = from; i < to; i += prepared.steps[i]) w += prepared.advances[i] * (1 + spacing / 100) * k
+      return w
+    }
     for (let i = from; i < to;) {
       const ch = String.fromCodePoint(text.codePointAt(i)!)
       w += charWAt(i, ch)
@@ -240,7 +268,7 @@ export function simulateWrap(
   // u 플래그 필수 — 없으면 astral 문자(𝐀·이모지 등)가 서로게이트 반쪽 2개로 쪼개져 폭이 2배로 계산된다.
   // 글자 단위에서도 ASCII 연속열("1.):", "LLM),")은 한 단어 — breakLatinWord=KEEP_WORD(한글 2024 실렌더 PDF 대조).
   // 묶음 빈칸(U+00A0)은 어느 모드에서도 끊지 않는다 — 글자 단위에선 앞뒤 단위를 하나로 묶는다
-  const units = text.match(mode === "keep" ? / +|[^ ]+/gu : / +|(?:[\x21-\x7e]+|[^ ])(?:\u00a0(?:[\x21-\x7e]+|[^ \u00a0])?)*/gu) ?? []
+  const units = prepared?.units ?? splitWrapUnits(text, mode)
 
   const starts = [0]
   let lineW = 0
