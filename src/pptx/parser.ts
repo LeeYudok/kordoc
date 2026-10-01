@@ -13,9 +13,10 @@ import type {
   CellContext, IRBlock, DocumentMetadata, InternalParseResult,
   ParseOptions, ParseWarning, ExtractedImage,
 } from "../types.js"
-import { KordocError, precheckZipSize, unzipLimitBytes, stripDtd } from "../utils.js"
+import { KordocError, partExtension, precheckZipSize, unzipLimitBytes, stripDtd } from "../utils.js"
+import { parsePageRange } from "../page-range.js"
 import { blocksToMarkdown, buildTable, escapeLiteralDollar } from "../table/builder.js"
-import { escapeLiteralTags } from "../script-tags.js"
+import { escapeLiteralTags, tidyScriptTags, wrapScript } from "../script-tags.js"
 import { detectImageMime } from "../hwp5/images.js"
 import { localName, findChildByLocalName, childrenByLocalName, elementChildren, rawTextContent, MAX_XML_DEPTH } from "../shared/xml.js"
 
@@ -23,6 +24,8 @@ import { localName, findChildByLocalName, childrenByLocalName, elementChildren, 
 const MAX_DECOMPRESS_SIZE = unzipLimitBytes(100 * 1024 * 1024)
 /** 그림·개체 파트 — images:false 면 풀지 않으니 ZIP 상한에서도 뺀다 (DOCX #108 과 같은 규약) */
 const MEDIA_PART_RE = /^ppt\/(?:media|embeddings)\//
+/** 그림이 아닌 미디어·OLE 임베드 — 파서가 어느 때도 풀지 않는다(ZIP 상한에서 늘 뺀다) */
+const NEVER_READ_RE = /^ppt\/(?:embeddings\/.*|media\/.+\.(?:mp4|m4v|mov|avi|wmv|mpe?g|mkv|webm|mp3|wav|m4a|wma|aac|ogg|flac|mid|bin))$/i
 /** ZIP 엔트리 상한 — 슬라이드마다 slide·rels·notes·notes rels 네 파트에 그림이 붙어
  *  HWPX·DOCX 기본(500)으로는 200장 남짓한 보통 발표 자료도 막힌다 */
 const MAX_ZIP_ENTRIES = 10000
@@ -143,12 +146,15 @@ function paragraphText(p: Element): string {
     const name = localName(child)
     if (name === "r" || name === "fld") {
       const t = findChildByLocalName(child, "t")
-      if (t) text += escapeLiteralTags(escapeLiteralDollar(rawTextContent(t)))
+      // 위·아래첨자 — a:rPr baseline(1/1000 %, 양수 위·음수 아래). 펴면 "10⁴" 가 "104" 로 값이 바뀐다 (DOCX·HWPX 와 같은 표지)
+      const rPr = findChildByLocalName(child, "rPr")
+      const baseline = Number(rPr ? getAttr(rPr, "baseline") ?? 0 : 0)
+      if (t) text += wrapScript(escapeLiteralTags(escapeLiteralDollar(rawTextContent(t))), baseline > 0 ? "sup" : baseline < 0 ? "sub" : null)
     } else if (name === "br") {
       text += " "
     }
   }
-  return text.replace(/\s+/g, " ").trim()
+  return tidyScriptTags(text.replace(/\s+/g, " ").trim())
 }
 
 type Bullet = "none" | "ordered" | "unordered" | undefined
@@ -249,7 +255,7 @@ async function pictureBlock(pic: Element, ctx: SlideContext): Promise<IRBlock | 
   if (!filename) {
     const file = ctx.zip.file(rel.target)
     if (!file) return null
-    const ext = rel.target.split(".").pop()?.toLowerCase() ?? "png"
+    const ext = partExtension(rel.target)
     filename = `image_${String(ctx.imageNames.size + 1).padStart(3, "0")}.${ext}`
     try {
       // 삼항 안 await 는 CJS 빌드(sucrase)가 못 읽는다 — if 로
@@ -338,7 +344,7 @@ export async function parsePptxDocument(
   options?: ParseOptions,
 ): Promise<InternalParseResult> {
   // ZIP bomb 사전 검사
-  precheckZipSize(buffer, MAX_DECOMPRESS_SIZE, MAX_ZIP_ENTRIES, { re: MEDIA_PART_RE, skip: options?.images === false })
+  precheckZipSize(buffer, MAX_DECOMPRESS_SIZE, MAX_ZIP_ENTRIES, { re: MEDIA_PART_RE, skip: options?.images === false, never: NEVER_READ_RE })
 
   const zip = await JSZip.loadAsync(buffer)
   if (!zip.file("ppt/presentation.xml")) {
@@ -350,8 +356,11 @@ export async function parsePptxDocument(
   const images: ExtractedImage[] = []
 
   const slides = await slideParts(zip)
+  // 쪽 범위(-p·pages) — 슬라이드 1장 = 1쪽. 종전엔 범위를 무시하고 모든 슬라이드를 냈다
+  const pageFilter = options?.pages ? parsePageRange(options.pages, slides.length) : null
   for (let i = 0; i < slides.length; i++) {
     const page = i + 1
+    if (pageFilter && !pageFilter.has(page)) continue
     const root = parseXml(await zip.file(slides[i])!.async("text")).documentElement
     // 숨긴 슬라이드(show="0")는 발표에 나오지 않는다 — 쪽 번호는 유지하고 글만 뺀다
     if (getAttr(root, "show") === "0") {

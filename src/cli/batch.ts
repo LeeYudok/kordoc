@@ -21,15 +21,22 @@ export function registerBatchWorker(program: Command): void {
   })
 }
 
-export async function convertParallel(files: string[], opts: OptionValues, jobs: number): Promise<boolean> {
-  // Both converted documents and image directories are named after the input stem.
-  // Reject ambiguous destinations before any worker writes, including case variants.
+/**
+ * Both converted documents and image directories are named after the input stem. Reject ambiguous
+ * destinations before anything is written, including case variants — sequential `-d` runs used to
+ * overwrite `a.md` and mix `images/a/` silently when two inputs shared a stem.
+ */
+export function assertDistinctStems(files: string[]): void {
   const stems = new Set<string>()
   for (const file of files) {
     const stem = basename(file).replace(/\.[^.]+$/, "").normalize("NFC").toLowerCase()
-    if (stems.has(stem)) throw new KordocError(`Parallel output name collision: ${basename(file)}; use distinct file stems`)
+    if (stems.has(stem)) throw new KordocError(`Output name collision: ${basename(file)}; use distinct file stems`)
     stems.add(stem)
   }
+}
+
+export async function convertParallel(files: string[], opts: OptionValues, jobs: number): Promise<boolean> {
+  assertDistinctStems(files)
 
   const workers: ChildProcess[] = []
   let next = 0

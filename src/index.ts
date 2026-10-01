@@ -6,6 +6,7 @@
 
 import { stripScriptTags } from "./script-tags.js"
 import { toPlainMarkdown } from "./plain-markdown.js"
+import { parsePageRange } from "./page-range.js"
 import { toHtmlTables } from "./html-tables.js"
 import { readFile } from "fs/promises"
 import { detectFormat, detectOle2Format, detectZipFormat, isHwpxFile, isOldHwpFile, isPdfFile, isZipFile } from "./detect.js"
@@ -86,9 +87,13 @@ export async function parse(input: string | ArrayBuffer | Buffer, options?: Pars
   // 붙인다. 포맷별 파서를 직접 부르는 호출자는 `blocksToPages(result.blocks)` 로
   // 같은 값을 얻는다.
   let out = result
-  if (result.success && !result.pages) {
-    const pages = blocksToPages(result.blocks)
-    if (pages) out = { ...result, pages }
+  // 문서 쪽과 겹치지 않는 쪽 범위("abc"·"99") — 빈 결과를 조용히 성공으로 내던 것을 경고로 알린다
+  if (result.success && opts?.pages && result.pageCount && parsePageRange(opts.pages, result.pageCount).size === 0) {
+    out = { ...result, warnings: [...(result.warnings ?? []), { code: "PARTIAL_PARSE", message: `요청한 쪽 범위(${opts.pages})가 문서 쪽(1~${result.pageCount})과 겹치지 않습니다` }] }
+  }
+  if (out.success && !out.pages) {
+    const pages = blocksToPages(out.blocks)
+    if (pages) out = { ...out, pages }
   }
   // plain: 그림 자리 표시·링크 URL·밑줄/굵게 표기를 걷은 글 위주 Markdown (블록 IR 은 그대로)
   if (out.success && opts?.plain) {
@@ -286,7 +291,7 @@ export async function parseDocx(buffer: ArrayBuffer, options?: ParseOptions): Pr
 export async function parsePptx(buffer: ArrayBuffer, options?: ParseOptions): Promise<ParseResult> {
   try {
     const { markdown, blocks, metadata, outline, warnings, images } = await parsePptxDocument(buffer, options)
-    return { success: true, fileType: "pptx", markdown, blocks, metadata, outline, warnings, images: images?.length ? images : undefined, pageCount: metadata?.pageCount }
+    return scriptsOff({ success: true, fileType: "pptx", markdown, blocks, metadata, outline, warnings, images: images?.length ? images : undefined, pageCount: metadata?.pageCount }, options?.scriptTags === false)
   } catch (err) {
     return { success: false, fileType: "pptx", error: sanitizeError(err), code: classifyError(err) }
   }

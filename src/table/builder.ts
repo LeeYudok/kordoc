@@ -512,6 +512,8 @@ export function blocksToMarkdown(blocks: IRBlock[]): string {
     if (block.type === "paragraph" && (block.text || block.footnoteText)) {
       let text = sanitizeText(block.text ?? "")
       if (!text && !block.footnoteText) continue
+      // 목록 바로 뒤 문단은 빈 줄로 띄운다 — 붙어 있으면 CommonMark 가 마지막 항목의 이어진 글(lazy continuation)로 읽는다
+      if (lines.length && lines[lines.length - 1] !== "") lines.push("")
 
       // 별표 패턴 (기존 호환)
       if (/^\[별표\s*\d+/.test(text)) {

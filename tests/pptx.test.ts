@@ -166,6 +166,26 @@ describe("PPTX 파서", () => {
     assert.ok(md.indexOf("그룹 앞") < md.indexOf("그룹 안") && md.indexOf("그룹 안") < md.indexOf("그룹 뒤"))
   })
 
+  it("쪽 범위(pages)를 슬라이드에 적용한다", async () => {
+    const buffer = await createPptx([1, 2, 3].map(n => ({ xml: slide(sp(null, para(`슬라이드 ${n} 본문`))) })))
+    const r = await parse(buffer, { pages: "2" })
+    assert.ok(r.success)
+    assert.deepEqual(r.blocks.map(b => b.text), ["슬라이드 2 본문"])
+    assert.deepEqual(r.blocks.map(b => b.pageNumber), [2])
+  })
+
+  it("위·아래첨자(a:rPr baseline)를 <sup>·<sub> 로 감싼다 — scriptTags:false 면 걷는다", async () => {
+    const runs = `<a:p><a:r><a:rPr lang="ko-KR"/><a:t>10</a:t></a:r><a:r><a:rPr lang="ko-KR" baseline="30000"/><a:t>4</a:t></a:r>`
+      + `<a:r><a:rPr lang="ko-KR"/><a:t> m, H</a:t></a:r><a:r><a:rPr lang="ko-KR" baseline="-25000"/><a:t>2</a:t></a:r><a:r><a:rPr lang="ko-KR"/><a:t>O</a:t></a:r></a:p>`
+    const buffer = await createPptx([{ xml: slide(sp(null, runs)) }])
+    const on = await parse(buffer)
+    assert.ok(on.success)
+    assert.equal(on.markdown.trim(), "10<sup>4</sup> m, H<sub>2</sub>O")
+    const off = await parse(buffer, { scriptTags: false })
+    assert.ok(off.success)
+    assert.equal(off.markdown.trim(), "104 m, H2O")
+  })
+
   it("글의 리터럴 $ 와 태그 꼴 글자는 IR 규약대로 이스케이프한다 — 수식·첨자로 읽히지 않는다", async () => {
     const result = await parse(await createPptx([{ xml: slide(sp(null, para("가격 $10 ~ $20, 닫는 태그 &lt;/sup&gt;"))) }]))
     assert.ok(result.success)

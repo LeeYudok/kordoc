@@ -3,7 +3,7 @@
 import { Command } from "commander"
 import { VERSION, sanitizeError, routeConsoleToStderr } from "./utils.js"
 import { convertFiles } from "./cli/convert.js"
-import { convertParallel, registerBatchWorker } from "./cli/batch.js"
+import { assertDistinctStems, convertParallel, registerBatchWorker } from "./cli/batch.js"
 import { registerDocCommands } from "./cli/commands-docs.js"
 import { registerGenerateCommands } from "./cli/commands-generate.js"
 import { registerRenderCommands } from "./cli/commands-render.js"
@@ -62,7 +62,12 @@ program
       } catch (err) {
         program.error(sanitizeError(err))
       }
-    } else if (!await convertFiles(files, opts)) process.exitCode = 1
+    } else {
+      if (opts.outDir && files.length > 1) {
+        try { assertDistinctStems(files) } catch (err) { program.error(sanitizeError(err)) }
+      }
+      if (!await convertFiles(files, opts)) process.exitCode = 1
+    }
   })
 
 registerDocCommands(program)

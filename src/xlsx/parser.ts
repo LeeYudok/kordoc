@@ -12,7 +12,7 @@ import type {
   ParseOptions, ParseWarning, ExtractedImage,
 } from "../types.js"
 import { KordocError, precheckZipSize, unzipLimitBytes, stripDtd } from "../utils.js"
-import { blocksToMarkdown, MAX_COLS } from "../table/builder.js"
+import { blocksToMarkdown, escapeLiteralDollar, MAX_COLS } from "../table/builder.js"
 import { escapeLiteralTags } from "../script-tags.js"
 import { sheetToBlocks, type SheetMerge } from "./sheet-blocks.js"
 
@@ -90,7 +90,7 @@ function collectRichText(root: Element): string {
       const el = children[i] as Element
       const local = el.localName || el.tagName?.replace(/^[^:]+:/, "") || ""
       if (local === "rPh") continue
-      if (local === "t") out += escapeLiteralTags(el.textContent ?? "") // 태그 모양 글자 "<sub>" 는 \<sub> (#122)
+      if (local === "t") out += escapeLiteralTags(escapeLiteralDollar(el.textContent ?? "")) // IR 규약 — 리터럴 $ 는 \$, "<sub>" 는 \<sub> (#122)
       else walk(el)
     }
   }

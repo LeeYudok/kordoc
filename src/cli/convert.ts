@@ -7,6 +7,8 @@ import { parse, detectFormat } from "../index.js"
 import type { ParseOptions } from "../types.js"
 import { toArrayBuffer, sanitizeError, classifyError } from "../utils.js"
 import { detectImageMime } from "../hwp5/images.js"
+import { toPlainMarkdown } from "../plain-markdown.js"
+import { toHtmlTables } from "../html-tables.js"
 
 export async function convertFiles(files: string[], opts: OptionValues, writeOutput: (text: string) => void = text => { process.stdout.write(text) }): Promise<boolean> {
   let failed = false
@@ -86,11 +88,10 @@ export async function convertFiles(files: string[], opts: OptionValues, writeOut
       // 문서 이름은 출력 파일 이름(-o) 또는 입력 파일 이름(-d)에서 확장자를 뺀 것. 링크에서는 공백·괄호만 퍼센트 인코딩한다
       const docStem = (opts.output && files.length === 1 ? basename(opts.output) : fileName).replace(/\.[^.]+$/, "")
       const imgLink = `images/${docStem.replace(/[ ()]/g, ch => encodeURIComponent(ch))}/`
-      if (savesImageFiles && result.images?.length && !imagesInlined) {
-        markdown = markdown
-          .replace(/!\[image\]\(image_/g, `![image](${imgLink}image_`)
-          .replace(/(<img\b[^>]*\bsrc=")image_/g, `$1${imgLink}image_`)
-      }
+      const linkImages = (text: string): string => savesImageFiles && result.images?.length && !imagesInlined
+        ? text.replace(/!\[image\]\(image_/g, `![image](${imgLink}image_`).replace(/(<img\b[^>]*\bsrc=")image_/g, `$1${imgLink}image_`)
+        : text
+      markdown = linkImages(markdown)
       // json 직렬화 — refsOnly면 이미지 바이트를 빼고 저장 경로만 남긴다.
       // 이미지가 수백 장인 문서는 base64 총량이 V8 문자열 한계를 넘어 RangeError 로
       // 터졌고, 그 예외가 성공 로그 뒤 비-JSON 출력이 되어 파이프라인이 깨졌다 (#65).
@@ -115,8 +116,15 @@ export async function convertFiles(files: string[], opts: OptionValues, writeOut
           process.stderr.write(`  ⚠️ 이미지 base64 인라인이 직렬화 한계를 넘어 파일 참조로 대체했습니다 (${result.images.length}개 → images/${docStem}/)\n`)
         }
       } else if (opts.format === "chunks") {
+        // 청크 글에도 본문 마크다운과 같은 후처리(평문·HTML 표·그림 경로) — 종전엔 IR 에서 바로 만들어 --plain·--html-tables 를 무시했다
         const { blocksToChunks } = await import("../chunks.js")
-        output = JSON.stringify(blocksToChunks(result.blocks), null, 2)
+        const chunks = blocksToChunks(result.blocks).map(c => {
+          let text = c.text
+          if (opts.plain) text = toPlainMarkdown(text)
+          if (opts.htmlTables) text = toHtmlTables(text)
+          return { ...c, text: linkImages(text) }
+        })
+        output = JSON.stringify(chunks, null, 2)
       } else {
         output = markdown
       }
@@ -142,13 +150,16 @@ export async function convertFiles(files: string[], opts: OptionValues, writeOut
       }
 
       if (opts.output && files.length === 1) {
+        if (resolve(opts.output) === absPath) throw new Error(`출력 경로가 입력 파일과 같습니다: ${fileName}`)
         writeFileSync(opts.output, output, "utf-8")
         if (!opts.silent) process.stderr.write(`  → ${opts.output}\n`)
         saveImages(resolve(opts.output, ".."))
       } else if (opts.outDir) {
         mkdirSync(opts.outDir, { recursive: true })
         const outExt = opts.format === "json" ? ".json" : opts.format === "chunks" ? ".chunks.json" : ".md"
-        const outPath = resolve(opts.outDir, fileName.replace(/\.[^.]+$/, outExt))
+        // 확장자 없는 입력("slides")도 이름 뒤에 붙인다 — 종전 replace 는 그대로 두어 -d 가 입력 폴더면 입력 파일을 덮어썼다
+        const outPath = resolve(opts.outDir, fileName.replace(/\.[^.]+$/, "") + outExt)
+        if (outPath === absPath) throw new Error(`출력 경로가 입력 파일과 같습니다: ${fileName}`)
         writeFileSync(outPath, output, "utf-8")
         if (!opts.silent) process.stderr.write(`  → ${outPath}\n`)
         saveImages(opts.outDir)

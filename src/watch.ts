@@ -134,7 +134,10 @@ export async function watchDirectory(options: WatchOptions): Promise<void> {
         return
       }
 
-      const output = format === "json" ? JSON.stringify(result, null, 2) : result.markdown
+      // 그림 바이트는 base64 로 (CLI --format json 과 같은 직렬화) — 그대로 두면 Uint8Array 가 {"0":137,…} 색인 객체가 된다
+      const output = format === "json"
+        ? JSON.stringify(result, (_key, value) => value instanceof Uint8Array ? Buffer.from(value).toString("base64") : value, 2)
+        : result.markdown
 
       if (outDir) {
         const outExt = format === "json" ? ".json" : ".md"

@@ -275,7 +275,7 @@ export function registerParseTools(server: McpServer): void {
         ].filter(Boolean).join(" | ")
 
         return {
-          content: [{ type: "text", text: `[${meta}]\n\n${result.markdown}` }],
+          content: [{ type: "text", text: capResponseText(`[${meta}]\n\n${result.markdown}`) }],
         }
       } catch (err) {
         return {
@@ -400,8 +400,8 @@ export function registerParseTools(server: McpServer): void {
     },
     async ({ file_path, granularity, include_table_cells }) => {
       try {
-        const { buffer } = await readValidatedFile(file_path, MAX_FILE_SIZE, PARSE_EXTENSIONS)
-        const parsed = await parse(buffer, { filePath: file_path })
+        const { buffer, resolved } = await readValidatedFile(file_path, MAX_FILE_SIZE, PARSE_EXTENSIONS)
+        const parsed = await parse(buffer, { filePath: resolved })
         if (!parsed.success) {
           return { content: [{ type: "text", text: `파싱 실패: ${parsed.error}` }], isError: true }
         }

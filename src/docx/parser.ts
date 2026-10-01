@@ -14,8 +14,8 @@ import type {
   CellContext, IRBlock, DocumentMetadata, InternalParseResult,
   ParseOptions, ParseWarning, ExtractedImage, InlineStyle,
 } from "../types.js"
-import { KordocError, precheckZipSize, unzipLimitBytes, stripDtd, sanitizeHref } from "../utils.js"
-import { blocksToMarkdown, buildTable } from "../table/builder.js"
+import { KordocError, partExtension, precheckZipSize, unzipLimitBytes, stripDtd, sanitizeHref } from "../utils.js"
+import { blocksToMarkdown, buildTable, escapeLiteralDollar } from "../table/builder.js"
 import { ommlElementToLatex, isDisplayMath } from "./equation.js"
 import { detectImageMime } from "../hwp5/images.js"
 
@@ -23,6 +23,8 @@ import { detectImageMime } from "../hwp5/images.js"
 const MAX_DECOMPRESS_SIZE = unzipLimitBytes(100 * 1024 * 1024)
 /** 그림·개체 파트 — images:false 면 풀지 않으니 ZIP 상한에서도 뺀다 (#108) */
 const MEDIA_PART_RE = /^word\/(?:media|embeddings)\//
+/** 그림이 아닌 미디어·OLE 임베드 — 파서가 어느 때도 풀지 않는다(ZIP 상한에서 늘 뺀다) */
+const NEVER_READ_RE = /^word\/(?:embeddings\/.*|media\/.+\.(?:mp4|m4v|mov|avi|wmv|mpe?g|mkv|webm|mp3|wav|m4a|wma|aac|ogg|flac|mid|bin))$/i
 
 // ─── XML 헬퍼 ──────────────────────────────────────────
 
@@ -279,7 +281,7 @@ function parseFootnotes(xml: string): Map<string, string> {
       const runs = findElements(p, "r")
       for (const r of runs) {
         const tElements = getChildElements(r, "t")
-        for (const t of tElements) texts.push(escapeLiteralTags(t.textContent ?? ""))
+        for (const t of tElements) texts.push(escapeLiteralTags(escapeLiteralDollar(t.textContent ?? "")))
       }
     }
     notes.set(id, texts.join("").trim())
@@ -330,7 +332,8 @@ function extractRun(r: Element): RunResult {
   // t/br/cr/tab/sym을 문서 순서대로 수집 — br·cr은 줄바꿈, tab은 공백 (무시하면 텍스트 융합), sym은 기호 글꼴 글자(°·×·μ, #105)
   let text = ""
   for (const el of effectiveChildElements(r)) {
-    if (matchesLocal(el, "t")) text += escapeLiteralTags(el.textContent ?? "") // 태그 모양 글자 "<sub>" 는 \<sub> (#122)
+    // IR 규약 — 리터럴 $ 는 \$ (OMML 수식이 $…$ 라 그대로 두면 "$10 ~ $20" 이 수식이 된다), 태그 모양 글자 "<sub>" 는 \<sub> (#122)
+    if (matchesLocal(el, "t")) text += escapeLiteralTags(escapeLiteralDollar(el.textContent ?? ""))
     else if (matchesLocal(el, "br") || matchesLocal(el, "cr")) text += "\n"
     else if (matchesLocal(el, "tab")) text += " "
     else if (matchesLocal(el, "sym")) text += symbolChar(getAttr(el, "font"), getAttr(el, "char"))
@@ -775,7 +778,7 @@ async function buildImageMap(
       let data: Uint8Array | null = null
       if (readBytes) data = await imgFile.async("uint8array")
       imgIdx++
-      const ext = imgPath.split(".").pop()?.toLowerCase() ?? "png"
+      const ext = partExtension(imgPath)
       const mimeMap: Record<string, string> = {
         png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
         gif: "image/gif", bmp: "image/bmp", wmf: "image/wmf", emf: "image/emf",
@@ -909,7 +912,7 @@ export async function parseDocxDocument(
 ): Promise<InternalParseResult> {
   // ZIP bomb 사전 검사
   const readImages = options?.images !== false
-  precheckZipSize(buffer, MAX_DECOMPRESS_SIZE, undefined, { re: MEDIA_PART_RE, skip: !readImages })
+  precheckZipSize(buffer, MAX_DECOMPRESS_SIZE, undefined, { re: MEDIA_PART_RE, skip: !readImages, never: NEVER_READ_RE })
 
   const zip = await JSZip.loadAsync(buffer)
   const warnings: ParseWarning[] = []

@@ -108,8 +108,9 @@ export function precheckZipSize(
   buffer: ArrayBuffer,
   maxUncompressedSize = 256 * 1024 * 1024, // parser-shared MAX_DECOMPRESS_SIZE 와 동기
   maxEntries = 500,
-  /** 그림·개체 파트(엔트리 이름 re) — skip 이면 합계에서 뺀다(파서가 풀지 않는다), 아니면 한도 초과 메시지에 크기를 적는다 (#108) */
-  media?: { re: RegExp; skip: boolean },
+  /** 그림·개체 파트(엔트리 이름 re) — skip 이면 합계에서 뺀다(파서가 풀지 않는다), 아니면 한도 초과 메시지에 크기를 적는다 (#108).
+   *  never — 파서가 어느 때도 풀지 않는 파트(동영상·음성·OLE 임베드)는 늘 뺀다: 110MB 동영상 하나로 발표 자료가 통째 거부됐다 */
+  media?: { re: RegExp; skip: boolean; never?: RegExp },
 ): { totalUncompressed: number; entryCount: number } {
   try {
     const data = new DataView(buffer)
@@ -142,8 +143,9 @@ export function precheckZipSize(
       // 이름이 버퍼 밖이면 그림 파트로 치지 않는다(합계에서 빠지지 않게)
       const isMedia = !!media && pos + 46 + nameLen <= len &&
         media.re.test(new TextDecoder().decode(new Uint8Array(buffer, pos + 46, nameLen)))
-      if (isMedia) mediaUncompressed += size
-      if (!(isMedia && media?.skip)) totalUncompressed += size
+      const never = isMedia && !!media?.never && media.never.test(new TextDecoder().decode(new Uint8Array(buffer, pos + 46, nameLen)))
+      if (isMedia && !never) mediaUncompressed += size
+      if (!(isMedia && (media?.skip || never))) totalUncompressed += size
       pos += 46 + nameLen + extraLen + commentLen
     }
 
@@ -256,4 +258,10 @@ export function classifyError(err: unknown): ErrorCode {
   if (msg.includes("섹션") && (msg.includes("찾을 수 없") || msg.includes("없음"))) return "NO_SECTIONS"
   if (msg.includes("시그니처") || msg.includes("복구할 수 없")) return "CORRUPTED"
   return "PARSE_ERROR"
+}
+
+/** ZIP 파트 경로의 확장자 — 마지막 경로 조각에서만, 없으면 "bin". "ppt/media.v2/image1" 의 "v2/image1" 이 그림 파일 이름에 들어가
+ *  저장 경로가 깨졌다 */
+export function partExtension(path: string): string {
+  return (/\.([A-Za-z0-9]{1,5})$/.exec(path.slice(path.lastIndexOf("/") + 1))?.[1] ?? "bin").toLowerCase()
 }
