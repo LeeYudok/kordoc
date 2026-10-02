@@ -83,4 +83,6 @@ program.hook("preAction", (_program, action) => {
   if (action.name() !== "setup") routeConsoleToStderr()
 })
 
-program.parse()
+// 출처를 node 로 고정 — 정하지 않으면 commander 가 process.versions.electron 을 보고 Electron 앱 방식(argv[1]부터)으로
+// 읽어, Electron 을 node 로 띄운(ELECTRON_RUN_AS_NODE) 데스크톱 앱에서 cli.js 자신이 입력 파일로 잡힌다
+program.parse(process.argv, { from: "node" })
