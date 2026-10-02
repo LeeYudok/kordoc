@@ -35,6 +35,24 @@ test("plugin-1: fill 서브커맨드 뒤 -o 가 루트에 흡수되지 않고 �
   }
 })
 
+test("fill -j 는 UTF-8 BOM 으로 시작하는 JSON 도 읽는다 (Windows 메모장·PowerShell 저장본)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "kordoc-fill-bom-"))
+  try {
+    const out = join(dir, "out.hwpx")
+    const vals = join(dir, "vals.json")
+    writeFileSync(vals, "﻿" + JSON.stringify({ 성명: "홍길동" }))
+    const r = spawnSync(
+      process.execPath,
+      ["--import", "tsx", CLI, "fill", DUMMY, "-j", vals, "-o", out],
+      { encoding: "utf-8", timeout: 30000 },
+    )
+    assert.equal(r.status, 0, `exit 0 이어야 함 — stderr: ${r.stderr}`)
+    assert.ok(existsSync(out), "결과 파일이 생성되어야 함")
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test("plugin-5: watch 서브커맨드 뒤 -d 가 루트에 흡수되지 않고 outDir 로 전달된다", async () => {
   const inDir = mkdtempSync(join(tmpdir(), "kordoc-watch-in-"))
   const outDir = mkdtempSync(join(tmpdir(), "kordoc-watch-out-"))

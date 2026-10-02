@@ -75,7 +75,7 @@ export const formatProfileSchema = z.object({
 export function parseFormatProfileJson(text: string): FormatProfile {
   let raw: unknown
   try {
-    raw = JSON.parse(text)
+    raw = JSON.parse(text.replace(/^﻿/, "")) // Windows 메모장·PowerShell 저장본의 UTF-8 BOM
   } catch (e) {
     throw new KordocError(`프로필 JSON 파싱 실패: ${e instanceof Error ? e.message : String(e)}`)
   }
