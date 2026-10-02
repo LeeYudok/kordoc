@@ -9,10 +9,26 @@ import { CLIP_TABLES, FRAME_TITLE_BLOCKS, TABLE_COLXS } from "./table-meta.js"
 
 /** Native frame bounds survive paragraph reflow and later OCR-region insertion. */
 export const FRAME_READING_UNITS = new WeakMap<IRBlock, { blocks: IRBlock[]; bbox: BoundingBox }>()
+const FRAME_SOURCE_BOUNDS = new WeakMap<IRBlock, BoundingBox>()
 export function recordFrameReadingUnit(blocks: IRBlock[], bbox: BoundingBox): void {
+  for (const block of blocks) FRAME_SOURCE_BOUNDS.set(block, bbox)
   if (blocks.length < 2) return
   const unit = { blocks, bbox }
   for (const block of blocks) FRAME_READING_UNITS.set(block, unit)
+}
+
+/** Paragraph reflow must not change the occupied rectangles used to detect
+ * columns. Each native frame contributes its source bounds once, even when
+ * its only paragraph is shorter or it contains several short clauses. */
+export function frameLayoutBoxes(blocks: IRBlock[]): BoundingBox[] {
+  const boxes: BoundingBox[] = [], seen = new Set<BoundingBox>()
+  for (const block of blocks) {
+    const frame = FRAME_SOURCE_BOUNDS.get(block)
+    if (frame) {
+      if (!seen.has(frame)) { boxes.push(frame); seen.add(frame) }
+    } else if (block.bbox) boxes.push(block.bbox)
+  }
+  return boxes
 }
 
 /** Paragraphs share a native one-cell box's reading unit. A larger confirmed

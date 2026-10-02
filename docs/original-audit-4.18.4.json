@@ -83,7 +83,8 @@
   },
   "residuals": [
     "PDF55 third penalty table still contains its full-width caption/legal-notes rows; all 9 target/value relations survive.",
-    "PDF68 source frame preserves two separate prose boxes as one 3x1 frame with its nested 2x4 table; semantic data cells survive."
+    "PDF68 source frame preserves two separate prose boxes as one 3x1 frame with its nested 2x4 table; semantic data cells survive.",
+    "PDF71 case-box caption and PDF73 flowchart caption/branch ordering retain existing residuals; independent original-page inspection confirms the V6 paragraph changes preserve all body text and improve grouping."
   ],
   "visual": {
     "sourcePDFRenderedAndInspected": true,
@@ -98,18 +99,30 @@
     "pngBytesPreserved": 8
   },
   "finalVerification": {
-    "revision": 5,
+    "revision": 7,
     "nativePageSnapshots": 140,
     "defaultSelectedPageSnapshots": 41,
     "wholeDocumentPages": 140,
-    "sourceFilesUnchanged": 559,
+    "sourceFilesUnchanged": 561,
     "distFilesUnchanged": 142,
     "odlReferenceFilesUnchanged": 425,
     "tests": {
-      "total": 3175,
-      "passed": 3170,
+      "total": 3181,
+      "passed": 3176,
       "failed": 0,
       "skipped": 5
     }
+  },
+  "additionalCorpusInvestigation": {
+    "documents": 21,
+    "scope": "17 PDF coverage changes plus the failing reading-order document and other order-decreased documents",
+    "characterMultisetsExact": 15,
+    "repeatedHeaderChanges": 5,
+    "captionMetadataMovedToParagraph": 1,
+    "newUniqueBodyTextDeletionFound": false,
+    "readingOrderRegressionFound": true,
+    "readingOrderRegressionRecoveryPendingFinalBuild": false,
+    "targetReadingOrderRecoveredToBaseline": 0.89362,
+    "fullReleaseGatePending": true
   }
 }

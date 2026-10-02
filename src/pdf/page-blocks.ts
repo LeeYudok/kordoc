@@ -40,7 +40,7 @@ import { detectTextBoxTables } from "./text-box-table.js"
 import { bridgeSkippedRowVerticals } from "./vertical-bridge.js"
 import { splitSidebarTitleRegion, splitTrailingColumnRegion, panelBlocks } from "./local-regions.js"
 import { pushLineParagraphs } from "./paragraph-lines.js"
-import { buildFrameCellBlocks, takePendingNested, recordFrameTitle, groupFrameParagraphUnits, recordFrameReadingUnit, FRAME_RECT_TOL } from "./frame-cell-blocks.js"
+import { buildFrameCellBlocks, takePendingNested, recordFrameTitle, groupFrameParagraphUnits, recordFrameReadingUnit, frameLayoutBoxes, FRAME_RECT_TOL } from "./frame-cell-blocks.js"
 import { groupFlowBoxUnits } from "./flow-boxes.js"
 import { extendNestedShadedHeaders } from "./nested-shaded-headers.js"
 import { isChartTable, isExamLayoutTable, isFormulaTable, isTableOfContents, tocBlock } from "./table-roles.js"
@@ -706,10 +706,8 @@ function extractBlocksWithGrids(
   // 시험지처럼 텍스트가 대부분 표에 흡수된 페이지도 표 bbox만으로 판단된다.
   {
     const rects: ColRect[] = remaining.map(i => ({ x: i.x, y: i.y, w: i.w, h: i.h > 0 ? i.h : i.fontSize }))
-    for (const b of blocks) {
-      // 글 없는 클립 표 조각(쪽 넘김 잇기용으로만 남긴 것)은 지면 판단에 넣지 않는다
-      if (b.bbox && !(b.table && EMPTY_PARTS.has(b.table))) rects.push({ x: b.bbox.x, y: b.bbox.y, w: b.bbox.width, h: b.bbox.height })
-    }
+    // 글 없는 클립 조각은 빼고, 문단으로 푼 닫힌 상자는 원본 영역 하나로 지면을 판정한다.
+    for (const b of frameLayoutBoxes(blocks.filter(b => !(b.table && EMPTY_PARTS.has(b.table))))) rects.push({ x: b.x, y: b.y, w: b.width, h: b.height })
     gutterX = detectColumnGutter(rects) ?? findRuledColumnDivider(
       blocks.filter(b => b.type === "table" && b.bbox && b.table && !EMPTY_PARTS.has(b.table))
         .map(b => ({ x: b.bbox!.x, y: b.bbox!.y, w: b.bbox!.width, h: b.bbox!.height })),
