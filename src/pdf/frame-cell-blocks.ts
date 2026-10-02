@@ -31,6 +31,59 @@ export function frameLayoutBoxes(blocks: IRBlock[]): BoundingBox[] {
   return boxes
 }
 
+/** A frame gutter must not cut a continuous full-width title or prose line.
+ * Independent columns retain their larger gap; only touching text runs and
+ * their immediately following indented continuation share a paragraph unit. */
+export function takeFrameSpanningText(items: NormItem[], cutX: number, pageNum: number, lex?: WrapLexicon): IRBlock[] {
+  let minX = Infinity, maxR = -Infinity
+  for (const item of items) { minX = Math.min(minX, item.x); maxR = Math.max(maxR, item.x + item.w) }
+  const span = maxR - minX
+  const rows = groupByY([...items].sort((a, b) => b.y - a.y || a.x - b.x)).map(line => {
+    const runs: NormItem[][] = []
+    for (const item of [...line].sort((a, b) => a.x - b.x)) {
+      const run = runs[runs.length - 1], prev = run?.[run.length - 1]
+      if (prev && item.x - (prev.x + prev.w) <= Math.max(prev.fontSize, item.fontSize) * 0.6) run.push(item)
+      else runs.push([item])
+    }
+    return runs
+  })
+  const taken = new Set<NormItem>(), blocks: IRBlock[] = []
+  for (let r = 0; r < rows.length; r++) for (const run of rows[r]) {
+    if (taken.has(run[0]) || run[0].x >= cutX || Math.max(...run.map(i => i.x + i.w)) <= cutX) continue
+    const lines = [run], fs = Math.max(...run.map(i => i.fontSize))
+    const left = run[0].x, right = Math.max(...run.map(i => i.x + i.w))
+    if (right - left < span * 0.75) continue
+    let prevY = run[0].y
+    for (let next = r + 1; next < rows.length && rows[next].length === 1; next++) {
+      const tail = rows[next][0], y = tail[0].y
+      if (taken.has(tail[0]) || prevY - y > fs * 1.8 || tail[0].x < left - 1 || tail[0].x > left + fs * 2 ||
+          tail.some(i => Math.abs(i.fontSize - fs) > fs * 0.15) || Math.max(...tail.map(i => i.x + i.w)) > right + 1) break
+      lines.push(tail)
+      prevY = y
+    }
+    for (const line of lines) for (const item of line) taken.add(item)
+    pushLineParagraphs(blocks, mergeSuperscriptLines(lines), pageNum, lex)
+  }
+  let keep = 0
+  for (const item of items) if (!taken.has(item)) items[keep++] = item
+  items.length = keep
+  return blocks
+}
+
+/** An XY-Cut unit may not span a full-width paragraph's reading boundary. */
+export function frameColumnTextBands(items: NormItem[], spanning: IRBlock[], cutX: number): NormItem[][] {
+  const tops = spanning.filter(b => b.bbox).map(b => b.bbox!.y + b.bbox!.height).sort((a, b) => b - a)
+  const bands = new Map<number, NormItem[][]>()
+  for (const item of items) {
+    let band = 0
+    while (band < tops.length && tops[band] > item.y + item.h) band++
+    const sides = bands.get(band) ?? [[], [], []]
+    sides[item.x + item.w <= cutX ? 0 : item.x >= cutX ? 2 : 1].push(item)
+    bands.set(band, sides)
+  }
+  return [...bands].sort((a, b) => a[0] - b[0]).flatMap(([, sides]) => sides.filter(side => side.length))
+}
+
 /** Paragraphs share a native one-cell box's reading unit. A larger confirmed
  * flow band takes precedence; never split it to reconstruct a smaller frame. */
 export function groupFrameParagraphUnits(units: IRBlock[][], frames: IRBlock[][]): IRBlock[][] {
