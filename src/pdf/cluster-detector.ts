@@ -190,6 +190,8 @@ export function sideTabGlyphs<T extends Pick<ClusterItem, "text" | "x" | "y" | "
     if (c) c.push(it)
     else cols.push([it])
   }
+  // 기둥 후보 — 글자 수·글자/숫자 비율·세로 간격만 본다
+  const cands: { col: T[]; fs: number }[] = []
   for (const col of cols) {
     if (col.length < SIDE_TAB_MIN) continue
     // 책·장 이름은 글자·숫자다 — 글머리 기호 기둥(▷·◦·□, 쪽 맨 왼쪽 목록)은 탭이 아니다
@@ -197,6 +199,28 @@ export function sideTabGlyphs<T extends Pick<ClusterItem, "text" | "x" | "y" | "
     col.sort((a, b) => b.y - a.y)
     const fs = [...col.map(i => i.fontSize)].sort((a, b) => a - b)[col.length >> 1]
     if (col.slice(1).some((it, k) => col[k].y - it.y > fs * 3)) continue
+    cands.push({ col, fs })
+  }
+  // 두 줄로 세운 탭("구급차의 의료장비·" | "구급의약품 및 통신장비") — 바로 붙은 기둥 둘 이상이 높이가 겹치면 한 띠로 본다.
+  // 따로 보면 서로가 "쪽의 다른 글"이 되어 바깥 판정(outside)을 둘 다 놓치고, 탭 글자가 클러스터 표의 끝 열("운 태· 행")이 됐다
+  const bands: { col: T[]; fs: number }[] = []
+  for (const c of cands.sort((a, b) => a.col[0].x - b.col[0].x)) {
+    const last = bands[bands.length - 1]
+    if (last) {
+      const lastRight = Math.max(...last.col.map(i => i.x + i.w))
+      const gap = Math.min(...c.col.map(i => i.x)) - lastRight
+      const lTop = Math.max(...last.col.map(i => i.y)), lBot = Math.min(...last.col.map(i => i.y))
+      const cTop = c.col[0].y, cBot = c.col[c.col.length - 1].y
+      if (gap <= Math.max(last.fs, c.fs) * 1.5 && Math.min(lTop, cTop) >= Math.max(lBot, cBot)) {
+        last.col.push(...c.col)
+        last.fs = Math.max(last.fs, c.fs)
+        continue
+      }
+    }
+    bands.push({ col: [...c.col], fs: c.fs })
+  }
+  for (const { col, fs } of bands) {
+    col.sort((a, b) => b.y - a.y)
     const members = new Set(col)
     const top = col[0].y + fs, bottom = col[col.length - 1].y - fs
     const others = items.filter(i => !members.has(i) && i.y <= top && i.y >= bottom)

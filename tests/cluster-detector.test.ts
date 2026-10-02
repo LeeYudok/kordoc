@@ -155,6 +155,16 @@ describe("sideTabGlyphs — 쪽 옆 세로 색인 탭", () => {
     assert.equal(sideTabGlyphs([...label, ...body]).size, 0)
   })
 
+  it("두 줄로 세운 탭(나란히 붙은 기둥 둘)도 탭이고, 옆 본문 줄을 표로 묶지 않는다", () => {
+    // 책자 오른쪽 띠: "구급차의 의료장비·" | "구급의약품 및 통신장비" 를 6pt 간격 두 기둥으로 (구급차 관리·운용 안내 제5판 31쪽 꼴)
+    const outer = [..."구급차의의료장비·"].map((ch, k) => item(ch, 441, 400 - k * 7, 6, 6))
+    const inner = [..."구급의약품및통신장비"].map((ch, k) => item(ch, 433, 400 - k * 7, 6, 6))
+    const lines: ClusterItem[] = []
+    for (let k = 0; k < 6; k++) lines.push(item(`본문 문장 ${k + 1} 줄은 쪽 오른끝 가까이까지 이어진다`, 70, 404 - k * 12, 330, 10))
+    assert.equal(sideTabGlyphs([...outer, ...inner, ...lines]).size, outer.length + inner.length)
+    assert.deepEqual(detectClusterTables([...outer, ...inner, ...lines], 1), [])
+  })
+
   it("표의 번호 열(줄마다 다른 칸과 같은 줄)은 탭이 아니다", () => {
     const rows: ClusterItem[] = []
     for (let k = 0; k < 8; k++) {
