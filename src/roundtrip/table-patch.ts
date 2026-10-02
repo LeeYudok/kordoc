@@ -20,6 +20,7 @@ import {
   type MdUnit, type HtmlRowInfo, type MappedCell,
 } from "./markdown-units.js"
 import { patchTableRows, type InsertCell } from "./table-rows.js"
+import { buildEmbeddedLineSplices } from "./embedded-line-patch.js"
 
 /** 표 패치에 필요한 컨텍스트 (patcher.ts PatchCtx의 부분집합) */
 export interface TablePatchCtx {
@@ -381,6 +382,19 @@ export function applyCellEdit(
   // 원본 마크다운 라인 수 ≠ 실제 문단 수면 셀 텍스트에 리터럴 '<br>'(또는 문단 내
   // 강제 줄바꿈)이 있다는 뜻 — 라인↔문단 매핑이 모호하므로 정직하게 skip
   if (origLineCount !== undefined && nonEmpty.length > 0 && origLineCount !== nonEmpty.length) {
+    // 실제 줄바꿈만 있는 단일 문단은 원문 줄 경계를 유지한 정밀 치환으로 처리한다.
+    const target = nonEmpty.length === 1 ? nonEmpty[0] : undefined
+    const sourceLines = target?.text.split(/\r\n|\r|\n/).map(line => line.trim())
+    const renderedLines = unescapeGfmCell(stripCellTokens(before)).split("\n").map(line => line.trim())
+    if (target && sourceLines?.length === origLineCount && sourceLines.every((line, i) => line === renderedLines[i])
+      && !extractCellTokens(before)) {
+      const xml = ctx.scans[target.sectionIndex]?.xml
+      const precise = xml === undefined ? null : buildEmbeddedLineSplices(target, xml, newLines)
+      if (precise?.length) {
+        ctx.sectionSplices[target.sectionIndex].push(...precise)
+        return 1
+      }
+    }
     return skip("셀 줄 경계 매핑 모호 (리터럴 <br>/문단 내 줄바꿈) — 미지원")
   }
   const splices: SpliceEdit[] = []

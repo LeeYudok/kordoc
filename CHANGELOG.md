@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.8] - 2026-10-02
+
+### Fixed
+
+- HWPX 왕복 패치: 단일 셀 문단 안에 실제 CRLF·CR·LF 줄바꿈이 있을 때 같은 줄 수의 글 편집이 건너뛰어지던 제한을 해결한다. 문자 참조를 고려한 원문 좌표로 변경 범위만 치환하여 줄바꿈 표기·미편집 글·run 구조를 보존한다. 리터럴 `<br>`·빈 줄·줄 추가/삭제·내부 태그와 모호한 매핑은 기존 안전 거부를 유지한다.
+
 ## [4.18.7] - 2026-10-02
 
 ### Fixed
