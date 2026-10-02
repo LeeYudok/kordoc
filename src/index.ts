@@ -62,7 +62,7 @@ export async function parse(input: string | ArrayBuffer | Buffer, options?: Pars
       const msg = err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT"
         ? `파일을 찾을 수 없습니다: ${input}`
         : `파일 읽기 실패: ${input}`
-      return { success: false, fileType: "unknown", error: msg, code: "PARSE_ERROR" }
+      return { success: false, fileType: "unknown", error: msg, code: classifyError(err) }
     }
   } else if (Buffer.isBuffer(input)) {
     buffer = toArrayBuffer(input)

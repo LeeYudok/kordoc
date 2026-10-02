@@ -3,11 +3,13 @@
  * IR 타입을 늘리지 않으려고 표 객체를 키로 한 약한 참조 표에 둔다 (공개 IR 에는 나가지 않는다).
  */
 
-import type { IRCell, IRTable } from "../types.js"
+import type { IRBlock, IRCell, IRTable } from "../types.js"
 import type { LineSegment } from "./line-types.js"
 
 /** 한컴 셀 클립으로 셀 기하가 확정된 표 — 클립 묶음이 이미 표 경계다 */
 export const CLIP_TABLES = new WeakSet<IRTable>()
+/** 번호 칩·빈 간격·한 줄 제목으로 확인된 장식 상자 — keep 원본 표를 남기고 출력에서만 문단으로 편다 */
+export const FRAME_TITLE_BLOCKS = new WeakMap<IRTable, IRBlock>()
 /** 표의 열 경계 x (그리드 좌표, 오름차순) */
 export const TABLE_COLXS = new WeakMap<IRTable, number[]>()
 /** 클립 표 첫 조각(첫 쪽)의 행 경계 y (위→아래 내림차순) — 쪽 넘김으로 밀려난 첫 행 묶음의 높이를 잰다 (table-parts) */

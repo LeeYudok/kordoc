@@ -29,6 +29,9 @@ import { WrapLexicon, joinPageBreakWraps } from "./line-wrap.js"
 import { mergeCrossPageTables } from "./table-parts.js"
 import { mergeContinuedCells } from "./cell-continuation.js"
 import { trimTrailingEmptyTableCols } from "./table-trim.js"
+import { selectionContextPages, marginContextBlocks } from "./selection-context.js"
+import { restoreImageBullets } from "./image-bullets.js"
+import { detectRightArrowRegions } from "./flow-boxes.js"
 import { remapSymbolFontItems } from "./symbol-fonts.js"
 import { wrapEquationRuns } from "./equation-runs.js"
 import { remapControlGlyphs, restoreNamedGlyphs } from "./glyph-names.js"
@@ -170,6 +173,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     // image 블록은 페이지 경계 표 병합(mergeCrossPageTables)의 인접성을 깨지 않도록
     // 페이지별로 모아뒀다가 병합 후 주입한다.
     const imageState = createPdfImageState()
+    const imageBulletShapes = new Map<string, boolean>()
+    const imageArrowDirections = new Map<string, -1 | 0 | 1>()
     const extractedImages: ExtractedImage[] = []
     const pageImageBlocks = new Map<number, IRBlock[]>()
     // 쪽을 넘는 칸 — 앞 쪽 마지막 칸을 다음 쪽 클립 판정에 넘긴다 (clip-cells continues, 문서 단계 mergeContinuedCells)
@@ -180,6 +185,22 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     const wrapLexicon = new WrapLexicon()
     // 쪽마다 본문 위첨자 각주 참조 표시("권고사항⁶⁾") — 쪽 아래 각주를 참조 문단으로 옮길 때 쓴다 (footnotes.ts)
     const noteMarks = new Map<number, PageNotes>()
+
+    // A selected page alone cannot establish the existing three-page repetition rule.
+    // Read only nearby text margins; context never enters output, OCR, counts or progress.
+    const headerContext: IRBlock[] = []
+    if (pageFilter && options?.removeHeaderFooter !== false && pageFilter.size < effectivePageCount) {
+      for (const number of selectionContextPages(pageFilter, effectivePageCount)) {
+        let contextPage: Awaited<ReturnType<typeof doc.getPage>> | undefined
+        try {
+          contextPage = await doc.getPage(number)
+          const content = await contextPage.getTextContent()
+          pageHeights.set(number, contextPage.view[3] - contextPage.view[1])
+          headerContext.push(...marginContextBlocks(content.items as PdfTextItem[], number, contextPage.view))
+        } catch { /* unavailable context leaves selected content intact */ }
+        finally { contextPage?.cleanup() }
+      }
+    }
 
     let parsedPages = 0
     for (let i = 1; i <= effectivePageCount; i++) {
@@ -248,6 +269,7 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
         // 심볼 폰트(Wingdings) 글리프 복원
         remapSymbolFontItems(visible, (loadedName) => fontObj(loadedName)?.name)
         remapControlGlyphs(visible, differencesOf)
+        await restoreImageBullets(visible, page, opList.fnArray, opList.argsArray, imageBulletShapes)
         // 글꼴 id(g_d0_fN)는 글꼴 객체마다 다르다. 크롬은 한 서체를 Type3 글꼴 객체 여러 개(256자마다 새 객체)로 쪼개
         // 같은 본문이 "다른 서체"로 보여 제목으로 승격된다(#89). Type3 는 서브셋 접두(ABCDEF+)를 뗀 서체 이름으로 맞춘다.
         // 다른 글꼴은 같은 이름의 서브셋 객체 차이가 굵게 흉내 낸 제목의 유일한 증거일 수 있어 그대로 둔다(ODL 181 Calibri).
@@ -310,7 +332,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
         const stamp = marginStamp(visible)
         const flow = stamp.length ? visible.filter(it => !stamp.includes(it)) : visible
         // 가로 쪽 두 쪽 모아찍기는 왼쪽 쪽 → 오른쪽 쪽
-        const pageBlocks = orderTwoUpPage(extractPageBlocksWithLines(flow, i, opList, pageW, pageH, undefined, options?.tables !== false, carry, wrapLexicon), pageW, pageH)
+        const rightArrows = options?.tables !== false ? await detectRightArrowRegions(page, opList.fnArray, opList.argsArray, imageArrowDirections) : []
+        const pageBlocks = orderTwoUpPage(extractPageBlocksWithLines(flow, i, opList, pageW, pageH, undefined, options?.tables !== false, carry, wrapLexicon, rightArrows), pageW, pageH)
         if (stamp.length) pageBlocks.unshift({ type: "paragraph", text: [...stamp].sort((a, b) => a.y - b.y).map(it => it.text).join(" "), pageNumber: i })
         for (const b of pageBlocks) blocks.push(b)
 
@@ -472,8 +495,8 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
     }
 
     // 머리글/바닥글 필터링 (기본 ON — 명시적 false일 때만 비활성화)
-    if (options?.removeHeaderFooter !== false && parsedPageCount >= 3) {
-      const removed = removeHeaderFooterBlocks(blocks, pageHeights, warnings, noteMarks)
+    if (options?.removeHeaderFooter !== false && (parsedPageCount >= 3 || headerContext.length)) {
+      const removed = removeHeaderFooterBlocks(blocks, pageHeights, warnings, noteMarks, false, headerContext)
       // 필터링된 블록 제거 (뒤에서부터 삭제)
       for (let ri = removed.length - 1; ri >= 0; ri--) {
         blocks.splice(removed[ri], 1)
@@ -546,8 +569,12 @@ export async function parsePdfDocument(buffer: ArrayBuffer, options?: ParseOptio
 
     // 메트릭 수집 끝났으니 블록 텍스트의 C0/C1 제어문자(NUL 등) 정리
     sanitizeBlockControlChars(blocks)
-    // 1×1 표(중첩 없음)는 줄마다 문단으로 — 셀 줄바꿈이 mergeKoreanLines 에 붙지 않게 (v4.12.3)
+    // 1×1 상자는 원문 기하에서 얻은 문단·중첩표 순서로 편다. keep 모드의 원 구조는 반환 blocks 에 남긴다.
     let outBlocks = splitSingleCellTables(blocks)
+    if (options?.layoutTables !== "keep") {
+      blocks.length = 0
+      for (const block of outBlocks) blocks.push(block)
+    }
     // 문서 끝에 모인 미주(해설)를 본문 참조 자리 뒤로 — HWPX·HWP5 출력과 같은 순서
     // 쪽 아래 각주를 참조 문단 끝 " (주: …)" 로 — HWPX·HWP5 출력과 같은 자리
     outBlocks = inlineFootnotes(outBlocks, noteMarks)

@@ -696,7 +696,7 @@ function sameHeadShape(a: IRCell[] | undefined, b: IRCell[] | undefined): boolea
   let tall = false
   for (let c = 0; c < a.length; c++) {
     if (a[c].colSpan !== b[c].colSpan || a[c].rowSpan !== b[c].rowSpan) return false
-    if (a[c].rowSpan >= 2 && a[c].text.trim()) tall = true
+    if (a[c].rowSpan >= 2 && a[c].text.trim() && b[c].text.trim()) tall = true
   }
   return tall
 }
@@ -755,10 +755,8 @@ export function mergeCrossPageTables(blocks: IRBlock[], pageHeights?: Map<number
     // 그 깊이를 알린다 — "구분|장비분류|구급차 구분" 위, "특수구급차|일반구급차" 아래) 그 깊이까지 본다. 첫 행만 빼면 둘째 머리 행이
     // 본문 행으로 남아 첫 행 세로 병합 자리가 빈 칸으로 드러났다(구급차 관리·운용 안내 [별표 16] 30~31쪽)
     let currCells = curr.table.cells
-    const headDepth = Math.max(1, ...(prev.table.cells[0] ?? []).map(c => c.rowSpan || 1))
-    let headRows = 0
-    while (headRows < Math.min(headDepth, currCells.length - 1, prev.table.cells.length) &&
-        rowTextsEqual(prev.table.cells[headRows], currCells[headRows])) headRows++
+    const headRows = repeatedHeaderRows(prev.table, curr.table)
+    if (headRows < 0) continue
     if (headRows) currCells = currCells.slice(headRows)
     // 앞 조각 마지막 행에서 끝나는 세로 병합 칸(상위 항목 "나. 응급 처치용 의료장비")이 다음 쪽 조각 첫 행에서 글 없는 세로 병합 칸으로
     // 다시 그려졌으면 같은 칸의 이어짐이다 — 앞 칸 병합을 늘리고 뒤 빈 칸은 덮인 자리로 둔다. 글 없는 한 행 칸은 증거로 쓰지 않는다
@@ -1060,21 +1058,48 @@ function chainHead(blocks: IRBlock[], i: number, pageHeights?: Map<number, numbe
 }
 
 /** 쪽 넘김 조각 경계에서 끊긴 세로 병합 칸 잇기 — 앞 조각 끝 행까지 걸친 글 있는 병합 원점과 같은 열·폭의 뒤 조각 첫 행 빈 병합 칸 */
+const ROW_CONTINUATIONS = new WeakMap<IRCell, IRCell>()
+
 function continueRowSpans(prevCells: IRCell[][], currCells: IRCell[][]): void {
   const first = currCells[0]
   const last = prevCells.length
   for (let c = 0; c < first.length; c++) {
     const cell = first[c]
-    if (cell.text.trim() || (cell.rowSpan || 1) < 2 || cell.blocks?.length) continue
+    if (hasContent(cell) || (cell.rowSpan || 1) < 2) continue
     let anchor: IRCell | undefined
     for (let r = last - 1; r >= 0 && !anchor; r--) {
       const a = prevCells[r]?.[c]
-      if (a && a.text.trim() && r + (a.rowSpan || 1) === last && (a.colSpan || 1) === (cell.colSpan || 1)) anchor = a
+      if (a && r + (a.rowSpan || 1) === last && (a.colSpan || 1) === (cell.colSpan || 1)
+        && (hasContent(a) || a.rowSpan >= 2)) anchor = a
     }
     if (!anchor) continue
-    anchor.rowSpan = (anchor.rowSpan || 1) + cell.rowSpan
-    first[c] = { text: "", colSpan: 1, rowSpan: 1 }
+    // 역순 이음에서 가운데 쪽의 빈 원점은 아직 이름표를 모른다. 실제 쪽 경계의 조각 관계만 보관하고 이름표를 찾았을 때 잇는다.
+    if (!hasContent(anchor)) { ROW_CONTINUATIONS.set(anchor, cell); continue }
+    for (let part: IRCell | undefined = cell; part;) {
+      const next = ROW_CONTINUATIONS.get(part)
+      anchor.rowSpan = (anchor.rowSpan || 1) + part.rowSpan
+      // 원점 객체를 유지해야 앞서 보관한 사슬이 끊기지 않는다. 덮인 자리는 격자 자리표만 남긴다.
+      part.rowSpan = 1
+      part.colSpan = 1
+      ROW_CONTINUATIONS.delete(part)
+      part = next
+    }
   }
+}
+
+/** 첫 행에서 시작한 머리 병합의 전이적 깊이까지, 글과 앵커 모양이 모두 같을 때만 머리를 통째로 뺀다. -1은 다른 머리. */
+function repeatedHeaderRows(prev: IRTable, curr: IRTable): number {
+  if (!rowTextsEqual(prev.cells[0], curr.cells[0])) return 0
+  const pa = anchorsOf(prev), ca = anchorsOf(curr)
+  let depth = 1
+  for (let r = 0; r < depth && r < prev.rows; r++) {
+    for (const a of pa) if (a.r === r) depth = Math.max(depth, r + a.rs)
+  }
+  if (depth >= curr.rows || depth > prev.rows) return -1
+  const p = pa.filter(a => a.r < depth), d = ca.filter(a => a.r < depth)
+  const norm = (text: string) => flowText(text).replace(/\s+/g, "")
+  return p.length === d.length && p.every((a, i) => a.r === d[i].r && a.c === d[i].c && a.rs === d[i].rs
+    && a.cs === d[i].cs && norm(a.cell.text) === norm(d[i].cell.text)) ? depth : -1
 }
 
 /** 두 행의 셀 텍스트가 모두 동일한지 (공백 정규화 후 비교) */

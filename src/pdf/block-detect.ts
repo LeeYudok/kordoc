@@ -876,7 +876,14 @@ export function removeHeaderFooterBlocks(
   warnings: ParseWarning[],
   notes?: Map<number, PageNotes>,
   tables = false,
+  context: IRBlock[] = [],
 ): number[] {
+  if (context.length && !tables) {
+    const removed = removeHeaderFooterBlocks([...blocks, ...context], pageHeights, [], notes)
+      .filter(index => index < blocks.length)
+    if (removed.length) warnings.push({ message: `${removed.length}개 머리글/바닥글 요소 제거됨`, code: "HIDDEN_TEXT_FILTERED" })
+    return removed
+  }
   const ZONE_RATIO = 0.12   // 상하 12% (10% 초과 여백 대응)
   const MIN_REPEAT = 3       // 최소 3페이지 반복
 

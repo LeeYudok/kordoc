@@ -9,8 +9,9 @@ import { toArrayBuffer, sanitizeError, classifyError } from "../utils.js"
 import { detectImageMime } from "../hwp5/images.js"
 import { toPlainMarkdown } from "../plain-markdown.js"
 import { toHtmlTables } from "../html-tables.js"
+import { createOutputGuard } from "./output-path.js"
 
-export async function convertFiles(files: string[], opts: OptionValues, writeOutput: (text: string) => void = text => { process.stdout.write(text) }): Promise<boolean> {
+export async function convertFiles(files: string[], opts: OptionValues, writeOutput: (text: string) => void = text => { process.stdout.write(text) }, assertSafeOutputs = createOutputGuard(files)): Promise<boolean> {
   let failed = false
   for (let fi = 0; fi < files.length; fi++) {
     const filePath = files[fi]
@@ -149,8 +150,16 @@ export async function convertFiles(files: string[], opts: OptionValues, writeOut
         if (!opts.silent) process.stderr.write(`  → ${result.images.length}개 이미지 → ${imgDir} (manifest.json 포함)\n`)
       }
 
+      // Validate the document and all image destinations together, before any file is written.
+      const assertSafeDestination = (output: string, dir: string) => {
+        const imageOutputs = result.images?.length && !imagesInlined
+          ? [...result.images.map(img => resolve(dir, "images", docStem, img.filename)), resolve(dir, "images", docStem, "manifest.json")]
+          : []
+        assertSafeOutputs([output, ...imageOutputs])
+      }
+
       if (opts.output && files.length === 1) {
-        if (resolve(opts.output) === absPath) throw new Error(`출력 경로가 입력 파일과 같습니다: ${fileName}`)
+        assertSafeDestination(opts.output, resolve(opts.output, ".."))
         writeFileSync(opts.output, output, "utf-8")
         if (!opts.silent) process.stderr.write(`  → ${opts.output}\n`)
         saveImages(resolve(opts.output, ".."))
@@ -159,7 +168,7 @@ export async function convertFiles(files: string[], opts: OptionValues, writeOut
         const outExt = opts.format === "json" ? ".json" : opts.format === "chunks" ? ".chunks.json" : ".md"
         // 확장자 없는 입력("slides")도 이름 뒤에 붙인다 — 종전 replace 는 그대로 두어 -d 가 입력 폴더면 입력 파일을 덮어썼다
         const outPath = resolve(opts.outDir, fileName.replace(/\.[^.]+$/, "") + outExt)
-        if (outPath === absPath) throw new Error(`출력 경로가 입력 파일과 같습니다: ${fileName}`)
+        assertSafeDestination(outPath, opts.outDir)
         writeFileSync(outPath, output, "utf-8")
         if (!opts.silent) process.stderr.write(`  → ${outPath}\n`)
         saveImages(opts.outDir)

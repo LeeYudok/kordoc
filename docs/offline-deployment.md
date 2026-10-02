@@ -12,7 +12,7 @@
 | 외부 통신 차단 | `KORDOC_OFFLINE=1` — 요청 발신 전 차단 |
 | 파일 접근 제한 | `KORDOC_ROOT=<디렉토리>` — MCP 읽기·쓰기를 해당 하위로 한정 |
 | 계정·API 키 | 없음 (인증 요소를 사용하지 않음) |
-| 텔레메트리·사용 통계 | 없음 |
+| 텔레메트리·사용 통계 | kordoc 자체 전송 없음; ONNX POSIX 통계 전송은 엔진 초기화 전에 차단 |
 | 설치 방식 | 오프라인 tarball (npm 레지스트리 불필요) |
 
 ## 2. 반입 번들 만들기 (인터넷 되는 PC)
@@ -96,6 +96,15 @@ grep -rn 'await fetch(' dist/*.js dist/*.cjs        # 빌드 산출물 기준(ES
 인쇄·렌더 PDF의 Chromium 페이지는 `launchLockedPage`에서 JavaScript를 끄고
 `data:`·`about:` 외 모든 요청을 차단한다. 이 제한은 `KORDOC_OFFLINE` 설정과 무관하게
 항상 적용되며, 문서가 참조하는 외부 이미지·CSS·글꼴도 가져오지 않는다.
+
+4.18.4부터 네이티브 OCR·수식 엔진은 ONNX Runtime 및 Transformers를 동적으로 불러오기 전에
+`ORT_DISABLE_TELEMETRY=1`을 설정한다. ONNX Runtime 1.29의 POSIX 구현은 이 값으로
+통계 업로더·이벤트·영구 장치 식별자의 생성을 생략한다. 이는 통계 스레드가 프로세스
+종료 중 이미 해제된 mutex를 사용하는 충돌도 방지한다. kordoc가 초기화하기 전에 다른
+라이브러리가 이미 만든 런타임에는 소급 적용되지 않는다. Windows ETW는 이 환경변수의
+제어 대상이 아니므로 운영체제 추적 정책은 별도로 확인해야 한다.
+근거: [ONNX Runtime 1.29 설정 구현](https://github.com/microsoft/onnxruntime/blob/v1.29.0/onnxruntime/core/platform/telemetry_environment.h),
+[POSIX 초기화 구현](https://github.com/microsoft/onnxruntime/blob/v1.29.0/onnxruntime/core/platform/posix/telemetry.cc).
 
 두 경로 모두 `assertNetworkAllowed()`(`src/shared/offline.ts`)를 먼저 통과한다.
 새 통신 경로를 추가하려면 이 함수를 거치도록 강제되어 있으므로, 감사 지점은 하나다.

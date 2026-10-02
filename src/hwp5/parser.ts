@@ -139,7 +139,7 @@ export function readHwp5SectionStreams(c: Hwp5Container): Buffer[] {
     ? (c.cfb ? findViewTextSections(c.cfb, c.compressed) : findViewTextSectionsLenient(c.lenientCfb!, c.compressed))
     : c.encrypted
       ? findSectionsVia(c.findStream)
-      : (c.cfb ? findSections(c.cfb) : findSectionsLenient(c.lenientCfb!, c.compressed))
+      : (c.cfb ? findSections(c.cfb) : findSectionsLenient(c.lenientCfb!))
 }
 
 /** 섹션 스트림 → 레코드 (누적 압축해제 상한). 실패한 섹션은 null + PARTIAL_PARSE 경고 */
@@ -164,7 +164,8 @@ export function readHwp5SectionRecords(c: Hwp5Container, sections: Buffer[], war
 
 /** BinData 스토리지 — storageId(16진 BIN%04X) → 바이트(항목별 압축 정규화) */
 export function readHwp5BinData(c: Hwp5Container): Map<number, { data: Buffer; name: string }> {
-  return c.cfb ? collectHwp5BinData(c.cfb.FileIndex) : collectHwp5BinDataLenient(c.lenientCfb!)
+  const readStream = c.encrypted ? c.findStream : undefined
+  return c.cfb ? collectHwp5BinData(c.cfb.FileIndex, readStream) : collectHwp5BinDataLenient(c.lenientCfb!, readStream)
 }
 
 export function parseHwp5Document(buffer: Buffer, options?: ParseOptions): InternalParseResult {
@@ -247,8 +248,8 @@ export function parseHwp5Document(buffer: Buffer, options?: ParseOptions): Inter
 
   // BinData에서 이미지 추출 — 전체 파싱 시 본문 미참조 BinData 이미지도 스윕
   const images = cfb
-    ? extractHwp5Images(cfb.FileIndex, blocks, warnings, !pageFilter)
-    : extractHwp5ImagesLenient(lenientCfb!, blocks, warnings, !pageFilter)
+    ? extractHwp5Images(cfb.FileIndex, blocks, warnings, !pageFilter, encrypted ? findStream : undefined)
+    : extractHwp5ImagesLenient(lenientCfb!, blocks, warnings, !pageFilter, encrypted ? findStream : undefined)
 
   // 레이아웃 테이블 해체 (heading 감지 전에 수행하여 해체된 텍스트도 heading 감지 대상). 칸 테두리가 보이는 표는 풀지 않는다 —
   // 종전엔 3행 이하·글 많은 표를 테두리와 상관없이 풀어 같은 문서의 HWPX 표 118개가 사라지고 틀 안 중첩표가 바깥 단부터 풀렸다
@@ -543,17 +544,16 @@ function findSections(cfb: CfbContainer): Buffer[] {
   return sections.sort((a, b) => a.idx - b.idx).map(s => s.content)
 }
 
-/** Lenient CFB: BodyText/Section{N} 탐색 — 누적 압축해제 크기 추적 */
-function findSectionsLenient(lcfb: LenientCfbContainer, compressed: boolean): Buffer[] {
+/** Lenient CFB: raw BodyText streams — readHwp5SectionRecords applies decompression once. */
+function findSectionsLenient(lcfb: LenientCfbContainer): Buffer[] {
   const sections: Array<{ idx: number; content: Buffer }> = []
-  let totalDecompressed = 0
+  let totalBytes = 0
   for (let i = 0; i < MAX_SECTIONS; i++) {
     const raw = lcfb.findStream(`/BodyText/Section${i}`) ?? lcfb.findStream(`Section${i}`)
     if (!raw) break
-    const content = compressed ? decompressStream(raw) : raw
-    totalDecompressed += content.length
-    if (totalDecompressed > MAX_TOTAL_DECOMPRESS) throw new KordocError("총 압축 해제 크기 초과 (decompression bomb 의심)")
-    sections.push({ idx: i, content })
+    totalBytes += raw.length
+    if (totalBytes > MAX_TOTAL_DECOMPRESS) throw new KordocError("총 압축 해제 크기 초과 (decompression bomb 의심)")
+    sections.push({ idx: i, content: raw })
   }
   if (sections.length === 0) {
     // fallback: 이름에 "Section" 포함된 스트림
@@ -563,10 +563,9 @@ function findSectionsLenient(lcfb: LenientCfbContainer, compressed: boolean): Bu
         const idx = parseInt(e.name.replace("Section", ""), 10) || 0
         const raw = lcfb.findStream(e.name)
         if (raw) {
-          const content = compressed ? decompressStream(raw) : raw
-          totalDecompressed += content.length
-          if (totalDecompressed > MAX_TOTAL_DECOMPRESS) throw new KordocError("총 압축 해제 크기 초과 (decompression bomb 의심)")
-          sections.push({ idx, content })
+          totalBytes += raw.length
+          if (totalBytes > MAX_TOTAL_DECOMPRESS) throw new KordocError("총 압축 해제 크기 초과 (decompression bomb 의심)")
+          sections.push({ idx, content: raw })
         }
       }
     }

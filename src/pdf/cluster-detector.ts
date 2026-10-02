@@ -193,7 +193,7 @@ export function sideTabGlyphs<T extends Pick<ClusterItem, "text" | "x" | "y" | "
   // 기둥 후보 — 글자 수·글자/숫자 비율·세로 간격만 본다
   const cands: { col: T[]; fs: number }[] = []
   for (const col of cols) {
-    if (col.length < SIDE_TAB_MIN) continue
+    if (col.length < 2) continue
     // 책·장 이름은 글자·숫자다 — 글머리 기호 기둥(▷·◦·□, 쪽 맨 왼쪽 목록)은 탭이 아니다
     if (col.filter(g => /[\p{L}\p{N}]/u.test(g.text)).length < col.length * 0.8) continue
     col.sort((a, b) => b.y - a.y)
@@ -203,7 +203,7 @@ export function sideTabGlyphs<T extends Pick<ClusterItem, "text" | "x" | "y" | "
   }
   // 두 줄로 세운 탭("구급차의 의료장비·" | "구급의약품 및 통신장비") — 바로 붙은 기둥 둘 이상이 높이가 겹치면 한 띠로 본다.
   // 따로 보면 서로가 "쪽의 다른 글"이 되어 바깥 판정(outside)을 둘 다 놓치고, 탭 글자가 클러스터 표의 끝 열("운 태· 행")이 됐다
-  const bands: { col: T[]; fs: number }[] = []
+  const bands: { col: T[]; fs: number; anchored: boolean }[] = []
   for (const c of cands.sort((a, b) => a.col[0].x - b.col[0].x)) {
     const last = bands[bands.length - 1]
     if (last) {
@@ -214,16 +214,21 @@ export function sideTabGlyphs<T extends Pick<ClusterItem, "text" | "x" | "y" | "
       if (gap <= Math.max(last.fs, c.fs) * 1.5 && Math.min(lTop, cTop) >= Math.max(lBot, cBot)) {
         last.col.push(...c.col)
         last.fs = Math.max(last.fs, c.fs)
+        last.anchored ||= c.col.length >= SIDE_TAB_MIN
         continue
       }
     }
-    bands.push({ col: [...c.col], fs: c.fs })
+    bands.push({ col: [...c.col], fs: c.fs, anchored: c.col.length >= SIDE_TAB_MIN })
   }
-  for (const { col, fs } of bands) {
+  for (const { col, fs, anchored } of bands) {
+    // 짧은 형제 기둥만 합쳐 최소 글자 수를 채우지는 않는다 — 긴 탭 기둥이 하나는 있어야 한다
+    if (!anchored) continue
     col.sort((a, b) => b.y - a.y)
     const members = new Set(col)
     const top = col[0].y + fs, bottom = col[col.length - 1].y - fs
-    const others = items.filter(i => !members.has(i) && i.y <= top && i.y >= bottom)
+    const others = items.filter(i => !members.has(i) && i.text.trim() && i.y <= top && i.y >= bottom)
+    // 기둥 밖의 본문 글이 높이 안에 있어야 한다 — 표만 있거나 제목이 위에 있는 쪽은 every/alone 이 자명하게 참이 된다
+    if (!others.length) continue
     const left = Math.min(...col.map(i => i.x)), right = Math.max(...col.map(i => i.x + i.w))
     // 쪽의 다른 글이 모두 한쪽 바깥에 있어야 한다(높이가 겹치는 글만이 아니라) — 서식 표의 행 번호 열(1⏎2⏎…⏎9, 빈 행)·세로로 쓴
     // 칸 이름·"-" 자리표시 열도 한 글자 기둥이라, 높이 겹침만 보면 표에서 빠져 쪽 앞에 한 글자씩 나왔다(4.18.2 회귀)

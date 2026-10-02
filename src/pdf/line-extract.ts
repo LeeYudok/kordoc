@@ -524,6 +524,7 @@ function classifyAndAdd(
 export function preprocessLines(
   horizontals: LineSegment[],
   verticals: LineSegment[],
+  nonRules?: Set<LineSegment>,
 ): { horizontals: LineSegment[]; verticals: LineSegment[] } {
   // 1. 굵은 선 필터링 (배경 채움 사각형, 장식 테두리 등)
   let h = horizontals.filter(l => l.lineWidth <= MAX_LINE_WIDTH)
@@ -534,8 +535,8 @@ export function preprocessLines(
   v = dropShadingStacks(v, "v")
 
   // 2. 근접 평행 선 병합 (인쇄 잔상, 이중선)
-  h = mergeParallelLines(h, "h")
-  v = mergeParallelLines(v, "v")
+  h = mergeParallelLines(h, "h", nonRules)
+  v = mergeParallelLines(v, "v", nonRules)
 
   return { horizontals: h, verticals: v }
 }
@@ -791,7 +792,7 @@ export function closeOpenTableEdges(
  * 근접 평행 선 병합 — 같은 방향의 가까운 선을 하나로 합침.
  * 이중선, 인쇄 잔상, PDF 렌더링 미세 차이로 인한 중복 선 제거.
  */
-function mergeParallelLines(lines: LineSegment[], dir: "h" | "v"): LineSegment[] {
+function mergeParallelLines(lines: LineSegment[], dir: "h" | "v", nonRules?: Set<LineSegment>): LineSegment[] {
   if (lines.length <= 1) return lines
 
   // 수평선: y로 정렬, 수직선: x로 정렬
@@ -824,6 +825,8 @@ function mergeParallelLines(lines: LineSegment[], dir: "h" | "v"): LineSegment[]
       const minLen = Math.min(prevEnd - prevStart, currEnd - currStart)
 
       if (overlap > minLen * 0.3) {
+        // A visible stroke sharing a background edge remains visible after merging.
+        if (nonRules?.has(prev) && !nonRules.has(curr)) nonRules.delete(prev)
         // 병합: 범위 확장, lineWidth는 최대값 유지
         if (dir === "h") {
           prev.x1 = Math.min(prev.x1, curr.x1)
@@ -865,4 +868,3 @@ export function filterPageBorderLines(
     ),
   }
 }
-

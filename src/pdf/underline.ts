@@ -45,14 +45,56 @@ const UNDER_BOX_PAIR_OVERLAP = 0.8
 /**
  * baseline 바로 아래에 밀착한 얇은 수평선을 찾아 해당 아이템에 underline 마킹.
  */
-export function markUnderlineItems(items: NormItem[], horizontals: LineSegment[], verticals: LineSegment[]): LineSegment[] {
+export function markUnderlineItems(items: NormItem[], horizontals: LineSegment[], verticals: LineSegment[], nonRules?: ReadonlySet<LineSegment>): LineSegment[] {
   const underlines: LineSegment[] = []
+  // Filled background outlines and white paint are geometry, not underline ink.
+  if (nonRules?.size) horizontals = horizontals.filter(line => !nonRules.has(line))
   if (items.length === 0 || horizontals.length === 0) return underlines
+
+  // Repeated text underlines can share a span with table rules. Require separate,
+  // tightly owned lines before overriding the repetition guard. Cache ownership
+  // because the same candidate can support several lines in the paragraph.
+  const tightOwners = new Map<LineSegment, boolean>()
+  const tightlyOwned = (line: LineSegment): boolean => {
+    const cached = tightOwners.get(line)
+    if (cached !== undefined) return cached
+    const owners = items.filter(item => {
+      const below = item.y - line.y1
+      return item.w > 0 && item.text.trim() && below >= 0.5 && below <= 3
+        && Math.min(line.x2, item.x + item.w) > Math.max(line.x1, item.x)
+    }).sort((a, b) => a.x - b.x)
+    let owned = owners.length > 0
+      && (Math.abs(owners[0].x - line.x1) <= UNDER_GRID_EPS
+        // A single PDF run can include an un-underlined note marker before the line.
+        || (owners.length === 1 && line.x1 > owners[0].x
+          && line.x1 - owners[0].x <= Math.max(owners[0].h, owners[0].fontSize, 1) * 3))
+      && Math.abs(owners[owners.length - 1].x + owners[owners.length - 1].w - line.x2) <= UNDER_GRID_EPS
+    for (let i = 1; owned && i < owners.length; i++) {
+      const em = Math.max(owners[i].h, owners[i].fontSize, 1)
+      if (owners[i].x - (owners[i - 1].x + owners[i - 1].w) > em * UNDER_COLUMN_GAP_EM) owned = false
+    }
+    tightOwners.set(line, owned)
+    return owned
+  }
+  const paragraphUnderline = (line: LineSegment): boolean => {
+    if (!tightlyOwned(line)) return false
+    const width = line.x2 - line.x1
+    const ys: number[] = []
+    for (const other of horizontals) {
+      const overlap = Math.min(line.x2, other.x2) - Math.max(line.x1, other.x1)
+      if (other.lineWidth > UNDER_MAX_THICKNESS || overlap / Math.max(width, other.x2 - other.x1) < UNDER_SPAN_OVERLAP_RATIO || !tightlyOwned(other)) continue
+      if (!ys.some(y => Math.abs(y - other.y1) < UNDER_GRID_EPS)) ys.push(other.y1)
+      if (ys.length >= UNDER_REPEATED_SPAN_LEVELS) return true
+    }
+    return false
+  }
 
   for (const line of horizontals) {
     if (line.lineWidth > UNDER_MAX_THICKNESS) continue
     const enclosed = insideTallCell(line, verticals, 0)
-    if (!enclosed && (touchesVertical(line, verticals) || isRepeatedSpanRule(line, horizontals))) continue
+    const repeated = isRepeatedSpanRule(line, horizontals)
+    const textSeries = repeated && paragraphUnderline(line)
+    if (!enclosed && (touchesVertical(line, verticals) || (repeated && !textSeries))) continue
 
     const matches: NormItem[] = []
     for (const item of items) {
@@ -76,14 +118,14 @@ export function markUnderlineItems(items: NormItem[], horizontals: LineSegment[]
     }
     // 긴 셀의 패딩 안쪽에 끝나는 반복 밑줄은 행 경계가 아니다. 실제 괘선은 셀 변에 닿는다.
     const inset = enclosed && insideTallCell(line, verticals, maxH)
-    if (enclosed && !inset && (touchesVertical(line, verticals) || isRepeatedSpanRule(line, horizontals))) continue
+    if (enclosed && !inset && (touchesVertical(line, verticals) || (repeated && !textSeries))) continue
     const pad = Math.max(maxH * UNDER_OWNER_PAD_EM, UNDER_OWNER_PAD_MIN_PT)
     if (line.x1 < x1 - pad || line.x2 > x2 + pad) continue
     if (covered < (line.x2 - line.x1) * UNDER_MIN_COVERAGE) continue
 
     // 위쪽에 같은 스팬의 수평선이 마주보면 배지/칩/제목박스의 하변 — 밑줄은 위짝이 없다.
     // 라운드 모서리 배지는 상하변이 직선으로만 나와 수직선 접촉 방어를 비껴가므로 필수.
-    if (hasBoxTopPair(line, maxH, horizontals, inset ? items : undefined)) continue
+    if (hasBoxTopPair(line, maxH, horizontals, inset || textSeries || tightlyOwned(line) ? items : undefined)) continue
 
     // 매칭 런 사이 컬럼급 구멍 → 표 행 괘선 (밑줄 줄은 단어 간격 수준으로 연속)
     matches.sort((a, b) => a.x - b.x)
@@ -121,6 +163,7 @@ function touchesVertical(line: LineSegment, verticals: LineSegment[]): boolean {
   for (const v of verticals) {
     if (v.x1 < line.x1 - UNDER_GRID_EPS || v.x1 > line.x2 + UNDER_GRID_EPS) continue
     const lo = Math.min(v.y1, v.y2), hi = Math.max(v.y1, v.y2)
+    if (hi - lo <= UNDER_GRID_EPS) continue
     if (lo <= line.y1 + UNDER_GRID_EPS && hi >= line.y1 - UNDER_GRID_EPS) return true
   }
   return false

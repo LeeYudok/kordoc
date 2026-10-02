@@ -39,6 +39,7 @@ import { edgeTrim, leadingBullet, tallInkCount, grayCrop, inkBounds, inkStats, l
 import { restoreGlyphs } from "./glyph-restore.js"
 import { isDotFragment, joinLeaderItems, restoreBulletItems, restoreSymbols } from "./postprocess.js"
 import { bandBoxes, splitBoxAtCellRules, lineCrop, type Box, REC_HEIGHT } from "./crop.js"
+import { disableOrtTelemetry } from "./runtime-env.js"
 
 /** OCR 인식 결과 한 줄 — 좌표는 입력 이미지 픽셀 (top-left origin, y down) */
 export interface OcrItem {
@@ -161,6 +162,7 @@ export class OcrEngine {
   }
 
   static async create(): Promise<OcrEngine> {
+    disableOrtTelemetry()
     const [ortMod, sharpModRaw] = await Promise.all([
       tryImport<typeof import("onnxruntime-node")>("onnxruntime-node", () => import("onnxruntime-node")),
       tryImport<{ default?: SharpFactory } & SharpFactory>(

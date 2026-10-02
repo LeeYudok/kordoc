@@ -124,11 +124,14 @@ export async function resolveSectionPaths(zip: JSZip): Promise<string[]> {
   return sectionFiles.map(f => f.name).sort(compareSectionPaths)
 }
 
-function parseSectionPathsFromManifest(xml: string): string[] {
+export function parseSectionPathsFromManifest(xml: string): string[] {
   const parser = createXmlParser()
   const doc = parser.parseFromString(stripDtd(xml), "text/xml")
-  const items = doc.getElementsByTagName("opf:item")
-  const spine = doc.getElementsByTagName("opf:itemref")
+  const opf = "http://www.idpf.org/2007/opf/"
+  const namespacedItems = doc.getElementsByTagNameNS(opf, "item")
+  const namespacedSpine = doc.getElementsByTagNameNS(opf, "itemref")
+  const items = namespacedItems.length ? namespacedItems : doc.getElementsByTagName("opf:item")
+  const spine = namespacedSpine.length ? namespacedSpine : doc.getElementsByTagName("opf:itemref")
 
   const idToHref = new Map<string, string>()
   for (let i = 0; i < items.length; i++) {

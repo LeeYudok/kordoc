@@ -4,8 +4,9 @@ import { basename } from "node:path"
 import type { Command, OptionValues } from "commander"
 import { KordocError } from "../utils.js"
 import { convertFiles } from "./convert.js"
+import { createOutputGuard } from "./output-path.js"
 
-interface Job { file: string; opts: OptionValues }
+interface Job { file: string; opts: OptionValues; inputs?: string[] }
 interface Done { ok: boolean; output: string[] }
 
 export function registerBatchWorker(program: Command): void {
@@ -13,9 +14,11 @@ export function registerBatchWorker(program: Command): void {
     if (!process.send) program.error("Internal command requires an IPC channel")
     // Do not leave native parser handles alive if the parent disappears.
     process.on("disconnect", () => process.exit(0))
-    process.on("message", async ({ file, opts }: Job) => {
+    let assertSafeOutputs: ReturnType<typeof createOutputGuard> | undefined
+    process.on("message", async ({ file, opts, inputs }: Job) => {
       const output: string[] = []
-      const ok = await convertFiles([file], opts, text => { output.push(text) })
+      assertSafeOutputs ??= createOutputGuard(inputs ?? [file])
+      const ok = await convertFiles([file], opts, text => { output.push(text) }, assertSafeOutputs)
       process.send!({ ok, output } satisfies Done)
     })
   })
@@ -54,6 +57,7 @@ export async function convertParallel(files: string[], opts: OptionValues, jobs:
       workers.push(worker)
       let current: string | undefined
       let finished = false
+      let firstJob = true
       worker.on("error", reject)
       worker.on("exit", (code, signal) => {
         if (!finished) reject(new KordocError(`Conversion worker exited (${signal ?? code}) while processing ${basename(current ?? "unknown")}`))
@@ -69,9 +73,10 @@ export async function convertParallel(files: string[], opts: OptionValues, jobs:
         if (!opts.silent) process.stderr.write(`[kordoc] [${next}/${files.length}] ${basename(current)} ...\n`)
         // Each worker writes a separate output tree; successful document data stays
         // in the worker, avoiding large IPC copies and buffering the entire batch.
-        worker.send({ file: current, opts: { ...opts, output: undefined, silent: true } } satisfies Job, err => {
+        worker.send({ file: current, opts: { ...opts, output: undefined, silent: true }, ...(firstJob ? { inputs: files } : {}) } satisfies Job, err => {
           if (err) reject(err)
         })
+        firstJob = false
       }
       worker.on("message", ({ ok, output }: Done) => {
         if (!ok) failed = true

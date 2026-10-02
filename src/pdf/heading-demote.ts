@@ -74,6 +74,50 @@ export function demoteNonHeadingRoles(blocks: IRBlock[], pageHeights: Map<number
       }
     }
   }
+  // A wrapped explanation followed immediately by a same-style statutory reference
+  // is prose, even when small-font tables dominate the document's item median.
+  const citedProse = new Set<IRBlock>()
+  // A sequential, aligned run containing wrapped prose is a numbered body list.
+  // Short chapter labels and visibly bold title faces do not supply this evidence.
+  const numberedProse = new Set<IRBlock>()
+  for (const page of byPage.values()) {
+    const numbered = page.filter(b => (b.type === "heading" || b.type === "paragraph") &&
+      /^[①-⑮]\s*/.test(b.text?.trim() ?? "") && b.bbox && b.style?.fontName && b.style.fontSize &&
+      !/Bold|Black|Heavy|Semibold/i.test(faceNames?.get(b.style.fontName) ?? ""))
+    let chain: IRBlock[] = []
+    const finish = () => {
+      if (chain.length < 3 || !chain.some(b => (b.text?.length ?? 0) >= 40 &&
+          b.bbox!.height >= b.style!.fontSize! * 2.4)) return
+      for (const b of chain) numberedProse.add(b)
+      const first = chain[0], size = first.style!.fontSize!
+      for (const b of page) if (/^[○●•◦]\s/.test(b.text?.trim() ?? "") &&
+          b.style?.fontName === first.style?.fontName && b.style?.fontSize === size && b.bbox &&
+          Math.abs(b.bbox.x - first.bbox!.x) <= size * 0.5 && (b.text?.length ?? 0) >= 15) numberedProse.add(b)
+    }
+    for (const b of numbered) {
+      const prev = chain.at(-1), size = b.style!.fontSize!
+      if (!prev || b.text!.trim().charCodeAt(0) !== prev.text!.trim().charCodeAt(0) + 1 ||
+          b.style!.fontName !== prev.style!.fontName || size !== prev.style!.fontSize ||
+          Math.abs(b.bbox!.x - prev.bbox!.x) > size * 0.5 ||
+          prev.bbox!.y - (b.bbox!.y + b.bbox!.height) > size * 8) { finish(); chain = [] }
+      chain.push(b)
+    }
+    finish()
+  }
+  for (let i = 0; i + 1 < blocks.length; i++) {
+    const prose = blocks[i], reference = blocks[i + 1]
+    const a = prose.bbox, b = reference.bbox, size = prose.style?.fontSize ?? 0
+    const source = reference.text?.replace(/<[^>]+>/g, "").trim() ?? ""
+    if ((prose.type !== "heading" && prose.type !== "paragraph" && prose.type !== "list") ||
+        (reference.type !== "heading" && reference.type !== "paragraph") ||
+        (prose.text?.length ?? 0) < 40 || !a || !b || size <= 0 ||
+        a.height < size * 2.4 || prose.pageNumber !== reference.pageNumber ||
+        prose.style?.fontName !== reference.style?.fontName || prose.style?.fontSize !== reference.style?.fontSize ||
+        (Math.abs(a.x - b.x) > size && !(/^[○●•◦]\s/.test(prose.text ?? "") && b.x >= a.x && b.x - a.x <= size * 2)) || a.y - (b.y + b.height) < 0 || a.y - (b.y + b.height) > size ||
+        !/^[（(].*(?:제\s*\d+\s*조|(?:Article|Section)\s+\d+).*[）)]$/i.test(source)) continue
+    citedProse.add(prose)
+    citedProse.add(reference)
+  }
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]
     if (block.type !== "heading" || !block.text) continue
@@ -161,7 +205,7 @@ export function demoteNonHeadingRoles(blocks: IRBlock[], pageHeights: Map<number
         Math.abs(o.bbox.x - box.x) <= size * 0.25 &&
         Math.min(o.bbox.y + o.bbox.height, box.y + box.height) - Math.max(o.bbox.y, box.y) >= o.bbox.height * 0.2) &&
       prev!.bbox!.y > box.y && next!.bbox!.y < box.y
-    if (ocrFragment || crowdedOcr || tocEntry || proseStyle || kicker || byline || tiny || !/\p{L}/u.test(text) && !chapterNumber || /^[a-z]/.test(text) || CAPTION.test(text) || EQUATION_NUMBER.test(block.text) || DISPLAY_MATH.test(text) ||
+    if (numberedProse.has(block) || citedProse.has(block) || ocrFragment || crowdedOcr || tocEntry || proseStyle || kicker || byline || tiny || !/\p{L}/u.test(text) && !chapterNumber || /^[a-z]/.test(text) || CAPTION.test(text) || EQUATION_NUMBER.test(block.text) || DISPLAY_MATH.test(text) ||
         // 닫는 괄호가 여는 괄호보다 많으면 앞 줄에서 이어진 문장 조각이다 ("Fact-checking) and is used …") — "1)"·"가)" 앞머리 번호는 빼고 센다
         unbalancedClose(text.replace(/^\s*[\dA-Za-z가-힣ⅰ-ⅹ]{1,3}\)\s*/, "")) ||
         isRunningHead(block, page, pageHeights.get(block.pageNumber ?? 0))) {

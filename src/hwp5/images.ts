@@ -188,7 +188,7 @@ function resolveImageBlocks(
 
 /** BinData 스토리지의 모든 파일을 FileIndex 순회로 수집 — 엔트리명은 "BIN%04X.ext" 16진.
  *  파서(이미지 추출)와 렌더 어댑터(#75 HWP5)가 공유한다 */
-export function collectHwp5BinData(fileIndex: BinCfbEntry[] | undefined): Map<number, { data: Buffer; name: string }> {
+export function collectHwp5BinData(fileIndex: BinCfbEntry[] | undefined, readStream?: (path: string) => Buffer | null): Map<number, { data: Buffer; name: string }> {
   const binDataMap = new Map<number, { data: Buffer; name: string }>()
   if (fileIndex) {
     for (const entry of fileIndex) {
@@ -196,7 +196,9 @@ export function collectHwp5BinData(fileIndex: BinCfbEntry[] | undefined): Map<nu
       const match = entry.name.match(BIN_ENTRY_RE)
       if (!match) continue
       const idx = parseInt(match[1], 16)
-      const data = normalizeBinPayload(Buffer.from(entry.content))
+      const raw = readStream ? readStream(`/BinData/${entry.name}`) : Buffer.from(entry.content)
+      if (!raw) continue
+      const data = normalizeBinPayload(raw)
       binDataMap.set(idx, { data, name: entry.name })
     }
   }
@@ -204,14 +206,14 @@ export function collectHwp5BinData(fileIndex: BinCfbEntry[] | undefined): Map<nu
 }
 
 /** Lenient CFB: BinData 엔트리 수집 — 엔트리명 "BIN%04X.ext" 16진 */
-export function collectHwp5BinDataLenient(lcfb: LenientCfbContainer): Map<number, { data: Buffer; name: string }> {
+export function collectHwp5BinDataLenient(lcfb: LenientCfbContainer, readStream = lcfb.findStream): Map<number, { data: Buffer; name: string }> {
   const binDataMap = new Map<number, { data: Buffer; name: string }>()
   const binRe = /^BIN([0-9A-Fa-f]{4,8})(?:\.|$)/
   for (const e of lcfb.entries()) {
     const match = e.name.match(binRe)
     if (!match) continue
     const idx = parseInt(match[1], 16)
-    const raw = lcfb.findStream(e.name)
+    const raw = readStream(e.name)
     if (!raw) continue
     binDataMap.set(idx, { data: normalizeBinPayload(raw), name: e.name })
   }
@@ -224,8 +226,9 @@ export function extractHwp5Images(
   blocks: IRBlock[],
   warnings: ParseWarning[],
   sweepUnreferenced?: boolean,
+  readStream?: (path: string) => Buffer | null,
 ): ExtractedImage[] {
-  const binDataMap = collectHwp5BinData(fileIndex)
+  const binDataMap = collectHwp5BinData(fileIndex, readStream)
 
   if (binDataMap.size === 0) {
     // 이미지 블록이 있는데 BinData가 없으면 sentinel 정리만 수행
@@ -241,8 +244,9 @@ export function extractHwp5ImagesLenient(
   blocks: IRBlock[],
   warnings: ParseWarning[],
   sweepUnreferenced?: boolean,
+  readStream?: (path: string) => Buffer | null,
 ): ExtractedImage[] {
-  const binDataMap = collectHwp5BinDataLenient(lcfb)
+  const binDataMap = collectHwp5BinDataLenient(lcfb, readStream)
   if (binDataMap.size === 0) {
     resolveImageSentinels(blocks, new Map())
     return []

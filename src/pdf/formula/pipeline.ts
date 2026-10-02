@@ -30,6 +30,7 @@ import {
 } from "./models.js"
 import type { FormulaRegion, PixelFrame } from "./types.js"
 import { join } from "path"
+import { disableOrtTelemetry } from "../../ocr/runtime-env.js"
 
 /** PDF 페이지 렌더 해상도 (scale=2 → 약 144 DPI). 수식 인식에는 이 이상은 과함. */
 const RENDER_SCALE = 2
@@ -96,6 +97,7 @@ export class FormulaPipeline {
    * `ensureFormulaModels()` 를 먼저 돌려야 한다.
    */
   static async create(options?: FormulaPipelineOptions): Promise<FormulaPipeline> {
+    disableOrtTelemetry()
     const opts: Required<FormulaPipelineOptions> = {
       scale: options?.scale ?? RENDER_SCALE,
       maxRegionsPerPage: options?.maxRegionsPerPage ?? 50,

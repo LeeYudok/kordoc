@@ -34,7 +34,8 @@ export function isSideTabTable(box: { x1: number; y1: number; x2: number; y2: nu
   if (!side) return false
   const texts = table.cells.flat().map(c => c.text.replace(/\s+/g, ""))
   if (!texts.some(Boolean) || texts.some(t => [...t].length > TAB_CELL_CHARS)) return false
-  return others.every(it => it.y < box.y1 || it.y > box.y2 || (side === "R" ? it.x + it.w <= box.x1 + 1 : it.x >= box.x2 - 1))
+  const overlap = others.filter(it => it.y >= box.y1 && it.y <= box.y2)
+  return overlap.length > 0 && overlap.every(it => side === "R" ? it.x + it.w <= box.x1 + 1 : it.x >= box.x2 - 1)
 }
 
 export function removeSideTabs(blocks: IRBlock[], pageWidths: Map<number, number>): IRBlock[] {
@@ -64,7 +65,7 @@ export function removeSideTabs(blocks: IRBlock[], pageWidths: Map<number, number
     }
     if (!w || !area || !b.bbox || !text || [...text].length > MAX_CHARS) return null
     const side = b.bbox.x + b.bbox.width <= Math.min(w * BAND, area.left - 1) ? "L" : b.bbox.x >= Math.max(w * (1 - BAND), area.right + 1) ? "R" : null
-    return side && text.replace(/\s+/g, "")
+    return side && `${side}\u0000${text.replace(/\s+/g, "")}`
   }
   const pages = new Map<string, Set<number>>()
   for (const b of blocks) {

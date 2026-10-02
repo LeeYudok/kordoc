@@ -15,6 +15,7 @@ const NAMED: Record<string, string> = {
   period: ".", comma: ",", colon: ":", semicolon: ";", hyphen: "-", endash: "–", emdash: "—", space: " ",
   parenleft: "(", parenright: ")", bracketleft: "[", bracketright: "]", slash: "/", ampersand: "&",
   quoteleft: "‘", quoteright: "’", quotedblleft: "“", quotedblright: "”", quotesingle: "'", quotedbl: "\"",
+  bullet: "•", openbullet: "◦", whitebullet: "◦",
   question: "?", exclam: "!", percent: "%", dollar: "$", numbersign: "#", asterisk: "*", plus: "+", equal: "=",
 }
 
@@ -26,7 +27,9 @@ export function glyphNameText(name: string): string | undefined {
   let out = ""
   for (const part of base.split("_")) {
     const uni = /^uni([0-9A-F]{4})$/.exec(part) ?? /^u([0-9A-F]{4,6})$/.exec(part)
-    const ch = /^[A-Za-z]$/.test(part) ? part : NAMED[part] ?? (uni ? String.fromCodePoint(parseInt(uni[1], 16)) : undefined)
+    const code = uni ? parseInt(uni[1], 16) : undefined
+    if (code !== undefined && (code > 0x10ffff || code >= 0xd800 && code <= 0xdfff)) return undefined
+    const ch = /^[A-Za-z]$/.test(part) ? part : NAMED[part] ?? (code !== undefined ? String.fromCodePoint(code) : undefined)
     if (ch === undefined) return undefined
     out += ch
   }
