@@ -123,6 +123,20 @@
     "readingOrderRegressionFound": true,
     "readingOrderRegressionRecoveryPendingFinalBuild": false,
     "targetReadingOrderRecoveredToBaseline": 0.89362,
-    "fullReleaseGatePending": true
+    "fullReleaseGatePending": false
+  },
+  "postPublicationReadingOrderInvestigation": {
+    "documents": 2,
+    "charactersPreserved": {
+      "iceArc": 114380,
+      "worldcup": 144
+    },
+    "deleted": 0,
+    "added": 0,
+    "readingOrderRegressions": [
+      "Worldcup full-width heading",
+      "ice-arc page 121 prose"
+    ],
+    "followupPlanned": "4.18.5"
   }
 }
