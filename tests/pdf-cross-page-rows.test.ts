@@ -372,3 +372,28 @@ describe("buildClipCellGrids — 쪽 첫머리 클립 없는 띠·떨어진 조�
     assert.equal(buildClipCellGrids([...band, floor, ...below], [], [], 595, 841, text).grids.length, 3)
   })
 })
+
+describe("두 행 머리 표의 쪽 넘김 — 되풀이 머리 두 행과 상위 세로 병합 칸", () => {
+  // 구급차 관리·운용 안내 제5판 [별표 16] 30~31쪽 꼴: 머리 "구분|장비분류|구급차 구분"(앞 두 칸 세로 병합) 아래 "특수|일반",
+  // 상위 항목 "나." 가 앞 쪽 끝까지 세로 병합되고 다음 쪽 조각 첫 행에 글 없는 세로 병합 칸으로 다시 그려진다
+  const head: Array<[number, number, string | null, number?, number?]> = [[0, 0, "구분", 1, 2], [0, 1, "장비분류", 1, 2], [0, 2, "구급차 구분", 2, 1], [1, 2, "특수구급차"], [1, 3, "일반구급차"]]
+  const blocks = (): IRBlock[] => {
+    const prev = grid(4, 4, [...head, [2, 0, "나. 응급 처치용 의료장비", 1, 2], [2, 1, "1) 기도"], [2, 2, "기도확보장치"], [2, 3, "기도확보장치"], [3, 1, "2) 호흡"], [3, 2, "산소 마스크"], [3, 3, "산소 마스크"]])
+    const curr = grid(4, 4, [...head, [2, 0, "", 1, 2], [2, 1, "3) 심장"], [2, 2, "자동심장충격기"], [2, 3, "-"], [3, 1, "4) 순환"], [3, 2, "정맥주사세트"], [3, 3, "정맥주사세트"]])
+    return [
+      { type: "table", table: prev, pageNumber: 1, bbox: { page: 1, x: 50, y: 70, width: 450, height: 630 } },
+      { type: "table", table: curr, pageNumber: 2, bbox: { page: 2, x: 50, y: 70, width: 450, height: 630 } },
+    ]
+  }
+  it("되풀이 머리 두 행을 모두 빼고, 상위 세로 병합 칸을 다음 쪽 행까지 늘린다", () => {
+    const b = blocks()
+    mergeCrossPageTables(b)
+    assert.equal(b.length, 1)
+    const t = b[0].table!
+    assert.equal(t.cells.length, 6)
+    assert.equal(t.cells.filter(r => r.some(c => c.text === "특수구급차")).length, 1)
+    assert.equal(t.cells[2][0].text, "나. 응급 처치용 의료장비")
+    assert.equal(t.cells[2][0].rowSpan, 4)
+    assert.equal(t.cells[4][1].text, "3) 심장")
+  })
+})
