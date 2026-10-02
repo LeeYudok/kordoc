@@ -127,7 +127,8 @@ export function registerDocCommands(program: Command): void {
         let values: Record<string, string> = {}
         if (opts.json) {
           const jsonPath = resolve(opts.json)
-          const jsonContent = readFileSync(jsonPath, "utf-8")
+          // Windows 메모장·PowerShell 이 붙이는 UTF-8 BOM 은 JSON.parse 가 거부한다
+          const jsonContent = readFileSync(jsonPath, "utf-8").replace(/^﻿/, "")
           values = JSON.parse(jsonContent)
         } else if (opts.fields) {
           const fieldsStr: string = opts.fields
