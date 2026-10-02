@@ -66,6 +66,7 @@ export function registerGenerateCommands(program: Command): void {
         const rootOpts = program.opts()
         const output: string | undefined = opts.output ?? rootOpts.output
         const silent: boolean = opts.silent ?? rootOpts.silent
+        const plain: boolean = opts.plain ?? rootOpts.plain
 
         // 입력: '-' 이면 stdin, 아니면 파일
         let md: string
@@ -81,7 +82,7 @@ export function registerGenerateCommands(program: Command): void {
         // 공문서 옵션 구성 — 값 검증(열거)과 조립은 gongmun-surface SSOT, 여기는
         // commander 표면 사정(kv 파싱·--no-x 기본값)을 중립 입력으로 정돈하는 어댑터만
         let gongmun: import("../index.js").GongmunOptions | undefined
-        if (!opts.plain) {
+        if (!plain) {
           const preset = PRESET_ALIAS[String(opts.preset).trim()]
           if (!preset) {
             process.stderr.write(`[kordoc] 알 수 없는 프리셋: ${opts.preset} (기안문/보고서/계획서/통지/회의록/개조식/업무보고/서울방침/보도자료)\n`)

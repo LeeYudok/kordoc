@@ -60,6 +60,11 @@ export function registerDocCommands(program: Command): void {
           opts.format = rootOpts.format
         }
 
+        if (!["hwpx-preserve", "hwpx", "markdown"].includes(opts.format)) {
+          process.stderr.write(`[kordoc] --format 는 hwpx-preserve/hwpx/markdown 중 하나여야 합니다: ${opts.format}\n`)
+          process.exit(1)
+        }
+
         // --list-templates: 내장 서식 목록 + 누름틀 필드
         if (opts.listTemplates) {
           const list = []

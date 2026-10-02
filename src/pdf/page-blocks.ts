@@ -40,7 +40,7 @@ import { detectTextBoxTables } from "./text-box-table.js"
 import { bridgeSkippedRowVerticals } from "./vertical-bridge.js"
 import { splitSidebarTitleRegion, splitTrailingColumnRegion, panelBlocks } from "./local-regions.js"
 import { pushLineParagraphs } from "./paragraph-lines.js"
-import { buildFrameCellBlocks, takePendingNested, recordFrameTitle, groupFrameParagraphUnits, recordFrameReadingUnit, frameLayoutBoxes, FRAME_RECT_TOL } from "./frame-cell-blocks.js"
+import { buildFrameCellBlocks, takePendingNested, recordFrameTitle, groupFrameParagraphUnits, recordFrameReadingUnit, frameLayoutBoxes, takeFrameSpanningText, frameColumnTextBands, FRAME_RECT_TOL } from "./frame-cell-blocks.js"
 import { groupFlowBoxUnits } from "./flow-boxes.js"
 import { extendNestedShadedHeaders } from "./nested-shaded-headers.js"
 import { isChartTable, isExamLayoutTable, isFormulaTable, isTableOfContents, tocBlock } from "./table-roles.js"
@@ -722,14 +722,14 @@ function extractBlocksWithGrids(
       // XY-Cut 그룹 단위로 처리한다 — 단 전체를 한 덩어리로 넘기면 클러스터 표
       // 감지가 문항 사이를 건너뛰며 선지 행들을 거대 표로 흡수한다(granularity 보존).
       const gx = gutterX
+      const spanning = detectListBlocks(takeFrameSpanningText(remaining, gx, pageNum, lex))
+      for (const block of spanning) {
+        finalTextBlocks.push(block); groupSizes.push(1)
+      }
       const allY = remaining.map(i => i.y)
       const pageH = safeMax(allY) - safeMin(allY)
       const gapThreshold = Math.max(15, pageH * 0.03)
-      const sides = [
-        remaining.filter(i => i.x + i.w <= gx),
-        remaining.filter(i => i.x < gx && i.x + i.w > gx),
-        remaining.filter(i => i.x >= gx),
-      ]
+      const sides = frameColumnTextBands(remaining, spanning, gx)
       const textBlocks: IRBlock[] = []
       for (const side of sides) {
         if (side.length === 0) continue
@@ -740,7 +740,7 @@ function extractBlocksWithGrids(
           groupSizes.push(groupBlocks.length)
         }
       }
-      finalTextBlocks = detectListBlocks(textBlocks)
+      finalTextBlocks.push(...detectListBlocks(textBlocks))
     } else {
       // XY-Cut으로 왼쪽 본문과 오른쪽 부서명 등을 분리 후 개별 처리
       const allY = remaining.map(i => i.y)

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.5] - 2026-10-02
+
+### Fixed
+
+- CLI: `fill --format`이 지원하지 않는 값이면 입력 처리·출력 쓰기 전에 거부한다. 잘못된 포맷이 원본 HWPX를 마크다운으로 덮어쓰지 않게 한다.
+- CLI: `generate` 앞·뒤에 둔 `--plain` 옵션을 반영하여 범용 문서에 공문서 항목 번호·자동 끝표시가 붙지 않게 한다.
+- PDF: 원본 상자 경계를 쓰는 열 판정이 전체 폭 한 줄 제목과 이어지는 단일 열 문장을 좌우 열로 갈라 순서를 바꾸던 회귀를 고친다. 가까운 연속 글줄과 들여쓴 이어지는 줄을 한 문단으로 유지하며 목록 표시·종류를 보존하고, 실제 2단의 큰 열 간격은 유지한다.
+
 ## [4.18.4] - 2026-10-02
 
 ### Fixed
