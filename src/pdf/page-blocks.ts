@@ -45,6 +45,7 @@ import { groupFlowBoxUnits } from "./flow-boxes.js"
 import { extendNestedShadedHeaders } from "./nested-shaded-headers.js"
 import { isChartTable, isExamLayoutTable, isFormulaTable, isTableOfContents, tocBlock } from "./table-roles.js"
 import { isSideTabTable, SIDE_TAB_TABLES } from "./side-tabs.js"
+import { attachSideTabBlocks } from "./side-tab-blocks.js"
 import { splitTwoColumnProse, figureColumnBands, topTableBand, tieredHeaderTable, stackedTableBands, threeColumnCards, threeColumnInfographic } from "./page-regions.js"
 
 /** 쪽 사이로 넘기는 칸 이어짐 상태 — 앞 쪽 번호와 그 쪽 클립 사실 (다음 쪽 첫 클립이 앞 쪽 마지막 칸의 이어짐인지 가른다, clip-cells) */
@@ -73,12 +74,11 @@ export function extractPageBlocksWithLines(
     return []
   }
   // 쪽 옆 세로 책등·색인 탭 글자 기둥은 글 흐름(표 감지·XY-Cut)에서 뺀다 — 같은 높이 본문 제목을 XY-Cut 이 세로로 자르고("1-2) 폭력 대비" |
-  // "및 대응의 적절성"), 클러스터 표의 첫 열이 됐다(#112·#119). 글자마다 쪽 블록으로 앞에 두면 여러 쪽 변환에서 removeSideTabs 가 뺀다
+  // "및 대응의 적절성"), 클러스터 표의 첫 열이 됐다(#112·#119). 되풀이 제거용 글 블록은 기존 읽기 위치·기준선 묶음을 보존한다
   const tab = sideTabGlyphs(items)
   if (tab.size) {
-    const glyphs: IRBlock[] = [...tab].sort((a, b) => b.y - a.y)
-      .map(g => ({ type: "paragraph", text: g.text.trim(), pageNumber: pageNum, bbox: computeBBox([g], pageNum), style: dominantStyle([g]) }))
-    return [...glyphs, ...extractPageBlocksWithLines(items.filter(i => !tab.has(i)), pageNum, opList, pageWidth, pageHeight, extraLines, detectTables, carry, lexicon, verifiedRightArrows)]
+    const body = extractPageBlocksWithLines(items.filter(i => !tab.has(i)), pageNum, opList, pageWidth, pageHeight, extraLines, detectTables, carry, lexicon, verifiedRightArrows)
+    return attachSideTabBlocks(tab, body, pageNum)
   }
   // 줄 꺾임 이음 판정의 어휘 증거 — 이 쪽 줄 글을 먼저 더해 쪽 안 어디서 판정하든 쪽 전체가 증거가 된다
   const lex = lexicon ?? new WrapLexicon()

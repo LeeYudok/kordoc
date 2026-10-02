@@ -171,6 +171,9 @@ export function detectClusterTables(items: ClusterItem[], pageNum: number, rejec
 /** 세로 색인 탭 기둥으로 볼 최소 글자 수 */
 const SIDE_TAB_MIN = 6
 
+/** 머리 표지 때문에만 기존 바깥 판정을 못 받은 탭 — 원본 표지 뒤 읽기 위치를 보존한다. */
+export const SIDE_TAB_CAP_GROUPS = new WeakMap<object, Map<object, Pick<ClusterItem, "x" | "y" | "w" | "fontSize">>>()
+
 /**
  * 쪽 옆 세로 색인 탭 — 책자형 문서는 장·책 이름("응⏎급⏎의⏎료⏎기⏎관…")을 쪽 바깥 좌우 띠에 한 자씩 세로로 찍는다.
  * 여러 쪽 되풀이로 걷는 removeSideTabs(side-tabs.ts)는 표 감지 뒤에 돌고, 한 쪽만 변환(pages)하면 되풀이도 없다. 그 전에
@@ -233,11 +236,26 @@ export function sideTabGlyphs<T extends Pick<ClusterItem, "text" | "x" | "y" | "
     // 쪽의 다른 글이 모두 한쪽 바깥에 있어야 한다(높이가 겹치는 글만이 아니라) — 서식 표의 행 번호 열(1⏎2⏎…⏎9, 빈 행)·세로로 쓴
     // 칸 이름·"-" 자리표시 열도 한 글자 기둥이라, 높이 겹침만 보면 표에서 빠져 쪽 앞에 한 글자씩 나왔다(4.18.2 회귀)
     const rest = items.filter(i => !members.has(i) && i.text.trim())
-    const outside = rest.every(i => i.x >= right + fs) || rest.every(i => i.x + i.w <= left - fs)
+    // 기둥 바로 위 같은 띠의 짧은 머리 표지는 탭의 일부다. 글 흐름에는 그대로 남기되
+    // 탭 바깥 본문 판정의 경쟁 열로 세지 않는다 — 큰 제목·멀리 떨어진 라벨은 제외.
+    const cap = (i: T) => i.y > top && i.y - top <= fs * 3 && i.w <= fs * 3 &&
+      i.fontSize <= fs * 3 && [...i.text.trim()].length <= 3 &&
+      Math.abs(i.x + i.w / 2 - (left + right) / 2) <= fs * 0.5
+    const bodyRest = rest.filter(i => !cap(i))
+    const outside = bodyRest.every(i => i.x >= right + fs) || bodyRest.every(i => i.x + i.w <= left - fs)
     if (!outside) continue
     const alone = col.filter(g => !others.some(i => Math.abs(i.y - g.y) <= Y_TOL)).length
     if (alone < col.length * 0.4) continue
-    for (const g of col) found.add(g)
+    const legacyOutside = rest.every(i => i.x >= right + fs) || rest.every(i => i.x + i.w <= left - fs)
+    const head = !legacyOutside ? rest.find(cap) : undefined
+    for (const g of col) {
+      found.add(g)
+      if (head) {
+        const caps = SIDE_TAB_CAP_GROUPS.get(found) ?? new Map()
+        caps.set(g, head)
+        SIDE_TAB_CAP_GROUPS.set(found, caps)
+      }
+    }
   }
   return found
 }

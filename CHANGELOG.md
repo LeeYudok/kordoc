@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.6] - 2026-10-02
+
+### Fixed
+
+- PDF: 쪽 옆 세로 색인 탭 바로 위의 짧은 장 번호가 탭 판정을 막아 본문 열 폭과 읽기 순서를 흐트러뜨리던 문제를 고친다. 독립 본문·기둥·원본 기하 근거가 있는 경우에만 이 표지를 바깥 본문 비교에서 제외하고, 표지 자체는 보존한다. 원본 안내서의 목록 기호·별표 참조·이어지는 괄호 문장을 한 항목으로 유지한다. 새로 분리한 탭은 같은 기준선의 글자·괄호 묶음과 원본 장 번호 뒤의 위치를 보존해 반복 여백 제거와 첫머리 제목 문맥을 유지한다. 실제 다단·번호 표·큰 제목의 판정은 유지한다.
+
 ## [4.18.5] - 2026-10-02
 
 ### Fixed

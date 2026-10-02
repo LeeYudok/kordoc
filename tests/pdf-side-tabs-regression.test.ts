@@ -50,6 +50,36 @@ describe("side tab band safeguards", () => {
     const cells = Array.from({ length: 9 }, (_, k) => item("행 내용", 70, 400 - k * 7, 330, 10))
     assert.equal(sideTabGlyphs([...glyphs, ...cells]).size, 0)
   })
+  it("ignores a compact centered cap above an independently established marginal pillar", () => {
+    const glyphs = column("구급차의의료장비", 437)
+    const cap = item("Ⅶ", 433, 420, 13, 13)
+    assert.deepEqual(sideTabGlyphs([...glyphs, cap, ...body]), new Set(glyphs))
+  })
+
+  for (const [name, cap] of [
+    ["wide", item("Ⅶ", 423, 420, 36, 13)],
+    ["distant", item("Ⅶ", 433, 470, 13, 13)],
+    ["off-center", item("Ⅶ", 452, 420, 13, 13)],
+    ["oversized", item("Ⅶ", 433, 420, 13, 24)],
+    ["long label", item("비교항목내용", 433, 420, 13, 13)],
+  ] as const) {
+    it("keeps a pillar next to an unrelated " + name + " label", () => {
+      assert.equal(sideTabGlyphs([...column("구급차의의료장비", 437), cap, ...body]).size, 0)
+    })
+  }
+
+  it("a cap supplies neither standalone-pillar nor independent-body evidence", () => {
+    const glyphs = column("구급차의의료장비", 437), cap = item("Ⅶ", 433, 420, 13, 13)
+    assert.equal(sideTabGlyphs([...glyphs, cap]).size, 0)
+    assert.equal(sideTabGlyphs([...glyphs, cap, item("표 제목", 70, 470, 60, 10)]).size, 0)
+  })
+
+  it("preserves an aligned row-number table even with a compact column cap", () => {
+    const glyphs = column("123456789", 437), cap = item("번호", 434, 420, 12, 10)
+    const cells = Array.from({ length: 9 }, (_, k) => item("행 내용", 70, 400 - k * 7, 330, 10))
+    assert.equal(sideTabGlyphs([...glyphs, cap, ...cells]).size, 0)
+  })
+
 })
 
 describe("side tab repetition is specific to the side", () => {
