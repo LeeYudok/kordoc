@@ -254,7 +254,7 @@ export function replicateGfmTable(table: IRTable): MappedCell[][] | null {
       const cell = cells[r]?.[c]
       if (!cell) continue
       display[r][c] = {
-        text: escapeGfm(sanitizeText(cell.text)).replace(/(?<!\\)\|/g, "\\|").replace(/\n/g, "<br>"),
+        text: escapeGfm(sanitizeText(cell.text)).replace(/(?<!\\)\|/g, "\\|").replace(/\r\n|\r|\n/g, "<br>"),
         gridR: r,
         gridC: c,
       }
