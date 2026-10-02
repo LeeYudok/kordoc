@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.7] - 2026-10-02
+
+### Fixed
+
+- GFM 표: 셀 안의 CRLF·CR 줄바꿈이 새 표 행으로 해석되어 셀 대응이 깨지던 문제를 수정한다(#135). 일반 셀·강조 span·혼합 줄바꿈을 하나의 `<br>` 규칙으로 출력하고, 왕복 패치의 셀 좌표 재현도 같은 규칙을 따른다. LF 출력과 원본 IR을 보존하며, 같은 표의 다른 셀을 수정할 때 기존 줄바꿈 문자 참조를 유지한다.
+
 ## [4.18.6] - 2026-10-02
 
 ### Fixed
