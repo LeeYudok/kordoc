@@ -751,12 +751,18 @@ export function mergeCrossPageTables(blocks: IRBlock[], pageHeights?: Map<number
     // — 쪽마다 새로 놓인 같은 틀 상자("일 러 두 기" 다음 쪽 "목 차", 보도자료 표지 상자). 되풀이 머리 행은 글이 같다
     if (!rowTextsEqual(prev.table.cells[0], curr.table.cells[0]) && sameHeadShape(prev.table.cells[0], curr.table.cells[0])) continue
 
-    // 반복 헤더 행 제거: 다음 표 첫 행이 이전 표 첫 행과 동일하면 중복 헤더
+    // 반복 헤더 행 제거: 다음 표 첫 행들이 이전 표 첫 행들과 같으면 중복 헤더. 머리가 여러 행이면(첫 행 칸이 세로 병합으로
+    // 그 깊이를 알린다 — "구분|장비분류|구급차 구분" 위, "특수구급차|일반구급차" 아래) 그 깊이까지 본다. 첫 행만 빼면 둘째 머리 행이
+    // 본문 행으로 남아 첫 행 세로 병합 자리가 빈 칸으로 드러났다(구급차 관리·운용 안내 [별표 16] 30~31쪽)
     let currCells = curr.table.cells
-    if (currCells.length > 1 && prev.table.cells.length > 0 &&
-        rowTextsEqual(prev.table.cells[0], currCells[0])) {
-      currCells = currCells.slice(1)
-    }
+    const headDepth = Math.max(1, ...(prev.table.cells[0] ?? []).map(c => c.rowSpan || 1))
+    let headRows = 0
+    while (headRows < Math.min(headDepth, currCells.length - 1, prev.table.cells.length) &&
+        rowTextsEqual(prev.table.cells[headRows], currCells[headRows])) headRows++
+    if (headRows) currCells = currCells.slice(headRows)
+    // 앞 조각 마지막 행에서 끝나는 세로 병합 칸(상위 항목 "나. 응급 처치용 의료장비")이 다음 쪽 조각 첫 행에서 글 없는 세로 병합 칸으로
+    // 다시 그려졌으면 같은 칸의 이어짐이다 — 앞 칸 병합을 늘리고 뒤 빈 칸은 덮인 자리로 둔다. 글 없는 한 행 칸은 증거로 쓰지 않는다
+    if (currCells.length) continueRowSpans(prev.table.cells, currCells)
     if (currCells.length === 0) {
       blocks.splice(j, 1)
       continue
@@ -1051,6 +1057,24 @@ function chainHead(blocks: IRBlock[], i: number, pageHeights?: Map<number, numbe
     k = p
   }
   return k
+}
+
+/** 쪽 넘김 조각 경계에서 끊긴 세로 병합 칸 잇기 — 앞 조각 끝 행까지 걸친 글 있는 병합 원점과 같은 열·폭의 뒤 조각 첫 행 빈 병합 칸 */
+function continueRowSpans(prevCells: IRCell[][], currCells: IRCell[][]): void {
+  const first = currCells[0]
+  const last = prevCells.length
+  for (let c = 0; c < first.length; c++) {
+    const cell = first[c]
+    if (cell.text.trim() || (cell.rowSpan || 1) < 2 || cell.blocks?.length) continue
+    let anchor: IRCell | undefined
+    for (let r = last - 1; r >= 0 && !anchor; r--) {
+      const a = prevCells[r]?.[c]
+      if (a && a.text.trim() && r + (a.rowSpan || 1) === last && (a.colSpan || 1) === (cell.colSpan || 1)) anchor = a
+    }
+    if (!anchor) continue
+    anchor.rowSpan = (anchor.rowSpan || 1) + cell.rowSpan
+    first[c] = { text: "", colSpan: 1, rowSpan: 1 }
+  }
 }
 
 /** 두 행의 셀 텍스트가 모두 동일한지 (공백 정규화 후 비교) */
